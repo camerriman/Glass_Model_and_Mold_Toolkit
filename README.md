@@ -99,16 +99,16 @@ This app is suitable for deployment on Streamlit Community Cloud.
 
 ### Recommended settings
 
-- Repository: your GitHub repo
-- Branch: your deploy branch
+- Repository: the GitHub repository containing this project
+- Branch: the deployment branch
 - Main file path: `Home.py`
 - Python version: 3.12 recommended
 
 ### Deployment notes
 
 - `requirements.txt` is prepared for Streamlit deployment.
-- The app uses local SQLite databases, so those `.sqlite` files need to be committed if you want hosted data access.
-- The app includes many image assets. Keep an eye on repository size when publishing to GitHub.
+- The app uses local SQLite databases, so the `.sqlite` files must be committed for hosted data access.
+- The app includes many image assets, so repository size may affect deployment and update performance.
 - SVG pages use `vpype`, which is included in `requirements.txt`.
 - Mesh slicing defaults to the `manifold` engine through `manifold3d`.
 - External mesh engines such as Blender or OpenSCAD are not bundled by this repo and should be treated as optional local-only engines.
