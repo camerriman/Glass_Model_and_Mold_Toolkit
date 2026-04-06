@@ -20,6 +20,7 @@ The project combines:
 - `pages/6_Glass_Library.py`: library browser
 - `pages/7_Glass_Color_Wheel.py`: HSB color wheel and harmony overlay
 - `pages/8_Glass_Detail.py`: full sample datasheet + PDF export
+- `pages/15_Glass_Compare.py`: side-by-side glass comparison with difference summaries
 - `pages/9_Opalescent_Reference.py`, `pages/10_Transparent_Reference.py`, `pages/11_Tint_Reference.py`: printable family reference sheets
 - `pages/12_Add_Glass_Sample.py`, `pages/13_Edit_Glass_Sample.py`: glass catalog maintenance
 - `pages/20_SVG_Tiles.py`, `pages/21_SVG_Crop.py`: SVG workflow tools
