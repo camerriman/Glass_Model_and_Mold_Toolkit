@@ -16,6 +16,8 @@ IMG_ROOT = APP_ROOT / "images"
 MISSING_FULL = IMG_ROOT / "_placeholders" / "missing_full.tiff"
 MISSING_ICON = IMG_ROOT / "_placeholders" / "missing_icon.jpg"
 DETAIL_PAGE = "pages/8_Glass_Detail.py"
+COMPARE_PAGE = "pages/15_Glass_Compare.py"
+MAX_COMPARE = 4
 
 FAMILY_PREFIX_BY_CODE = {
     "1": "opal",
@@ -110,6 +112,11 @@ def first_existing_icon(cat_id: str, prefix: str, preferred_mode: str) -> Path |
 def current_detail_target() -> str | None:
     candidate = APP_ROOT / DETAIL_PAGE
     return DETAIL_PAGE if candidate.exists() else None
+
+
+def current_compare_target() -> str | None:
+    candidate = APP_ROOT / COMPARE_PAGE
+    return COMPARE_PAGE if candidate.exists() else None
 
 
 def switch_to_page(target: str) -> bool:
@@ -218,6 +225,34 @@ def measurement_row(measurements: pd.DataFrame, glass_id: str, mode: str) -> pd.
     if matches.empty:
         return None
     return matches.iloc[0]
+
+
+def normalize_compare_ids(values) -> list[str]:
+    if isinstance(values, str):
+        values = [values]
+    elif values is None:
+        values = []
+
+    normalized: list[str] = []
+    for value in values:
+        glass_id = str(value or "").strip()
+        if not glass_id or glass_id in normalized:
+            continue
+        normalized.append(glass_id)
+    return normalized[:MAX_COMPARE]
+
+
+def toggle_compare_selection(glass_id: str, checkbox_key: str) -> None:
+    compare_ids = normalize_compare_ids(st.session_state.get("compare_glass_ids", []))
+    is_checked = bool(st.session_state.get(checkbox_key, False))
+
+    if is_checked:
+        if glass_id not in compare_ids:
+            compare_ids.append(glass_id)
+    else:
+        compare_ids = [item for item in compare_ids if item != glass_id]
+
+    st.session_state["compare_glass_ids"] = normalize_compare_ids(compare_ids)
 
 
 def apply_sort(
@@ -560,6 +595,39 @@ st.caption(
     f"{len(filtered)} items ({family_name}, preview: {preview_label.lower()}, sorted by: {sort_label.lower()})"
 )
 
+compare_ids = normalize_compare_ids(st.session_state.get("compare_glass_ids", []))
+if compare_ids != st.session_state.get("compare_glass_ids", []):
+    st.session_state["compare_glass_ids"] = compare_ids
+
+compare_target = current_compare_target()
+compare_col, clear_col, note_col = st.columns([0.18, 0.16, 0.66], gap="small")
+with compare_col:
+    if st.button(
+        "Compare selected",
+        key="library_compare_selected",
+        width="content",
+        disabled=len(compare_ids) < 2 or compare_target is None,
+    ):
+        if compare_target and switch_to_page(compare_target):
+            st.stop()
+        st.warning("Could not navigate to the compare page.")
+with clear_col:
+    if st.button(
+        "Clear compare",
+        key="library_clear_compare",
+        width="content",
+        disabled=not compare_ids,
+    ):
+        st.session_state["compare_glass_ids"] = []
+        st.rerun()
+with note_col:
+    if compare_ids:
+        st.markdown(
+            "**Compare set:** " + " · ".join(html.escape(glass_id) for glass_id in compare_ids)
+        )
+    else:
+        st.caption("Select 2-4 samples to compare on a dedicated page.")
+
 if filtered.empty:
     st.info("No glass samples match the current filters.")
     st.stop()
@@ -607,6 +675,8 @@ for start in range(0, len(filtered), cols_per_row):
         cols = st.columns(cols_per_row)
         for idx, row in enumerate(row_slice.itertuples(index=False)):
             glass_id = str(row.glass_id)
+            is_comparing = glass_id in compare_ids
+            compare_key = f"compare_{selected_family_code}_{preview_mode}_{glass_id}"
             with cols[idx]:
                 with st.container(border=True):
                     icon = first_existing_icon(glass_id, selected_prefix, preview_mode)
@@ -626,6 +696,34 @@ for start in range(0, len(filtered), cols_per_row):
                         st.session_state["selected_glass_id"] = glass_id
                         st.session_state["_library_scroll_to"] = glass_id
                         st.rerun()
+
+                    if st.session_state.get(compare_key) != is_comparing:
+                        st.session_state[compare_key] = is_comparing
+                    compare_toggle_col, compare_label_col = st.columns([0.22, 0.78], gap="small")
+                    with compare_toggle_col:
+                        st.checkbox(
+                            "Compare",
+                            key=compare_key,
+                            label_visibility="collapsed",
+                            disabled=(not is_comparing and len(compare_ids) >= MAX_COMPARE),
+                            on_change=toggle_compare_selection,
+                            args=(glass_id, compare_key),
+                        )
+                    with compare_label_col:
+                        st.markdown(
+                            """
+                            <div style="
+                                font-family:sans-serif;
+                                font-size:12px;
+                                color:#555;
+                                line-height:1.2;
+                                padding-top:0.28rem;
+                            ">
+                                Compare
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
     with right:
         if show_detail:
