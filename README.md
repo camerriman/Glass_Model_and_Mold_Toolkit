@@ -28,7 +28,7 @@ The project combines:
 ## Project Structure
 
 ```text
-vs-code-app/
+glass_model_and_mold_toolkit/
 ├── Home.py
 ├── pages/
 ├── utilities/
