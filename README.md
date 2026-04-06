@@ -139,19 +139,3 @@ Useful when very fine relief detail matters more than build volume or convenienc
 ## PDFs and Reference Sheets
 
 The glass reference pages and glass detail page generate printer-ready PDFs directly from the app. This avoids browser print layout problems and keeps output consistent for studio use and archiving.
-
-## Notes for GitHub Publishing
-
-Before pushing to GitHub, it is worth checking:
-
-- `.venv/` is ignored
-- `__pycache__/` is ignored
-- local-only test files are ignored
-- large assets in `images/` and `data/` are intentionally included
-
-If you want, a next pass could add:
-
-- a `.gitignore`
-- a small `LICENSE`
-- screenshots for the main workflows
-- a shorter public-facing project description for GitHub visitors
