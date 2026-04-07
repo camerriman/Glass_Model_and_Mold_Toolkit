@@ -89,6 +89,16 @@ def family_prefix(code: str, name: str) -> str:
     return label.replace(" ", "_") or "other"
 
 
+def row_prefix(row: pd.Series | object) -> str:
+    if isinstance(row, pd.Series):
+        code = row.get("glass_family")
+        name = row.get("family_name") or row.get("glass_family")
+    else:
+        code = getattr(row, "glass_family", "")
+        name = getattr(row, "family_name", "") or getattr(row, "glass_family", "")
+    return family_prefix(str(code or ""), str(name or ""))
+
+
 def icon_path(cat_id: str, prefix: str, mode: str) -> Path:
     return IMG_ROOT / "icons" / f"{prefix}_{mode}_{cat_id}.jpg"
 
@@ -529,12 +539,17 @@ st.sidebar.header("Browse")
 
 return_family = st.session_state.pop("detail_return_family", None)
 family_names = families["name"].tolist()
-default_index = family_names.index(return_family) if return_family in family_names else 0
-family_name = st.sidebar.selectbox("Family", family_names, index=default_index)
+family_options = ["All"] + family_names
+default_index = family_options.index(return_family) if return_family in family_options else 0
+family_name = st.sidebar.selectbox("Family", family_options, index=default_index)
 
-family_row = families[families["name"] == family_name].iloc[0]
-selected_family_code = str(family_row["code"])
-selected_prefix = str(family_row["prefix"])
+if family_name == "All":
+    selected_family_code = "all"
+    family_label = "All families"
+else:
+    family_row = families[families["name"] == family_name].iloc[0]
+    selected_family_code = str(family_row["code"])
+    family_label = family_name
 
 preview_label = st.sidebar.radio("Preview Mode", ["Reflected", "Transmitted"], index=0)
 preview_mode = "R" if preview_label == "Reflected" else "T"
@@ -555,7 +570,10 @@ for label, column in ELEMENT_MAP.items():
 
 cols_per_row = st.sidebar.slider("Grid columns", 3, 5, 4)
 
-filtered = catalog[catalog["glass_family"] == selected_family_code].copy()
+if family_name == "All":
+    filtered = catalog.copy()
+else:
+    filtered = catalog[catalog["glass_family"] == selected_family_code].copy()
 
 if q.strip():
     query = q.strip().lower()
@@ -592,7 +610,7 @@ filtered = apply_sort(filtered, measurements, preview_mode, sort_label)
 
 st.title("Glass Library")
 st.caption(
-    f"{len(filtered)} items ({family_name}, preview: {preview_label.lower()}, sorted by: {sort_label.lower()})"
+    f"{len(filtered)} items ({family_label}, preview: {preview_label.lower()}, sorted by: {sort_label.lower()})"
 )
 
 compare_ids = normalize_compare_ids(st.session_state.get("compare_glass_ids", []))
@@ -652,6 +670,7 @@ if selected_row.empty:
     st.stop()
 
 base_row = selected_row.iloc[0]
+selected_prefix = row_prefix(base_row)
 row_r = measurement_row(measurements, selected_glass_id, "R")
 row_t = measurement_row(measurements, selected_glass_id, "T")
 pending_scroll_id = st.session_state.pop("_library_scroll_to", None)
@@ -679,7 +698,8 @@ for start in range(0, len(filtered), cols_per_row):
             compare_key = f"compare_{selected_family_code}_{preview_mode}_{glass_id}"
             with cols[idx]:
                 with st.container(border=True):
-                    icon = first_existing_icon(glass_id, selected_prefix, preview_mode)
+                    item_prefix = row_prefix(pd.Series(row._asdict()))
+                    icon = first_existing_icon(glass_id, item_prefix, preview_mode)
                     if icon is not None:
                         st.image(str(icon), width="content")
                     elif MISSING_ICON.exists():

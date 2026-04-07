@@ -34,6 +34,10 @@ with col2:
         st.switch_page("pages/6_Glass_Library.py")
     if st.button("Glass Color Wheel", width="stretch"):
         st.switch_page("pages/7_Glass_Color_Wheel.py")
+    if st.button("Layered Glass Predictor", width='stretch'):
+        st.switch_page("pages/16_Layered_Glass_Predictor.py")
+    if st.button("Frit Mix Explorer", width='stretch'):
+        st.switch_page("pages/17_Frit_Mix_Explorer.py")
     if st.button("Add Glass Sample", width='stretch'):
         st.switch_page("pages/12_Add_Glass_Sample.py")
 
