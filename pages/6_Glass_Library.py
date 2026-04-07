@@ -10,6 +10,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from i18n import render_app_sidebar, t, translate_element_name, translate_family_name, translate_mode_name
+
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
 IMG_ROOT = APP_ROOT / "images"
@@ -52,12 +54,32 @@ ELEMENT_COLOURS = {
     "Gold": "#d4a020",
 }
 
-MODE_LABELS = {
-    "R": "Reflected",
-    "T": "Transmitted",
-}
+st.set_page_config(page_title=t("library.title", "Glass Library"), layout="wide")
+render_app_sidebar()
 
-st.set_page_config(page_title="Glass Library", layout="wide")
+SORT_OPTIONS = ["Hue (H)", "Product ID", "Color name"]
+INTERACTION_OPTIONS = ["Contains", "May react with"]
+
+
+def mode_label(mode: str) -> str:
+    return translate_mode_name(mode)
+
+
+def sort_label_display(value: str) -> str:
+    labels = {
+        "Hue (H)": t("shared.sort.hue", "Hue (H)"),
+        "Product ID": t("shared.sort.product_id", "Product ID"),
+        "Color name": t("shared.sort.color_name", "Color name"),
+    }
+    return labels.get(value, value)
+
+
+def interaction_label(value: str) -> str:
+    labels = {
+        "Contains": t("shared.interaction.contains", "Contains"),
+        "May react with": t("shared.interaction.may_react_with", "May react with"),
+    }
+    return labels.get(value, value)
 
 
 def safe_int(value, default: int = 0) -> int:
@@ -146,7 +168,7 @@ def switch_to_page(target: str) -> bool:
 @st.cache_data
 def load_catalog() -> pd.DataFrame:
     if not DB_PATH.exists():
-        st.error(f"Missing database: {DB_PATH}")
+        st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
 
     with sqlite3.connect(DB_PATH) as con:
@@ -172,14 +194,14 @@ def load_catalog() -> pd.DataFrame:
                 con,
             )
         except Exception as exc:
-            st.error(f"Failed to load catalog data: {exc}")
+            st.error(t("library.errors.catalog_load", "Failed to load catalog data: {error}", error=exc))
             st.stop()
 
 
 @st.cache_data
 def load_measurements() -> pd.DataFrame:
     if not DB_PATH.exists():
-        st.error(f"Missing database: {DB_PATH}")
+        st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
 
     with sqlite3.connect(DB_PATH) as con:
@@ -202,14 +224,14 @@ def load_measurements() -> pd.DataFrame:
                 con,
             )
         except Exception as exc:
-            st.error(f"Failed to load measurement data: {exc}")
+            st.error(t("library.errors.measurement_load", "Failed to load measurement data: {error}", error=exc))
             st.stop()
 
 
 @st.cache_data
 def load_families() -> pd.DataFrame:
     if not DB_PATH.exists():
-        st.error(f"Missing database: {DB_PATH}")
+        st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
 
     with sqlite3.connect(DB_PATH) as con:
@@ -223,7 +245,7 @@ def load_families() -> pd.DataFrame:
                 con,
             )
         except Exception as exc:
-            st.error(f"Failed to load family data: {exc}")
+            st.error(t("library.errors.family_load", "Failed to load family data: {error}", error=exc))
             st.stop()
 
 
@@ -358,7 +380,8 @@ def badge_markup(labels: list[str], *, muted: bool = False) -> str:
     for label in labels:
         bg = ELEMENT_COLOURS.get(label, "#888")
         opacity = "opacity:0.7;" if muted else ""
-        text = f"* {label}" if muted else label
+        display_label = translate_element_name(label)
+        text = f"* {display_label}" if muted else display_label
         spans.append(
             f'<span style="background:{bg};color:white;font-size:11px;'
             f'font-weight:bold;padding:2px 7px;border-radius:3px;margin-right:4px;'
@@ -380,7 +403,7 @@ def striker_badge_markup(is_striker: bool) -> str:
         '<div style="font-family:sans-serif;margin-top:4px;line-height:2.2;">'
         '<span style="background:#e05020;color:white;font-size:11px;'
         'font-weight:bold;padding:2px 8px;border-radius:3px;margin-right:8px;">'
-        "STRIKER</span></div>"
+        f"{t('compare.badge.striker', 'STRIKER')}</span></div>"
     )
 
 
@@ -442,22 +465,22 @@ def render_detail_panel(
 
     if current_detail_target():
         if st.button(
-            "Open full datasheet",
+            t("library.detail.open_datasheet", "Open full datasheet"),
             key=f"open_datasheet_{selected_glass_id}",
             width="content",
         ):
             st.session_state["detail_glass_id"] = str(selected_glass_id)
             st.session_state["detail_return_page"] = "pages/6_Glass_Library.py"
-            st.session_state["detail_return_label"] = "Glass Library"
+            st.session_state["detail_return_label_key"] = "library.title"
             st.session_state["detail_return_family"] = family_name
             if not switch_to_page(DETAIL_PAGE):
-                st.warning("Could not navigate to the full datasheet page.")
+                st.warning(t("library.messages.open_datasheet_failed", "Could not navigate to the full datasheet page."))
 
     image_cols = st.columns(2, gap="large")
     for column, mode in zip(image_cols, ("R", "T")):
         measurement = row_r if mode == "R" else row_t
         with column:
-            st.markdown(f"### {MODE_LABELS[mode]}")
+            st.markdown(f"### {mode_label(mode)}")
             image = full_path(str(selected_glass_id), selected_prefix, mode)
             if image is not None:
                 st.image(str(image), width="content")
@@ -467,32 +490,32 @@ def render_detail_panel(
                 st.image(str(MISSING_ICON), width="content")
 
             if measurement is None:
-                st.write("No measurement data for this mode.")
+                st.write(t("library.messages.no_measurement_mode", "No measurement data for this mode."))
             else:
                 st.markdown(
                     "\n".join(
                         [
                             f"**RGB:** ({measurement.get('r')}, {measurement.get('g')}, {measurement.get('b')})  ",
                             f"**HSB:** ({measurement.get('h')}, {measurement.get('s')}, {measurement.get('v')})  ",
-                            f"**Thickness:** {measurement.get('thickness_mm') or '-'} mm",
+                            f"**{t('editor.fields.thickness', 'Thickness (mm)').replace(' (mm)', '')}:** {measurement.get('thickness_mm') or '-'} mm",
                         ]
                     )
                 )
 
-    st.markdown("### Elements Present")
+    st.markdown(f"### {t('shared.sections.elements_present', 'Elements Present')}")
     st.markdown(
         badge_markup(element_labels(base_row)),
         unsafe_allow_html=True,
     )
 
-    st.markdown("### Reactive Potential")
+    st.markdown(f"### {t('shared.sections.reactive_potential', 'Reactive Potential')}")
     st.markdown(
         badge_markup(reactive_labels(base_row), muted=True),
         unsafe_allow_html=True,
     )
 
-    render_notes("Cold Characteristics", base_row.get("cold_characteristics"))
-    render_notes("Working Notes", base_row.get("working_notes"))
+    render_notes(t("shared.sections.cold_characteristics", "Cold Characteristics"), base_row.get("cold_characteristics"))
+    render_notes(t("shared.sections.working_notes", "Working Notes"), base_row.get("working_notes"))
 
 
 def scroll_to_row(anchor_id: str, offset: int = 90) -> None:
@@ -520,7 +543,7 @@ catalog = load_catalog().copy()
 measurements = load_measurements().copy()
 
 if families.empty:
-    st.error("The glass_families table is empty.")
+    st.error(t("library.messages.family_table_empty", "The glass_families table is empty."))
     st.stop()
 
 families["code"] = families["code"].astype(str)
@@ -535,40 +558,55 @@ catalog["glass_family"] = catalog["glass_family"].astype(str)
 measurements["glass_id"] = measurements["glass_id"].astype(str)
 measurements["mode"] = measurements["mode"].astype(str).str.upper()
 
-st.sidebar.header("Browse")
+st.sidebar.header(t("library.sidebar.title", "Browse"))
 
 return_family = st.session_state.pop("detail_return_family", None)
 family_names = families["name"].tolist()
 family_options = ["All"] + family_names
 default_index = family_options.index(return_family) if return_family in family_options else 0
-family_name = st.sidebar.selectbox("Family", family_options, index=default_index)
+family_name = st.sidebar.selectbox(
+    t("editor.fields.glass_family", "Glass family"),
+    family_options,
+    index=default_index,
+    format_func=lambda value: translate_family_name(None, value),
+)
 
 if family_name == "All":
     selected_family_code = "all"
-    family_label = "All families"
+    family_label_value = t("shared.family.all_families", "All families")
 else:
     family_row = families[families["name"] == family_name].iloc[0]
     selected_family_code = str(family_row["code"])
-    family_label = family_name
+    family_label_value = translate_family_name(selected_family_code, family_name)
 
-preview_label = st.sidebar.radio("Preview Mode", ["Reflected", "Transmitted"], index=0)
-preview_mode = "R" if preview_label == "Reflected" else "T"
-sort_label = st.sidebar.selectbox(
-    "Sort by",
-    ["Hue (H)", "Product ID", "Color name"],
+preview_mode = st.sidebar.radio(
+    t("library.fields.preview_mode", "Preview Mode"),
+    ["R", "T"],
     index=0,
+    format_func=translate_mode_name,
+)
+sort_label = st.sidebar.selectbox(
+    t("library.fields.sort_by", "Sort by"),
+    SORT_OPTIONS,
+    index=0,
+    format_func=sort_label_display,
 )
 
-q = st.sidebar.text_input("Search (id or color)", "")
-only_strikers = st.sidebar.checkbox("Striking only", value=False)
-interaction_label = st.sidebar.radio("Interaction", ["Contains", "May react with"], index=0)
+q = st.sidebar.text_input(t("library.fields.search", "Search (id or color)"), "")
+only_strikers = st.sidebar.checkbox(t("library.fields.striking_only", "Striking only"), value=False)
+interaction_selected = st.sidebar.radio(
+    t("library.fields.interaction", "Interaction"),
+    INTERACTION_OPTIONS,
+    index=0,
+    format_func=interaction_label,
+)
 
 selected_element_cols = []
 for label, column in ELEMENT_MAP.items():
-    if st.sidebar.checkbox(label, value=False, key=f"elem_{column}"):
+    if st.sidebar.checkbox(translate_element_name(label), value=False, key=f"elem_{column}"):
         selected_element_cols.append(column)
 
-cols_per_row = st.sidebar.slider("Grid columns", 3, 5, 4)
+cols_per_row = st.sidebar.slider(t("library.fields.grid_columns", "Grid columns"), 3, 5, 4)
 
 if family_name == "All":
     filtered = catalog.copy()
@@ -587,7 +625,7 @@ if only_strikers:
 
 if selected_element_cols:
     mask = False
-    if interaction_label == "Contains":
+    if interaction_selected == "Contains":
         for column in selected_element_cols:
             mask = mask | (filtered[column].fillna(0).astype(int) == 1)
     else:
@@ -608,9 +646,16 @@ if selected_element_cols:
 
 filtered = apply_sort(filtered, measurements, preview_mode, sort_label)
 
-st.title("Glass Library")
+st.title(t("library.title", "Glass Library"))
 st.caption(
-    f"{len(filtered)} items ({family_label}, preview: {preview_label.lower()}, sorted by: {sort_label.lower()})"
+    t(
+        "library.caption.summary",
+        "{count} items ({family}, preview: {preview}, sorted by: {sort})",
+        count=len(filtered),
+        family=family_label_value,
+        preview=translate_mode_name(preview_mode).lower(),
+        sort=sort_label_display(sort_label).lower(),
+    )
 )
 
 compare_ids = normalize_compare_ids(st.session_state.get("compare_glass_ids", []))
@@ -621,17 +666,17 @@ compare_target = current_compare_target()
 compare_col, clear_col, note_col = st.columns([0.18, 0.16, 0.66], gap="small")
 with compare_col:
     if st.button(
-        "Compare selected",
+        t("library.actions.compare_selected", "Compare selected"),
         key="library_compare_selected",
         width="content",
         disabled=len(compare_ids) < 2 or compare_target is None,
     ):
         if compare_target and switch_to_page(compare_target):
             st.stop()
-        st.warning("Could not navigate to the compare page.")
+        st.warning(t("library.messages.compare_navigation_failed", "Could not navigate to the compare page."))
 with clear_col:
     if st.button(
-        "Clear compare",
+        t("library.actions.clear_compare", "Clear compare"),
         key="library_clear_compare",
         width="content",
         disabled=not compare_ids,
@@ -641,13 +686,17 @@ with clear_col:
 with note_col:
     if compare_ids:
         st.markdown(
-            "**Compare set:** " + " · ".join(html.escape(glass_id) for glass_id in compare_ids)
+            t(
+                "library.messages.compare_set",
+                "**Compare set:** {items}",
+                items=" · ".join(html.escape(glass_id) for glass_id in compare_ids),
+            )
         )
     else:
-        st.caption("Select 2-4 samples to compare on a dedicated page.")
+        st.caption(t("library.messages.compare_hint", "Select 2-4 samples to compare on a dedicated page."))
 
 if filtered.empty:
-    st.info("No glass samples match the current filters.")
+    st.info(t("library.messages.empty", "No glass samples match the current filters."))
     st.stop()
 
 valid_ids = filtered["glass_id"].tolist()
@@ -666,7 +715,7 @@ elif selected_glass_id not in valid_ids:
 
 selected_row = filtered[filtered["glass_id"] == str(selected_glass_id)]
 if selected_row.empty:
-    st.info("Select a glass sample to see details.")
+    st.info(t("library.messages.pick_one", "Select a glass sample to see details."))
     st.stop()
 
 base_row = selected_row.iloc[0]
@@ -705,7 +754,7 @@ for start in range(0, len(filtered), cols_per_row):
                     elif MISSING_ICON.exists():
                         st.image(str(MISSING_ICON), width="content")
 
-                    st.caption((row.color_name or "").strip() or "Unnamed sample")
+                    st.caption((row.color_name or "").strip() or t("library.messages.unnamed_sample", "Unnamed sample"))
                     button_type = "primary" if glass_id == selected_glass_id else "secondary"
                     if st.button(
                         glass_id,
@@ -722,7 +771,7 @@ for start in range(0, len(filtered), cols_per_row):
                     compare_toggle_col, compare_label_col = st.columns([0.22, 0.78], gap="small")
                     with compare_toggle_col:
                         st.checkbox(
-                            "Compare",
+                            t("library.detail.compare", "Compare"),
                             key=compare_key,
                             label_visibility="collapsed",
                             disabled=(not is_comparing and len(compare_ids) >= MAX_COMPARE),
@@ -731,7 +780,7 @@ for start in range(0, len(filtered), cols_per_row):
                         )
                     with compare_label_col:
                         st.markdown(
-                            """
+                            f"""
                             <div style="
                                 font-family:sans-serif;
                                 font-size:12px;
@@ -739,7 +788,7 @@ for start in range(0, len(filtered), cols_per_row):
                                 line-height:1.2;
                                 padding-top:0.28rem;
                             ">
-                                Compare
+                                {html.escape(t("library.detail.compare", "Compare"))}
                             </div>
                             """,
                             unsafe_allow_html=True,

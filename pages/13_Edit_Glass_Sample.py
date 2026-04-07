@@ -5,6 +5,8 @@ from PIL import Image
 import streamlit as st
 from streamlit_quill import st_quill
 
+from i18n import render_app_sidebar, t, translate_family_name
+
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
 LIBRARY_PAGE = "pages/6_Glass_Library.py"
@@ -269,11 +271,28 @@ def move_existing_assets(cat_id: str, old_family_code: str, new_family_code: str
 # ------------------------------------------------------------
 # Page
 # ------------------------------------------------------------
-st.set_page_config(page_title="Edit Glass", layout="wide")
-st.title("Edit Glass Data")
+st.set_page_config(page_title=t("editor.edit.title", "Edit Glass"), layout="wide")
+render_app_sidebar()
+st.title(t("editor.edit.title", "Edit Glass Data"))
+
+
+def family_label(code: str, name: str) -> str:
+    return translate_family_name(code, name)
+
+
+def element_full_label(key: str) -> str:
+    labels = {
+        "se": t("editor.element.se", "Se (Selenium)"),
+        "su": t("editor.element.su", "S (Sulfur)"),
+        "cu": t("editor.element.cu", "Cu (Copper)"),
+        "pb": t("editor.element.pb", "Pb (Lead)"),
+        "ag": t("editor.element.ag", "Ag (Silver)"),
+        "au": t("editor.element.au", "Au (Gold)"),
+    }
+    return labels.get(key, key)
 
 if not DB_PATH.exists():
-    st.error(f"DB not found: {DB_PATH}")
+    st.error(t("errors.editor.db_missing", "DB not found: {path}", path=DB_PATH))
     st.stop()
 
 ensure_unique_index()
@@ -281,30 +300,33 @@ ensure_unique_index()
 # FIX #7: build dropdown from glass_families table, show names, store codes
 fam_rows = list_glass_families()
 if not fam_rows:
-    st.error("No families found in the glass_families table.")
+    st.error(t("errors.editor.no_families", "No families found in the glass_families table."))
     st.stop()
 fam_codes = [code for code, _ in fam_rows]
 fam_names = [name for _, name in fam_rows]
 
-q = st.text_input("Search by cat_id or color name", placeholder="e.g. 224 or Tomato Red")
+q = st.text_input(
+    t("editor.search.label", "Search by cat_id or color name"),
+    placeholder=t("editor.search.placeholder", "e.g. 224 or Tomato Red"),
+)
 results = search_catalog(q)
 
 if not results and q:
-    st.info("No matches.")
+    st.info(t("editor.search.no_matches", "No matches."))
     st.stop()
 
 if not q:
-    st.caption("Type a cat_id (224) or a color name to search.")
+    st.caption(t("editor.search.help", "Type a cat_id (224) or a color name to search."))
     st.stop()
 
 # Select a record
 options = [f'{r["cat_id"]} — {r.get("color_name", "")}' for r in results]
-sel = st.selectbox("Select record", options=options)
+sel = st.selectbox(t("editor.fields.select_record", "Select record"), options=options)
 cat_id = sel.split(" — ", 1)[0].strip()
 
 row = fetch_catalog(cat_id)
 if not row:
-    st.error("Record not found in glass_catalog.")
+    st.error(t("errors.editor.record_not_found", "Record not found in glass_catalog."))
     st.stop()
 
 previous_selected_cat_id = st.session_state.get("_edit_selected_cat_id")
@@ -320,10 +342,10 @@ left, right = st.columns([1.1, 0.9], gap="large")
 
 with st.form(key=f"edit_form_{selection_token}"):
     with left:
-        st.subheader(f"Catalog: {cat_id}")
+        st.subheader(t("editor.fields.catalog", "Catalog: {cat_id}", cat_id=cat_id))
 
         color_name = st.text_input(
-            "Color name",
+            t("editor.fields.color_name", "Color name"),
             value=row.get("color_name") or "",
             key=f"color_name_{selection_token}",
         )
@@ -332,16 +354,16 @@ with st.form(key=f"edit_form_{selection_token}"):
         current_code = str(row.get("glass_family") or "1")
         fam_index = fam_codes.index(current_code) if current_code in fam_codes else 0
         sel_fam_index = st.selectbox(
-            "Glass family",
+            t("editor.fields.glass_family", "Glass family"),
             options=range(len(fam_names)),
-            format_func=lambda i: fam_names[i],
+            format_func=lambda i: family_label(fam_codes[i], fam_names[i]),
             index=fam_index,
             key=f"glass_family_{selection_token}",
         )
         glass_family_code = fam_codes[sel_fam_index]
 
         is_striker = st.checkbox(
-            "Striker",
+            t("editor.fields.striker", "Striker"),
             value=bool(row.get("is_striker") or 0),
             key=f"is_striker_{selection_token}",
         )
@@ -349,7 +371,7 @@ with st.form(key=f"edit_form_{selection_token}"):
         cold_quill_key = f"quill_cold_{selection_token}"
         work_quill_key = f"quill_work_{selection_token}"
 
-        st.markdown("**Cold Characteristics**")
+        st.markdown(f"**{t('editor.sections.cold', 'Cold Characteristics')}**")
         cold_characteristics = st_quill(
             value=row.get("cold_characteristics") or "",
             html=True,
@@ -359,7 +381,7 @@ with st.form(key=f"edit_form_{selection_token}"):
             key=cold_quill_key,
         ) or ""
 
-        st.markdown("**Working Notes**")
+        st.markdown(f"**{t('editor.sections.work', 'Working Notes')}**")
         working_notes = st_quill(
             value=row.get("working_notes") or "",
             html=True,
@@ -369,7 +391,12 @@ with st.form(key=f"edit_form_{selection_token}"):
             key=work_quill_key,
         ) or ""
 
-    st.caption("Elements contained. The app will derive a 'may react with' summary automatically.")
+    st.caption(
+        t(
+            "editor.sections.elements_caption",
+            "Elements contained. The app will derive a 'may react with' summary automatically.",
+        )
+    )
 
     def _as01(x):
         try:
@@ -386,7 +413,7 @@ with st.form(key=f"edit_form_{selection_token}"):
     for i, (k, label) in enumerate(ELEMENTS):
         with ecols[i % 3]:
             _contains[k] = 1 if st.checkbox(
-                label,
+                element_full_label(k),
                 value=_contains_prefill.get(k, False),
                 key=f"edit_contains_{k}_{selection_token}",
             ) else 0
@@ -405,15 +432,16 @@ with st.form(key=f"edit_form_{selection_token}"):
             for tgt in REACT_RULES.get(k, set()):
                 _reacts[tgt] = 1
 
-    react_labels = [label for (k, label) in ELEMENTS if _reacts.get(k, 0) == 1]
-    st.markdown("**May react with (derived)**")
-    st.write(", ".join(react_labels) if react_labels else "—")
+    react_labels = [element_full_label(k) for (k, _) in ELEMENTS if _reacts.get(k, 0) == 1]
+    st.markdown(f"**{t('editor.sections.reacts', 'May react with (derived)')}**")
+    st.write(", ".join(react_labels) if react_labels else "-")
 
-    st.subheader("Images (optional)")
+    st.subheader(t("editor.sections.images", "Images (optional)"))
     st.caption(
-        "Upload new full-res TIFF/JPG/PNG for Transmitted (T) and/or Reflected (R). "
-        "Icons are auto-generated (72×72 JPG) from the uploaded image. "
-        "If you skip uploads, existing images are kept."
+        t(
+            "editor.images.caption_edit",
+            "Upload new full-res TIFF/JPG/PNG for Transmitted (T) and/or Reflected (R). Icons are auto-generated (72x72 JPG) from the uploaded image. If you skip uploads, existing images are kept.",
+        )
     )
 
     # FIX #8: use correct prefix via image_paths helper
@@ -422,56 +450,59 @@ with st.form(key=f"edit_form_{selection_token}"):
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.caption("Icon (T)")
+        st.caption(t("editor.images.icon_t_short", "Icon (T)"))
         icon_t = existing_asset(paths["icon_T"], original_paths["icon_T"]) or PLACEHOLDER_ICON
         st.image(str(icon_t), width="content")
     with c2:
-        st.caption("Full (T)")
+        st.caption(t("editor.images.full_t_short", "Full (T)"))
         full_t = existing_asset(paths["full_T"], original_paths["full_T"]) or PLACEHOLDER_FULL
         st.image(str(full_t), width="content")
     with c3:
-        st.caption("Icon (R)")
+        st.caption(t("editor.images.icon_r_short", "Icon (R)"))
         icon_r = existing_asset(paths["icon_R"], original_paths["icon_R"]) or PLACEHOLDER_ICON
         st.image(str(icon_r), width="content")
     with c4:
-        st.caption("Full (R)")
+        st.caption(t("editor.images.full_r_short", "Full (R)"))
         full_r = existing_asset(paths["full_R"], original_paths["full_R"]) or PLACEHOLDER_FULL
         st.image(str(full_r), width="content")
 
-    st.markdown("**Upload replacements**")
+    st.markdown(f"**{t('editor.actions.upload_replacements', 'Upload replacements')}**")
     # FIX #4: defined both uploaders (icon_up_T and icon_up_R were missing)
     up_full_T = st.file_uploader(
-        "Replace full image — Transmitted (T)",
+        t("editor.images.replace_full_t", "Replace full image - Transmitted (T)"),
         type=["tif", "tiff", "png", "jpg", "jpeg"],
         key=f"replace_full_T_{selection_token}",
     )
     up_full_R = st.file_uploader(
-        "Replace full image — Reflected (R)",
+        t("editor.images.replace_full_r", "Replace full image - Reflected (R)"),
         type=["tif", "tiff", "png", "jpg", "jpeg"],
         key=f"replace_full_R_{selection_token}",
     )
 
     st.divider()
-    st.subheader("Measurements (Reflected / Transmitted)")
+    st.subheader(t("editor.sections.measurements", "Measurements (Reflected / Transmitted)"))
 
     # Thickness is a physical property of the sample — one shared value for both T and R
     _t_row = fetch_meas(cat_id, "R") or fetch_meas(cat_id, "T") or {}
     thickness_mm = st.number_input(
-        "Thickness (mm)", min_value=0.0, max_value=25.0,
+        t("editor.fields.thickness", "Thickness (mm)"), min_value=0.0, max_value=25.0,
         value=float(_t_row.get("thickness_mm") or 2.0),
         step=0.1, format="%.1f", key=f"thickness_mm_{selection_token}",
     )
 
     mcol1, mcol2 = st.columns(2, gap="large")
 
-    MODE_LABELS = {"R": "Reflected", "T": "Transmitted"}
+    MODE_LABELS = {
+        "R": t("editor.tabs.reflected", "Reflected"),
+        "T": t("editor.tabs.transmitted", "Transmitted"),
+    }
     MEASUREMENT_LABELS = {
-        "R": "Red (R)",
-        "G": "Green (G)",
-        "B": "Blue (B)",
-        "H": "Hue (H)",
-        "S": "Saturation (S)",
-        "V": "Brightness (B)",
+        "R": t("editor.fields.red", "Red (R)"),
+        "G": t("editor.fields.green", "Green (G)"),
+        "B": t("editor.fields.blue", "Blue (B)"),
+        "H": t("editor.fields.hue", "Hue (H)"),
+        "S": t("editor.fields.saturation", "Saturation (S)"),
+        "V": t("editor.fields.brightness", "Brightness (B)"),
     }
 
     def meas_editor(mode: str, container):
@@ -512,14 +543,19 @@ with st.form(key=f"edit_form_{selection_token}"):
     # --- Action Buttons ---
     btn_col1, btn_col2 = st.columns(2)
     with btn_col1:
-        save = st.form_submit_button("✅ Save Changes", type="primary")
+        save = st.form_submit_button(t("editor.actions.save_changes", "Save Changes"), type="primary")
     with btn_col2:
-        cancel = st.form_submit_button("Cancel")
+        cancel = st.form_submit_button(t("editor.actions.cancel", "Cancel"))
 
 if cancel:
     target = pick_library_page()
     if not target or not switch_to_page(target):
-        st.warning("Could not navigate to the Glass Library page. Please use the sidebar.")
+        st.warning(
+            t(
+                "editor.warnings.library_navigation_failed",
+                "Could not navigate to the Glass Library page. Please use the sidebar.",
+            )
+        )
 
 if save:
     try:
@@ -559,29 +595,41 @@ if save:
             saved_files.append(str(paths["icon_R"].relative_to(APP_ROOT)))
 
         st.cache_data.clear()
-        st.success("Saved.")
+        st.success(t("editor.messages.saved", "Saved."))
         if moved_files:
-            st.info("Moved existing files:\n- " + "\n- ".join(moved_files))
+            st.info(
+                t(
+                    "editor.messages.moved_files",
+                    "Moved existing files:\n- {items}",
+                    items="\n- ".join(moved_files),
+                )
+            )
         if saved_files:
-            st.info("Saved files:\n- " + "\n- ".join(saved_files))
+            st.info(
+                t(
+                    "editor.messages.saved_files",
+                    "Saved files:\n- {items}",
+                    items="\n- ".join(saved_files),
+                )
+            )
 
     except sqlite3.Error as e:
-        st.error(f"SQLite error: {e}")
+        st.error(t("errors.editor.sqlite", "SQLite error: {error}", error=e))
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(t("errors.editor.generic", "Error: {error}", error=e))
 
 st.divider()
-st.subheader("Danger Zone")
+st.subheader(t("editor.danger.title", "Danger Zone"))
 
 with st.container():
-    st.markdown("**Delete record**")
+    st.markdown(f"**{t('editor.danger.delete_record', 'Delete record')}**")
     confirm = st.text_input(
-        "Type cat_id to confirm delete",
+        t("editor.danger.confirm", "Type cat_id to confirm delete"),
         key=f"delete_confirm_{selection_token}",
     )
-    if st.button("Delete record"):
+    if st.button(t("editor.danger.delete_button", "Delete record")):
         if confirm.strip() != cat_id:
-            st.error("Confirmation text does not match cat_id.")
+            st.error(t("editor.danger.confirm_mismatch", "Confirmation text does not match cat_id."))
         else:
             try:
                 with get_con() as con:
@@ -590,9 +638,9 @@ with st.container():
                     con.execute("DELETE FROM glass_catalog WHERE cat_id = ?", (cat_id,))
                     con.commit()
                 st.cache_data.clear()
-                st.success(f"Deleted {cat_id}.")
+                st.success(t("messages.editor.deleted", "Deleted {cat_id}.", cat_id=cat_id))
                 target = pick_library_page()
                 if target:
                     switch_to_page(target)
             except Exception as e:
-                st.error(f"Delete failed: {e}")
+                st.error(t("errors.editor.delete_failed", "Delete failed: {error}", error=e))

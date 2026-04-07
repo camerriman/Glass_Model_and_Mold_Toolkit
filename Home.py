@@ -1,7 +1,9 @@
 from pathlib import Path
 import streamlit as st
 
-st.set_page_config(page_title="Glass Toolkit & Library", layout="wide")
+from i18n import render_app_sidebar, t
+
+st.set_page_config(page_title=t("home.title", "Glass Toolkit & Library"), layout="wide")
 
 # Hide auto-generated sidebar page list
 st.markdown("""
@@ -10,50 +12,52 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Glass Model and Mold Toolkit & Library")
-st.markdown("Use the links below to access model generation, mold design tools, and browse glass data.")
+render_app_sidebar(nav_expanded=True)
+
+st.title(t("home.title", "Glass Model and Mold Toolkit & Library"))
+st.markdown(t("home.subtitle", "Use the links below to access model generation, mold design tools, and browse glass data."))
 
 st.divider()
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.markdown("#### 🔧 Model & Mold Tools")
-    if st.button("Cameo Model Generator", width='stretch'):
+    st.markdown(f"#### {t('home.sections.model_tools', 'Model & Mold Tools')}")
+    if st.button(t("home.nav.cameo", "Cameo Model Generator"), width='stretch'):
         st.switch_page("pages/1_Cameo_Model_Generator.py")
-    if st.button("Vessel Model Generator", width='stretch'):
+    if st.button(t("home.nav.vessel", "Vessel Model Generator"), width='stretch'):
         st.switch_page("pages/4_Vessel_Model_Generator.py")
-    if st.button("Model Tiles & Panels", width='stretch'):
+    if st.button(t("home.nav.tiles_panels", "Model Tiles & Panels"), width='stretch'):
         st.switch_page("pages/2_Model_Tiles_Panels.py")
-    if st.button("Mold Worksheet", width='stretch'):
+    if st.button(t("home.nav.mold_worksheet", "Mold Worksheet"), width='stretch'):
         st.switch_page("pages/3_Mold_Worksheet.py")
 
 with col2:
-    st.markdown("#### 🔬 Glass Library")
-    if st.button("Glass Library", width='stretch'):
+    st.markdown(f"#### {t('home.sections.glass_library', 'Glass Library')}")
+    if st.button(t("home.nav.glass_library", "Glass Library"), width='stretch'):
         st.switch_page("pages/6_Glass_Library.py")
-    if st.button("Glass Color Wheel", width="stretch"):
+    if st.button(t("home.nav.glass_color_wheel", "Glass Color Wheel"), width="stretch"):
         st.switch_page("pages/7_Glass_Color_Wheel.py")
-    if st.button("Layered Glass Predictor", width='stretch'):
+    if st.button(t("home.nav.layered_predictor", "Layered Glass Predictor"), width='stretch'):
         st.switch_page("pages/16_Layered_Glass_Predictor.py")
-    if st.button("Frit Mix Explorer", width='stretch'):
+    if st.button(t("home.nav.frit_mix_explorer", "Frit Mix Explorer"), width='stretch'):
         st.switch_page("pages/17_Frit_Mix_Explorer.py")
-    if st.button("Add Glass Sample", width='stretch'):
+    if st.button(t("home.nav.add_glass_sample", "Add Glass Sample"), width='stretch'):
         st.switch_page("pages/12_Add_Glass_Sample.py")
 
-    if st.button("Edit Glass Sample", width='stretch'):
+    if st.button(t("home.nav.edit_glass_sample", "Edit Glass Sample"), width='stretch'):
         st.switch_page("pages/13_Edit_Glass_Sample.py")
 
-    if st.button("Documentation", width='stretch'):
+    if st.button(t("home.nav.documentation", "Documentation"), width='stretch'):
         st.switch_page("pages/14_Documentation.py")
 
 with col3:
-    st.markdown("#### 📋 Reference Sheets")
-    if st.button("Opalescent Reference", width='stretch'):
+    st.markdown(f"#### {t('home.sections.reference_sheets', 'Reference Sheets')}")
+    if st.button(t("home.nav.opalescent_reference", "Opalescent Reference"), width='stretch'):
         st.switch_page("pages/9_Opalescent_Reference.py")
-    if st.button("Transparent Reference", width='stretch'):
+    if st.button(t("home.nav.transparent_reference", "Transparent Reference"), width='stretch'):
         st.switch_page("pages/10_Transparent_Reference.py")
-    if st.button("Tint Reference", width='stretch'):
+    if st.button(t("home.nav.tint_reference", "Tint Reference"), width='stretch'):
         st.switch_page("pages/11_Tint_Reference.py")
 
 st.divider()
@@ -61,10 +65,10 @@ st.divider()
 col1, col2, col3 = st.columns(3)
 
 with col2:
-    st.markdown("#### ✂️ SVG Tools")
-    if st.button("SVG Tiles", width='stretch'):
+    st.markdown(f"#### {t('home.sections.svg_tools', 'SVG Tools')}")
+    if st.button(t("home.nav.svg_tiles", "SVG Tiles"), width='stretch'):
         st.switch_page("pages/20_SVG_Tiles.py")
-    if st.button("SVG Crop", width='stretch'):
+    if st.button(t("home.nav.svg_crop", "SVG Crop"), width='stretch'):
         st.switch_page("pages/21_SVG_Crop.py")
 
    

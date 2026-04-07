@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+from i18n import render_app_sidebar, t as tr, translate_family_name
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 if str(APP_ROOT) not in sys.path:
@@ -21,8 +22,9 @@ DB_PATH  = APP_ROOT / "data" / "glass_library.sqlite"
 
 FAMILY_CODE  = "3"
 FAMILY_NAME  = "Tint"
+FAMILY_DISPLAY = translate_family_name(FAMILY_CODE, FAMILY_NAME)
 CURRENT_PAGE_PATH = f"pages/{Path(__file__).name}"
-RETURN_LABEL = f"{FAMILY_NAME} Reference"
+RETURN_LABEL = tr("page.reference.return_label", "{family} Reference", family=FAMILY_DISPLAY)
 DETAIL_PAGE_URL = "Glass_Detail"
 
 ELEMENT_COLS = [
@@ -49,7 +51,8 @@ REACTION_COLS = {
     "au": set(),
 }
 
-st.set_page_config(page_title=f"{FAMILY_NAME} Reference", layout="wide")
+st.set_page_config(page_title=tr("page.reference.return_label", "{family} Reference", family=FAMILY_DISPLAY), layout="wide")
+render_app_sidebar()
 
 PRINT_ROOT_ID = f"reference-print-root-{FAMILY_CODE}"
 PRINT_WINDOW_CSS = """
@@ -588,8 +591,8 @@ def print_button_html(root_id: str, title: str, meta: str) -> str:
 # ---------------------------------------------------------------------------
 hdr_col, print_col = st.columns([0.9, 0.1])
 with hdr_col:
-    st.title(f"{FAMILY_NAME} Glass Reference")
-    st.caption("Transmitted (T) and Reflected (R) · Sorted by catalog number")
+    st.title(tr("page.reference.title", "{family} Glass Reference", family=FAMILY_DISPLAY))
+    st.caption(tr("page.reference.caption", "Transmitted (T) and Reflected (R) | Sorted by catalog number"))
 print_slot = print_col.empty()
 
 st.divider()
@@ -599,14 +602,14 @@ df["glass_family"] = df["glass_family"].astype(str).str.strip()
 subset = df[df["glass_family"] == FAMILY_CODE].copy()
 
 if subset.empty:
-    st.warning(f"No {FAMILY_NAME} glass found in the database.")
+    st.warning(tr("page.reference.empty", "No {family} glass found in the database.", family=FAMILY_DISPLAY))
 else:
     thickness_val = "2.0"
-    t = subset["thickness"].dropna()
-    if not t.empty:
-        thickness_val = str(round(float(t.iloc[0]), 1))
+    thickness_series = subset["thickness"].dropna()
+    if not thickness_series.empty:
+        thickness_val = str(round(float(thickness_series.iloc[0]), 1))
 
-    st.caption(f"{len(subset)} glasses · reference thickness {thickness_val} mm")
+    st.caption(tr("page.reference.summary", "{count} glasses | reference thickness {thickness} mm", count=len(subset), thickness=thickness_val))
 
     # Legend
     el_legend_items = "".join(
@@ -633,7 +636,7 @@ else:
         {el_legend_items}
     </div>
     """
-    meta_text = f"{len(subset)} glasses · reference thickness {thickness_val} mm"
+    meta_text = tr("page.reference.summary", "{count} glasses | reference thickness {thickness} mm", count=len(subset), thickness=thickness_val)
     pdf_bytes = build_reference_pdf(
         FAMILY_NAME,
         meta_text,

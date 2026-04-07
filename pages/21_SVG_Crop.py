@@ -16,8 +16,10 @@ import tempfile, zipfile
 from copy import deepcopy
 from lxml import etree
 import streamlit as st
+from i18n import render_app_sidebar, t as tr
 
-st.set_page_config(page_title="SVG Crop", page_icon="✂️")
+st.set_page_config(page_title=tr("page.svg_crop.title", "SVG Crop"), page_icon="✂️")
+render_app_sidebar()
 
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK  = "http://www.w3.org/1999/xlink"
@@ -294,8 +296,8 @@ def svg_to_b64_img(svg_bytes, canvas_w=None, canvas_h=None, max_h=700):
 # ═══════════════════════════════════════════════════════════════
 # UI
 # ═══════════════════════════════════════════════════════════════
-st.title("✂️ SVG Crop")
-st.caption("Upload an SVG · define a crop rectangle · preview · optionally run vpype · download.")
+st.title(f"✂️ {tr('page.svg_crop.title', 'SVG Crop')}")
+st.caption(tr("page.svg_crop.caption", "Upload an SVG | define a crop rectangle | preview | optionally run vpype | download."))
 
 SVG_CROP_DEFAULTS = {
     "svg_crop_unit_choice": "mm",
@@ -324,7 +326,7 @@ col_ctrl, col_prev = st.columns([1, 2], gap="large")
 # ── LEFT: controls ────────────────────────────────────────────
 with col_ctrl:
 
-    uploaded = st.file_uploader("Upload SVG", type=["svg"])
+    uploaded = st.file_uploader(tr("page.svg_crop.fields.upload_svg", "Upload SVG"), type=["svg"])
     if uploaded is not None:
         upload_sig = (uploaded.name, uploaded.size)
         if st.session_state.get("svg_crop_last_upload_sig") != upload_sig:
@@ -342,32 +344,32 @@ with col_ctrl:
                 preferred_unit = "px"
             st.session_state["svg_crop_unit_choice"] = preferred_unit
             st.session_state["svg_crop_last_upload_sig"] = upload_sig
-    if st.button("Reset Defaults"):
+    if st.button(tr("page.svg_crop.reset_defaults", "Reset Defaults")):
         st.session_state["svg_crop_reset_pending"] = True
         st.session_state["svg_crop_last_upload_sig"] = None
         st.rerun()
     st.divider()
 
-    st.markdown("**Crop region**")
+    st.markdown(f"**{tr('page.svg_crop.crop_region', 'Crop region')}**")
     unit_choice = st.radio(
-        "Input units",
+        tr("page.svg_crop.input_units", "Input units"),
         ["mm", "px"],
         horizontal=True,
         key="svg_crop_unit_choice",
     )
-    st.caption("Origin (0, 0) is top-left of the SVG canvas.")
+    st.caption(tr("page.svg_crop.origin", "Origin (0, 0) is top-left of the SVG canvas."))
 
     col_a, col_b = st.columns(2)
     with col_a:
         crop_x_u = st.number_input(
-            "X offset",
+            tr("page.svg_crop.fields.x_offset", "X offset"),
             min_value=0.0,
             step=0.1,
             format="%.3f",
             key="svg_crop_x",
         )
         crop_w_u = st.number_input(
-            "Width",
+            tr("page.svg_crop.fields.width", "Width"),
             min_value=0.1,
             step=0.1,
             format="%.3f",
@@ -375,14 +377,14 @@ with col_ctrl:
         )
     with col_b:
         crop_y_u = st.number_input(
-            "Y offset",
+            tr("page.svg_crop.fields.y_offset", "Y offset"),
             min_value=0.0,
             step=0.1,
             format="%.3f",
             key="svg_crop_y",
         )
         crop_h_u = st.number_input(
-            "Height",
+            tr("page.svg_crop.fields.height", "Height"),
             min_value=0.1,
             step=0.1,
             format="%.3f",
@@ -402,34 +404,34 @@ with col_ctrl:
     st.divider()
 
     # ── vpype section ──
-    st.markdown("**vpype post-processing**")
+    st.markdown(f"**{tr('page.svg_crop.sections.vpype', 'vpype post-processing')}**")
     ver = vpype_version()
     if VPYPE_BIN and ver:
-        st.success(f"vpype found: {ver}")
+        st.success(tr("page.svg_crop.messages.vpype_found", "vpype found: {version}", version=ver))
     else:
-        st.warning("vpype not found — install with `pip install vpype`")
+        st.warning(tr("page.svg_crop.messages.vpype_missing", "vpype not found - install with `pip install vpype`"))
 
     use_vpype = st.checkbox(
-        "Run vpype after crop",
+        tr("page.svg_crop.fields.run_vpype", "Run vpype after crop"),
         disabled=not bool(VPYPE_BIN),
         key="svg_crop_use_vpype",
     )
     linemerge_tol = st.slider(
-        "linemerge --tolerance (mm)",
+        tr("page.svg_crop.fields.linemerge_tol", "linemerge --tolerance (mm)"),
         min_value=0.0, max_value=2.0, step=0.05,
-        help="Join paths whose endpoints are within this distance. 0 = disabled.",
+        help=tr("page.svg_crop.help.linemerge_tol", "Join paths whose endpoints are within this distance. 0 = disabled."),
         disabled=not use_vpype,
         key="svg_crop_linemerge_tol",
     )
     min_length = st.slider(
-        "filter --min-length (mm)",
+        tr("page.svg_crop.fields.min_length", "filter --min-length (mm)"),
         min_value=0.0, max_value=20.0, step=0.5,
-        help="Remove paths shorter than this. 0 = disabled.",
+        help=tr("page.svg_crop.help.min_length", "Remove paths shorter than this. 0 = disabled."),
         disabled=not use_vpype,
         key="svg_crop_min_length",
     )
     do_linesort = st.checkbox(
-        "linesort  (minimise pen travel)",
+        tr("page.svg_crop.fields.linesort", "linesort (minimise pen travel)"),
         disabled=not use_vpype,
         key="svg_crop_do_linesort",
     )
@@ -438,7 +440,7 @@ with col_ctrl:
 with col_prev:
 
     if uploaded is None:
-        st.info("Upload an SVG on the left to get started.")
+        st.info(tr("page.svg_crop.messages.upload_to_start", "Upload an SVG on the left to get started."))
         st.stop()
 
     raw       = uploaded.getvalue()
@@ -449,7 +451,7 @@ with col_prev:
         parser = etree.XMLParser(remove_comments=False)
         root   = etree.fromstring(raw, parser)
     except etree.XMLSyntaxError as e:
-        st.error(f"Could not parse SVG: {e}")
+        st.error(tr("page.svg_crop.errors.parse_svg", "Could not parse SVG: {error}", error=e))
         st.stop()
 
     canvas_w, canvas_h, vb_str, vb_w, vb_h, vb_x, vb_y = get_canvas(root, CSS_DPI)
@@ -484,14 +486,13 @@ with col_prev:
 
     # ── canvas + crop info ──
     st.markdown(
-        f"**Source canvas:** {vb_w:.2f} x {vb_h:.2f} {native_unit}"
+        f"**{tr('page.svg_crop.labels.source_canvas', 'Source canvas: {width:.2f} x {height:.2f} {unit}', width=vb_w, height=vb_h, unit=native_unit)}**"
     )
     st.markdown(
-        f"**Crop region:** {crop_w_n:.3f} x {crop_h_n:.3f} {native_unit}"
-        f"  at ({crop_x_n:.3f}, {crop_y_n:.3f}) {native_unit}"
+        f"**{tr('page.svg_crop.labels.crop_region', 'Crop region: {width:.3f} x {height:.3f} {unit} at ({x:.3f}, {y:.3f}) {unit}', width=crop_w_n, height=crop_h_n, unit=native_unit, x=crop_x_n, y=crop_y_n)}**"
     )
 
-    with st.expander("SVG coordinate debug", expanded=False):
+    with st.expander(tr("page.svg_crop.sections.debug", "SVG coordinate debug"), expanded=False):
         st.code(
             "\n".join([
                 "Source SVG attributes:",
@@ -526,24 +527,24 @@ with col_prev:
                            native_unit=native_unit)
 
     if use_vpype and VPYPE_BIN and (linemerge_tol > 0 or min_length > 0 or do_linesort):
-        with st.spinner("Running vpype…"):
+        with st.spinner(tr("page.svg_crop.messages.running_vpype", "Running vpype...")):
             try:
                 cropped_svg, cmd_str = run_vpype(cropped_svg,
                                                  min_length, do_linesort, linemerge_tol)
-                with st.expander("vpype command", expanded=False):
+                with st.expander(tr("page.svg_crop.sections.vpype_command", "vpype command"), expanded=False):
                     st.code(cmd_str, language="bash")
-                st.success("vpype completed.")
+                st.success(tr("page.svg_crop.messages.vpype_completed", "vpype completed."))
             except RuntimeError as e:
-                st.error(f"vpype failed:\n\n{e}")
+                st.error(tr("page.svg_crop.errors.vpype_failed", "vpype failed:\n\n{error}", error=e))
                 st.stop()
 
     out_name = f"{base_name}_crop.svg"
     st.download_button(
-        label="⬇️ Download cropped SVG",
+        label=f"⬇️ {tr('page.svg_crop.actions.download', 'Download cropped SVG')}",
         data=cropped_svg,
         file_name=out_name,
         mime="image/svg+xml",
         use_container_width=True,
     )
 
-    st.caption("Tip: after cropping, use the SVG Tiler page to split into tiles.")
+    st.caption(tr("page.svg_crop.tip", "Tip: after cropping, use the SVG Tiler page to split into tiles."))

@@ -15,10 +15,12 @@ import streamlit as st
 import plotly.graph_objects as go
 from PIL import Image
 from scipy.interpolate import CubicSpline
+from i18n import render_app_sidebar, t as tr
 
-st.set_page_config(page_title="Vessel Mold Model Generator", layout="wide")
-st.title("Vessel Mold Model Generator")
-st.caption("Define a vessel profile, upload a heightmap image, and generate a wrapped printable STL.")
+st.set_page_config(page_title=tr("page.vessel.title", "Vessel Mold Model Generator"), layout="wide")
+render_app_sidebar()
+st.title(tr("page.vessel.title", "Vessel Mold Model Generator"))
+st.caption(tr("page.vessel.caption", "Define a vessel profile, upload a heightmap image, and generate a wrapped printable STL."))
 
 # ─────────────────────────────────────────
 # STL writer
@@ -100,6 +102,24 @@ def format_vessel_settings(settings: dict) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def vessel_quality_label(value: str) -> str:
+    labels = {
+        "Draft  (fast preview)": tr("page.vessel.quality.draft", "Draft (fast preview)"),
+        "Standard": tr("page.vessel.quality.standard", "Standard"),
+        "High": tr("page.vessel.quality.high", "High"),
+        "Ultra  (fine detail)": tr("page.vessel.quality.ultra", "Ultra (fine detail)"),
+    }
+    return labels.get(value, value)
+
+
+def vessel_placement_label(value: str) -> str:
+    labels = {
+        "Outside — relief on exterior": tr("page.vessel.placement.outside", "Outside - relief on exterior"),
+        "Inside — carved interior": tr("page.vessel.placement.inside", "Inside - carved interior"),
+    }
+    return labels.get(value, value)
 
 
 def build_vessel_bundle(
@@ -607,12 +627,12 @@ if st.session_state.get("vessel_reset_pending"):
 left, right = st.columns([1, 1], gap="large")
 
 with left:
-    st.subheader("Profile")
+    st.subheader(tr("page.vessel.sections.profile", "Profile"))
 
     c1, c2, c3 = st.columns(3)
     with c1:
         base_r = st.number_input(
-            "Base radius (mm)",
+            tr("page.vessel.fields.base_radius", "Base radius (mm)"),
             min_value=1.0,
             max_value=150.0,
             step=1.0,
@@ -620,7 +640,7 @@ with left:
         )
     with c2:
         top_r = st.number_input(
-            "Top radius (mm)",
+            tr("page.vessel.fields.top_radius", "Top radius (mm)"),
             min_value=1.0,
             max_value=150.0,
             step=1.0,
@@ -628,15 +648,15 @@ with left:
         )
     with c3:
         height = st.number_input(
-            "Height (mm)",
+            tr("page.vessel.fields.height", "Height (mm)"),
             min_value=10.0,
             max_value=200.0,
             step=5.0,
             key="vessel_height",
         )
 
-    st.caption("Add midpoints to curve the profile (optional)")
-    n_mid = st.slider("Number of midpoints", 0, 4, key="vessel_n_mid")
+    st.caption(tr("page.vessel.caption.midpoints", "Add midpoints to curve the profile (optional)"))
+    n_mid = st.slider(tr("page.vessel.fields.num_midpoints", "Number of midpoints"), 0, 4, key="vessel_n_mid")
     midpoints = []
     # Collect midpoints in visual order (top to bottom = highest to lowest Z)
     # then reverse so internal list is bottom-to-top for the spline
@@ -661,15 +681,15 @@ with left:
         mc1, mc2 = st.columns(2)
         with mc1:
             z_mm = st.number_input(
-                f"Midpoint {n_mid - i} — Height (mm)",
+                tr("page.vessel.fields.midpoint_height", "Midpoint {index} - Height (mm)", index=n_mid - i),
                 min_value=1.0,
                 max_value=float(height - 1),
                 step=1.0,
                 key=z_key,
-                help=f"Distance from base — 0 is bottom, {height:.0f}mm is top")
+                help=tr("page.vessel.help.midpoint_height", "Distance from base - 0 is bottom, {height} mm is top.", height=f"{height:.0f}"))
         with mc2:
             r_mid = st.number_input(
-                f"Midpoint {n_mid - i} — Radius (mm)",
+                tr("page.vessel.fields.midpoint_radius", "Midpoint {index} - Radius (mm)", index=n_mid - i),
                 min_value=1.0,
                 max_value=150.0,
                 step=1.0,
@@ -680,39 +700,43 @@ with left:
     midpoints = [(z_frac, r_mid) for _, z_frac, r_mid in sorted(mid_inputs)]
 
     st.divider()
-    st.subheader("Wall Thickness & Relief")
+    st.subheader(tr("page.vessel.sections.wall_relief", "Wall Thickness & Relief"))
     wc1, wc2 = st.columns(2)
     with wc1:
         wall_mm = st.number_input(
-            "Wall thickness (mm)",
+            tr("page.vessel.fields.wall_thickness", "Wall thickness (mm)"),
             min_value=0.5,
             step=0.5,
-            help="Thickness of the mold wall behind the uploaded relief. Changing this adds structure on the smooth opposite side instead of moving the relief-bearing surface.",
+            help=tr("page.vessel.help.wall_thickness", "Thickness of the mold wall behind the uploaded relief. Changing this adds structure on the smooth opposite side instead of moving the relief-bearing surface."),
             key="vessel_wall_mm",
         )
     with wc2:
         displacement = st.number_input(
-            "Relief (mm)",
+            tr("page.vessel.fields.relief", "Relief (mm)"),
             min_value=0.1,
             step=0.1,
-            help="Depth or height of the wrapped relief relative to the wall thickness.",
+            help=tr("page.vessel.help.relief", "Depth or height of the wrapped relief relative to the wall thickness."),
             key="vessel_displacement",
         )
-    placement = st.radio("Relief placement",
-                          ["Outside — relief on exterior", "Inside — carved interior"],
-                          horizontal=True, key="vessel_placement")
+    placement = st.radio(
+        tr("page.vessel.fields.placement", "Relief placement"),
+        ["Outside — relief on exterior", "Inside — carved interior"],
+        horizontal=True,
+        key="vessel_placement",
+        format_func=vessel_placement_label,
+    )
     placement_key = "outside" if placement.startswith("Outside") else "inside"
     invert_relief = st.checkbox(
-        "Invert relief",
-        help="Swap peaks and valleys — dark areas become raised, light areas recessed",
+        tr("page.vessel.fields.invert_relief", "Invert relief"),
+        help=tr("page.vessel.help.invert_relief", "Swap peaks and valleys - dark areas become raised, light areas recessed"),
         key="vessel_invert_relief",
     )
 
     st.divider()
-    st.subheader("Rim")
+    st.subheader(tr("page.vessel.sections.rim", "Rim"))
     add_lip = st.checkbox(
-        "Add top rim",
-        help="Cuts a quarter-round channel from the clean top radius down into the relief side so you have space to build up a rim.",
+        tr("page.vessel.fields.add_rim", "Add top rim"),
+        help=tr("page.vessel.help.add_rim", "Cuts a quarter-round channel from the clean top radius down into the relief side so you have space to build up a rim."),
         key="vessel_add_lip",
     )
     if add_lip:
@@ -721,33 +745,33 @@ with left:
             float(st.session_state.get("vessel_lip_radius", min(displacement, lip_max))),
             lip_max,
         )
-        lip_radius = st.slider("Rim radius",
+        lip_radius = st.slider(tr("page.vessel.fields.rim_radius", "Rim radius"),
                                 min_value=0.5,
                                 max_value=lip_max,
                                 step=0.1,
-                                help="Radius of the quarter-round cut measured from the clean top edge into the relief side. Matching this to the relief amount reproduces the 1/4-circle layout.",
+                                help=tr("page.vessel.help.rim_radius", "Radius of the quarter-round cut measured from the clean top edge into the relief side. Matching this to the relief amount reproduces the 1/4-circle layout."),
                                 key="vessel_lip_radius")
-        n_lip = st.slider("Rim smoothness", 8, 48, step=4,
-                           help="Arc segments used to round the rim channel",
+        n_lip = st.slider(tr("page.vessel.fields.rim_smoothness", "Rim smoothness"), 8, 48, step=4,
+                           help=tr("page.vessel.help.rim_smoothness", "Arc segments used to round the rim channel"),
                            key="vessel_n_lip")
     else:
         lip_radius = 0.0
         n_lip = 24
 
     st.divider()
-    st.subheader("Heightmap Image")
-    uploaded = st.file_uploader("Upload image (PNG, JPG, TIFF)",
+    st.subheader(tr("page.vessel.sections.heightmap", "Heightmap Image"))
+    uploaded = st.file_uploader(tr("page.vessel.fields.upload_image", "Upload image (PNG, JPG, TIFF)"),
                                  type=["png", "jpg", "jpeg", "tif", "tiff"],
                                  key=f"vessel_upload_{st.session_state['vessel_upload_nonce']}")
     if uploaded:
-        st.image(uploaded, caption="Heightmap preview", use_container_width="always")
+        st.image(uploaded, caption=tr("page.vessel.caption.heightmap_preview", "Heightmap preview"), use_container_width="always")
         uploaded_bytes = uploaded.getvalue()
     else:
         uploaded_bytes = None
 
     st.divider()
-    st.subheader("Resolution")
-    st.caption("Vertical segments scale with height.")
+    st.subheader(tr("page.vessel.sections.resolution", "Resolution"))
+    st.caption(tr("page.vessel.caption.vertical_segments", "Vertical segments scale with height."))
 
     # Angular segments: fixed per quality level (circumference detail)
     # Vertical segments: calculated as height / mm_per_ring so taller = more rings
@@ -757,38 +781,50 @@ with left:
         "High":                   (360, 0.25),
         "Ultra  (fine detail)":   (720, 0.125),
     }
-    quality = st.select_slider("Quality", options=list(QUALITY_PRESETS.keys()),
-                                key="vessel_quality")
+    quality = st.select_slider(
+        tr("page.vessel.fields.quality", "Quality"),
+        options=list(QUALITY_PRESETS.keys()),
+        key="vessel_quality",
+        format_func=vessel_quality_label,
+    )
     n_theta, mm_per_ring = QUALITY_PRESETS[quality]
     n_z = max(20, int(round(height / mm_per_ring)))
 
-    st.caption(f"→ {n_theta} angular × {n_z} vertical  ·  ~{n_theta * n_z * 4 // 1000}k triangles")
+    st.caption(
+        tr(
+            "page.vessel.caption.triangle_estimate",
+            "-> {theta} angular x {vertical} vertical | ~{triangles}k triangles",
+            theta=n_theta,
+            vertical=n_z,
+            triangles=n_theta * n_z * 4 // 1000,
+        )
+    )
 
-    override = st.checkbox("Override segments manually", key="vessel_override")
+    override = st.checkbox(tr("page.vessel.fields.override_segments", "Override segments manually"), key="vessel_override")
     if override:
         rc1, rc2 = st.columns(2)
         with rc1:
-            n_theta = st.slider("Angular segments", 36, 720, step=12,
-                                 help="Segments around the circumference",
+            n_theta = st.slider(tr("page.vessel.fields.angular_segments", "Angular segments"), 36, 720, step=12,
+                                 help=tr("page.vessel.help.angular_segments", "Segments around the circumference"),
                                  key="vessel_ov_theta")
         with rc2:
-            mm_per_ring = st.number_input("Vertical spacing (mm per ring)",
+            mm_per_ring = st.number_input(tr("page.vessel.fields.vertical_spacing", "Vertical spacing (mm per ring)"),
                                            min_value=0.1, max_value=10.0,
                                            step=0.1,
-                                           help="Smaller = more rings = finer vertical detail",
+                                           help=tr("page.vessel.help.vertical_spacing", "Smaller = more rings = finer vertical detail"),
                                            key="vessel_ov_z")
             n_z = max(20, int(round(height / mm_per_ring)))
 
     action_col1, action_col2 = st.columns(2)
     is_building = st.session_state.get("vessel_is_building", False)
     generate = action_col1.button(
-        "⚙️ Generate",
+        f"⚙️ {tr('page.vessel.actions.generate', 'Generate')}",
         use_container_width=True,
         type="primary",
         disabled=is_building,
     )
     reset = action_col2.button(
-        "Reset Defaults",
+        tr("page.vessel.actions.reset", "Reset Defaults"),
         use_container_width=True,
         disabled=is_building,
     )
@@ -806,14 +842,14 @@ with left:
 
     build_feedback = st.empty()
     if st.session_state.get("vessel_is_building"):
-        build_feedback.info("Generating mesh…")
+        build_feedback.info(tr("page.vessel.messages.generating", "Generating mesh..."))
 
     st.divider()
     if st.session_state["stl_bytes"] and not st.session_state.get("vessel_is_building"):
-        st.success(f"Mesh ready — {st.session_state['stl_tri_count']:,} triangles")
+        st.success(tr("page.vessel.messages.mesh_ready", "Mesh ready | {count} triangles", count=f"{st.session_state['stl_tri_count']:,}"))
         download_col1, download_col2 = st.columns(2)
         download_col1.download_button(
-            "⬇️ Download STL",
+            f"⬇️ {tr('page.vessel.actions.download_stl', 'Download STL')}",
             data=st.session_state["stl_bytes"],
             file_name=st.session_state["vessel_stl_name"],
             mime="application/octet-stream",
@@ -821,7 +857,7 @@ with left:
             type="primary",
         )
         download_col2.download_button(
-            "⬇️ Download Build Bundle",
+            f"⬇️ {tr('page.vessel.actions.download_bundle', 'Download Build Bundle')}",
             data=st.session_state["vessel_zip_bytes"],
             file_name=st.session_state["vessel_zip_name"],
             mime="application/zip",
@@ -830,10 +866,10 @@ with left:
         )
     else:
         download_col1, download_col2 = st.columns(2)
-        download_col1.button("⬇️ Download STL", use_container_width=True,
-                             disabled=True, help="Click Generate first")
-        download_col2.button("⬇️ Download Build Bundle", use_container_width=True,
-                             disabled=True, help="Generate a model first")
+        download_col1.button(f"⬇️ {tr('page.vessel.actions.download_stl', 'Download STL')}", use_container_width=True,
+                             disabled=True, help=tr("page.vessel.help.generate_first", "Click Generate first"))
+        download_col2.button(f"⬇️ {tr('page.vessel.actions.download_bundle', 'Download Build Bundle')}", use_container_width=True,
+                             disabled=True, help=tr("page.vessel.help.generate_model_first", "Generate a model first"))
 
 with right:
     # Always show profile preview
@@ -870,31 +906,31 @@ with right:
             heightmap=hmap_for_volume,
         )
     else:
-        bore_note = "Upload a heightmap image to calculate internal bore volume for carved interior."
+        bore_note = tr("page.vessel.messages.bore_note", "Upload a heightmap image to calculate internal bore volume for carved interior.")
 
     metric_cols = st.columns(2)
     with metric_cols[0]:
-        st.metric("Output height", f"{height:.1f} mm")
+        st.metric(tr("page.vessel.metrics.output_height", "Output height"), f"{height:.1f} mm")
     with metric_cols[1]:
         if bore_volume_mm3 is not None:
-            st.metric("Internal bore volume", f"{bore_volume_mm3 / 1000.0:,.2f} cm³")
-            st.caption(f"Equivalent to approximately {bore_volume_mm3 / 1000.0:,.2f} mL.")
+            st.metric(tr("page.vessel.metrics.bore_volume", "Internal bore volume"), f"{bore_volume_mm3 / 1000.0:,.2f} cm3")
+            st.caption(tr("page.vessel.caption.bore_ml", "Equivalent to approximately {value} mL.", value=f"{bore_volume_mm3 / 1000.0:,.2f}"))
         elif bore_note:
             st.info(bore_note)
 
     if generate:
         if not uploaded:
             st.session_state["vessel_is_building"] = False
-            build_feedback.warning("Upload a heightmap image first.")
-            st.warning("Upload a heightmap image first.")
+            build_feedback.warning(tr("page.vessel.messages.upload_heightmap_first", "Upload a heightmap image first."))
+            st.warning(tr("page.vessel.messages.upload_heightmap_first", "Upload a heightmap image first."))
         else:
             try:
                 with build_feedback.container():
-                    with st.spinner("Loading heightmap…"):
+                    with st.spinner(tr("page.vessel.messages.loading_heightmap", "Loading heightmap...")):
                         hmap = load_heightmap_cached(uploaded_bytes, n_theta, n_z)
 
                 with build_feedback.container():
-                    with st.spinner(f"Building mesh ({n_theta}×{n_z} segments)…"):
+                    with st.spinner(tr("page.vessel.messages.building_segments", "Building mesh ({theta}x{vertical} segments)...", theta=n_theta, vertical=n_z)):
                         if invert_relief:
                             hmap = 1.0 - hmap
                         tris = build_vase_mesh(

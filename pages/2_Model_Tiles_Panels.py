@@ -19,13 +19,22 @@ from datetime import datetime
 import numpy as np
 import streamlit as st
 import trimesh
+from i18n import render_app_sidebar, t as tr
 
 
 # ----------------------------
 # Page
 # ----------------------------
-st.set_page_config(page_title="Model Tiles & Panels Generator", layout="wide")
-st.title("Model Tiles & Panels Generator")
+st.set_page_config(page_title=tr("page.tiles_panels.title", "Model Tiles & Panels Generator"), layout="wide")
+render_app_sidebar()
+st.title(tr("page.tiles_panels.title", "Model Tiles & Panels Generator"))
+st.caption(
+    tr(
+        "page.tiles.caption",
+        "Upload a mesh and slice it into panels (triptych by default), or into a tile grid. "
+        "Slicing happens only when you click **Build**.",
+    )
+)
 
 
 # ----------------------------
@@ -96,9 +105,9 @@ def load_mesh(uploaded_file) -> trimesh.Trimesh:
         # flatten scene into a single mesh
         mesh = trimesh.util.concatenate(tuple(mesh.dump()))
     if not isinstance(mesh, trimesh.Trimesh):
-        raise ValueError("Upload did not load as a mesh.")
+        raise ValueError(tr("page.tiles.internal.upload_not_mesh", "upload did not load as a mesh"))
     if mesh.vertices.shape[0] < 3 or mesh.faces.shape[0] < 1:
-        raise ValueError("Mesh appears empty.")
+        raise ValueError(tr("page.tiles.internal.mesh_empty", "mesh appears empty"))
     return mesh
 
 
@@ -133,7 +142,7 @@ def make_panel_boxes(
 
     axis = axis.upper().strip()
     if axis not in ("X", "Y"):
-        raise ValueError("split_axis must be 'X' or 'Y'.")
+        raise ValueError(tr("page.tiles.internal.invalid_split_axis", "split_axis must be 'X' or 'Y'"))
 
     ax_i = 0 if axis == "X" else 1
 
@@ -145,7 +154,7 @@ def make_panel_boxes(
 
     total_len = bmax[ax_i] - bmin[ax_i]
     if total_len <= 0:
-        raise ValueError("Mesh has zero size along the chosen split axis.")
+        raise ValueError(tr("page.tiles.internal.zero_size_axis", "mesh has zero size along the chosen split axis"))
 
     n = int(n)
 
@@ -153,7 +162,7 @@ def make_panel_boxes(
     gap_total = max(0.0, float(gap_mm)) * max(0, n - 1)
     usable_len = total_len - gap_total
     if usable_len <= 0:
-        raise ValueError("Gap is too large for the mesh size / number of panels.")
+        raise ValueError(tr("page.tiles.internal.panel_gap_too_large", "gap is too large for the mesh size / number of panels"))
 
     mode = (mode or "equal").strip().lower()
 
@@ -168,19 +177,19 @@ def make_panel_boxes(
         widths = [float(p) for p in (split_percents or [])]
         widths = [w for w in widths if w > 0]
         if len(widths) < 1:
-            raise ValueError("Provide at least one positive percent (e.g. 40,60).")
+            raise ValueError(tr("page.tiles.internal.positive_percent_required", "provide at least one positive percent (e.g. 40,60)"))
 
         # Normalize if they don't sum to exactly 100
         total_pct = float(sum(widths))
         if total_pct <= 0:
-            raise ValueError("Percent list sums to 0.")
+            raise ValueError(tr("page.tiles.internal.percent_list_zero", "percent list sums to 0"))
         widths = [w / total_pct * 100.0 for w in widths]
 
         n = len(widths)
         gap_total = max(0.0, float(gap_mm)) * max(0, n - 1)
         usable_len = total_len - gap_total
         if usable_len <= 0:
-            raise ValueError("Gap is too large for the mesh size / number of panels.")
+            raise ValueError(tr("page.tiles.internal.panel_gap_too_large", "gap is too large for the mesh size / number of panels"))
 
         seg_lengths = [usable_len * (w / 100.0) for w in widths]
         # Ensure exact closure on the last segment to avoid float drift
@@ -190,7 +199,7 @@ def make_panel_boxes(
         # equal
         panel_len = usable_len / float(n)
         if panel_len <= 0:
-            raise ValueError("Invalid panel length.")
+            raise ValueError(tr("page.tiles.internal.invalid_panel_length", "invalid panel length"))
         seg_lengths = [panel_len] * n
 
     boxes = []
@@ -243,7 +252,7 @@ def make_tile_boxes(
     bmin[1] += float(margin_mm)
     bmax[1] -= float(margin_mm)
     if bmax[0] <= bmin[0] or bmax[1] <= bmin[1]:
-        raise ValueError("Margin is too large; tiling region collapsed.")
+        raise ValueError(tr("page.tiles.internal.margin_too_large", "margin is too large; tiling region collapsed"))
 
     # Expand Z for robustness
     bmin_exp = bmin.copy()
@@ -261,17 +270,17 @@ def make_tile_boxes(
     if x_width_fracs:
         fracs = [float(f) for f in x_width_fracs]
         if any(f <= 0 for f in fracs):
-            raise ValueError("Tile X percents must be positive.")
+            raise ValueError(tr("page.tiles.internal.tile_x_percent_positive", "tile X percents must be positive"))
         s = sum(fracs)
         if s <= 0:
-            raise ValueError("Tile X percents sum to zero.")
+            raise ValueError(tr("page.tiles.internal.tile_x_percent_zero", "tile X percents sum to zero"))
         fracs = [f / s for f in fracs]
         tiles_x_eff = len(fracs)
 
         gap_total_x = gap * max(0, tiles_x_eff - 1)
         avail_w = W - gap_total_x
         if avail_w <= 0:
-            raise ValueError("Tile gap is too large for the mesh width / number of tiles.")
+            raise ValueError(tr("page.tiles.internal.tile_gap_x_too_large", "tile gap is too large for the mesh width / number of tiles"))
 
         widths = [avail_w * f for f in fracs]
         x_edges = [bmin[0]]
@@ -283,22 +292,22 @@ def make_tile_boxes(
     else:
         tiles_x_eff = int(tiles_x)
         if tiles_x_eff < 1:
-            raise ValueError("Tiles (X) must be >= 1.")
+            raise ValueError(tr("page.tiles.internal.tiles_x_min", "tiles (X) must be >= 1"))
         gap_total_x = gap * max(0, tiles_x_eff - 1)
         tile_w = (W - gap_total_x) / float(tiles_x_eff)
         if tile_w <= 0:
-            raise ValueError("Tile gap is too large for the mesh width / number of tiles.")
+            raise ValueError(tr("page.tiles.internal.tile_gap_x_too_large", "tile gap is too large for the mesh width / number of tiles"))
         x_edges = [bmin[0] + i * (tile_w + gap) for i in range(tiles_x_eff)]
         x_edges.append(bmin[0] + tiles_x_eff * tile_w + (tiles_x_eff - 1) * gap)
 
     # ---- Y edges (equal only) ----
     tiles_y_eff = int(tiles_y)
     if tiles_y_eff < 1:
-        raise ValueError("Tiles (Y) must be >= 1.")
+        raise ValueError(tr("page.tiles.internal.tiles_y_min", "tiles (Y) must be >= 1"))
     gap_total_y = gap * max(0, tiles_y_eff - 1)
     tile_h = (H - gap_total_y) / float(tiles_y_eff)
     if tile_h <= 0:
-        raise ValueError("Tile gap is too large for the mesh height / number of tiles.")
+        raise ValueError(tr("page.tiles.internal.tile_gap_y_too_large", "tile gap is too large for the mesh height / number of tiles"))
     y_edges = [bmin[1] + j * (tile_h + gap) for j in range(tiles_y_eff)]
     y_edges.append(bmin[1] + tiles_y_eff * tile_h + (tiles_y_eff - 1) * gap)
 
@@ -542,10 +551,10 @@ def _parse_percent_widths(percent_widths):
         vals = [float(p) for p in parts]
 
     if any(v <= 0 for v in vals):
-        raise ValueError("Percent widths must all be > 0.")
+        raise ValueError(tr("page.tiles.internal.preview_percent_positive", "percent widths must all be greater than 0"))
     total = sum(vals)
     if abs(total - 100.0) > 1e-6:
-        raise ValueError(f"Percent widths must sum to 100 (got {total:.3f}).")
+        raise ValueError(tr("page.tiles.internal.preview_percent_sum", "percent widths must sum to 100 (got {total:.3f})", total=total))
     return vals
 
 
@@ -559,7 +568,7 @@ def _intervals_equal(total_len: float, n: int, gap: float):
     gap_total = gap * max(0, n - 1)
     panel_len = (float(total_len) - gap_total) / float(n)
     if panel_len <= 0:
-        raise ValueError("Gap is too large for the size / number of panels.")
+        raise ValueError(tr("page.tiles.internal.preview_gap_too_large", "gap is too large for the size / number of panels"))
     cur = 0.0
     out = []
     for _ in range(n):
@@ -582,7 +591,7 @@ def _intervals_from_percent_widths(total_len: float, percent_widths, gap: float)
     gap_total = gap * max(0, n - 1)
     usable = float(total_len) - gap_total
     if usable <= 0:
-        raise ValueError("Gap is too large for the size / number of panels.")
+        raise ValueError(tr("page.tiles.internal.preview_gap_too_large", "gap is too large for the size / number of panels"))
     widths = [usable * (p / 100.0) for p in percent_widths]
     cur = 0.0
     out = []
@@ -828,23 +837,22 @@ if "zip_name" not in st.session_state:
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.caption(
-        "Upload a mesh and slice it into panels (triptych by default), or into a tile grid. "
-        "Slicing happens only when you click **Build**."
-    )
-    up = st.file_uploader("Upload mesh", type=["stl", "obj", "ply", "off"])
+    up = st.file_uploader(tr("page.tiles.fields.upload_mesh", "Upload mesh"), type=["stl", "obj", "ply", "off"])
 
-    with st.expander("What do these controls do?"):
+    with st.expander(tr("page.tiles.controls", "What do these controls do?")):
         st.markdown(
-            "- **Panels:** splits the mesh into N panels along X or Y\n"
-            "- **Tiles:** splits the mesh into a grid (tiles_x × tiles_y)\n"
-            "- Exports a ZIP containing STL(s) + a settings text file\n"
-            "- Optional: include the original uploaded mesh in the ZIP\n"
+            tr(
+                "page.tiles.controls.body",
+                "- **Panels:** splits the mesh into N panels along X or Y\n"
+                "- **Tiles:** splits the mesh into a grid (`tiles_x x tiles_y`)\n"
+                "- Exports a ZIP containing STL(s) + a settings text file\n"
+                "- Optional: include the original uploaded mesh in the ZIP\n",
+            )
         )
 
 
 with col2:
-    st.subheader("Settings")
+    st.subheader(tr("page.tiles.settings", "Settings"))
 
     DEFAULTS = dict(
         mode="Panels",
@@ -870,7 +878,7 @@ with col2:
     for k, v in DEFAULTS.items():
         st.session_state.setdefault(k, v)
 
-    if st.button("Reset settings", use_container_width=True):
+    if st.button(tr("page.tiles.actions.reset", "Reset settings"), use_container_width=True):
         for k, v in DEFAULTS.items():
             st.session_state[k] = v
         # Clear any stale build so the download button disables correctly
@@ -880,17 +888,29 @@ with col2:
         st.rerun()
 
     ui_ok = True
-    mode_key = st.radio("Slice Mode", ["Panels", "Tiles"], horizontal=True, key="mode")
+    mode_key = st.radio(
+        tr("page.tiles.fields.slice_mode", "Slice Mode"),
+        ["Panels", "Tiles"],
+        horizontal=True,
+        key="mode",
+        format_func=lambda value: tr(
+            "page.tiles.mode.panels" if value == "Panels" else "page.tiles.mode.tiles",
+            value,
+        ),
+    )
 
     # ---------------- Panels mode ----------------
     if mode_key == "Panels":
-        split_axis = st.radio("Split Axis - X • Vertical | Y  • Horizontal", ["X", "Y"], horizontal=True, key="split_axis")
+        split_axis = st.radio(tr("page.tiles.fields.split_axis", "Split Axis - X | Vertical | Y | Horizontal"), ["X", "Y"], horizontal=True, key="split_axis")
 
         slice_mode = st.radio(
-            "Panel Sizing",
+            tr("page.tiles.fields.panel_sizing", "Panel Sizing"),
             ["equal", "percents"],
             horizontal=True,
-            format_func=lambda x: "Equal Panels" if x == "equal" else "Panel Widths (percent)",
+            format_func=lambda x: tr(
+                "page.tiles.fields.equal_panels" if x == "equal" else "page.tiles.fields.panel_widths_percent",
+                "Equal Panels" if x == "equal" else "Panel Widths (percent)",
+            ),
             key="slice_mode",
         )
 
@@ -900,29 +920,29 @@ with col2:
 
         if slice_mode == "percents":
             perc_str = st.text_input(
-                "Panel Width percents (comma-separated)",
-                help="Widths that sum to 100. Example: 20,30,50 creates 3 panels.",
+                tr("page.tiles.fields.panel_width_percents", "Panel Width percents (comma-separated)"),
+                help=tr("page.tiles.help.panel_width_percents", "Widths that sum to 100. Example: 20,30,50 creates 3 panels."),
                 key="perc_text",
             )
             raw = [p.strip() for p in perc_str.split(",") if p.strip()]
             try:
                 vals = [float(p) for p in raw]
                 if any(v <= 0 for v in vals):
-                    raise ValueError("All percents must be > 0.")
+                    raise ValueError(tr("page.tiles.validation.percent_positive", "all percents must be greater than 0"))
                 s = sum(vals)
                 if abs(s - 100.0) > 1e-6:
-                    raise ValueError(f"Percents must sum to 100 (got {s:.3f}).")
+                    raise ValueError(tr("page.tiles.validation.percent_sum", "percents must sum to 100 (got {total:.3f})", total=s))
                 split_percents = vals
                 n_panels = len(vals)
             except Exception as e:
                 ui_ok = False
-                st.error(f"Invalid percents: {e}")
+                st.error(tr("page.tiles.errors.invalid_percents", "Invalid percents: {error}", error=e))
                 n_panels = 0
         else:
-            n_panels = st.slider("Number of panels", 2, 12, key="n_panels", step=1)
+            n_panels = st.slider(tr("page.tiles.fields.num_panels", "Number of panels"), 2, 12, key="n_panels", step=1)
 
-        gap_mm = st.slider("Gap between panels (mm)", 0.0, 10.0, key="gap_mm", step=0.1)
-        st.caption(f"Panels to be generated: {int(n_panels) if n_panels else 0}")
+        gap_mm = st.slider(tr("page.tiles.fields.panel_gap", "Gap between panels (mm)"), 0.0, 10.0, key="gap_mm", step=0.1)
+        st.caption(tr("page.tiles.caption.panels_generated", "Panels to be generated: {count}", count=int(n_panels) if n_panels else 0))
 
         # tiles defaults (not used)
         tiles_x = 1
@@ -935,13 +955,16 @@ with col2:
 
     # ---------------- Tiles mode ----------------
     else:
-        st.caption("Tiles are a grid. Panel sizing is ignored in this mode.")
+        st.caption(tr("page.tiles.caption.tiles_grid", "Tiles are a grid. Panel sizing is ignored in this mode."))
 
         tile_x_mode = st.radio(
-            "Tile Sizing Columns (X - Vertical Cuts)",
+            tr("page.tiles.fields.tile_sizing_columns", "Tile Sizing Columns (X - Vertical Cuts)"),
             ["equal", "percents"],
             horizontal=True,
-            format_func=lambda x: "Equal tiles" if x == "equal" else "Panel Widths (percent)",
+            format_func=lambda x: tr(
+                "page.tiles.fields.equal_tiles" if x == "equal" else "page.tiles.fields.tile_widths_percent",
+                "Equal tiles" if x == "equal" else "Panel Widths (percent)",
+            ),
             key="tile_x_mode",
         )
 
@@ -949,33 +972,33 @@ with col2:
         tile_y_percents = None  # Y-axis percent tiling not yet implemented; default to None
         if tile_x_mode == "percents":
             tx = st.text_input(
-                "Tile Width percents (X - Vertical Cuts - Left→Right, comma-separated)",
-                help="Widths that sum to 100. Example: 60,40 makes 2 tiles across X with a 60/40 split.",
+                tr("page.tiles.fields.tile_width_percents", "Tile Width percents (X - Left to Right, comma-separated)"),
+                help=tr("page.tiles.help.tile_width_percents", "Widths that sum to 100. Example: 60,40 makes 2 tiles across X with a 60/40 split."),
                 key="tile_x_text",
             )
             raw = [p.strip() for p in tx.split(",") if p.strip()]
             try:
                 vals = [float(p) for p in raw]
                 if any(v <= 0 for v in vals):
-                    raise ValueError("All percents must be > 0.")
+                    raise ValueError(tr("page.tiles.validation.tile_percent_positive", "all tile percents must be greater than 0"))
                 s = sum(vals)
                 if abs(s - 100.0) > 1e-6:
-                    raise ValueError(f"Percents must sum to 100 (got {s:.3f}).")
+                    raise ValueError(tr("page.tiles.validation.tile_percent_sum", "tile percents must sum to 100 (got {total:.3f})", total=s))
                 tile_x_percents = vals
                 tiles_x = len(vals)
             except Exception as e:
                 ui_ok = False
-                st.error(f"Invalid tile X percents: {e}")
+                st.error(tr("page.tiles.errors.invalid_tile_x_percents", "Invalid tile X percents: {error}", error=e))
                 tiles_x = 0
         else:
-            tiles_x = st.slider("Tiles (X Left→Right)", 1, 12, key="tiles_x", step=1)
+            tiles_x = st.slider(tr("page.tiles.fields.tiles_x", "Tiles (X Left to Right)"), 1, 12, key="tiles_x", step=1)
 
-        tiles_y = st.slider("Tiles Rows (Y - Horizontal Cuts)", 1, 12, key="tiles_y", step=1)
-        tile_gap_mm = st.slider("Gap between tiles (mm)", 0.0, 10.0, key="tile_gap_mm", step=0.1)
-        overlap_mm = st.slider("Overlap (mm)", 0.0, 20.0, key="overlap_mm", step=0.1)
-        margin_mm = st.slider("Margin in from bounds (mm)", 0.0, 50.0, key="margin_mm", step=0.5)
+        tiles_y = st.slider(tr("page.tiles.fields.tiles_y", "Tile Rows (Y - Horizontal Cuts)"), 1, 12, key="tiles_y", step=1)
+        tile_gap_mm = st.slider(tr("page.tiles.fields.tile_gap", "Gap between tiles (mm)"), 0.0, 10.0, key="tile_gap_mm", step=0.1)
+        overlap_mm = st.slider(tr("page.tiles.fields.overlap", "Overlap (mm)"), 0.0, 20.0, key="overlap_mm", step=0.1)
+        margin_mm = st.slider(tr("page.tiles.fields.margin", "Margin in from bounds (mm)"), 0.0, 50.0, key="margin_mm", step=0.5)
 
-        st.caption(f"Tiles to be generated: {max(0, int(tiles_x)) * int(tiles_y)}")
+        st.caption(tr("page.tiles.caption.tiles_generated", "Tiles to be generated: {count}", count=max(0, int(tiles_x)) * int(tiles_y)))
 
         # panels defaults (not used)
         split_axis = "X"
@@ -985,22 +1008,22 @@ with col2:
         split_percents = None
 
     # Shared
-    extra_margin_mm = st.slider("Boolean box margin (mm)", 0.0, 5.0, key="extra_margin_mm", step=0.1)
+    extra_margin_mm = st.slider(tr("page.tiles.fields.boolean_margin", "Boolean box margin (mm)"), 0.0, 5.0, key="extra_margin_mm", step=0.1)
 
     engine = st.selectbox(
-        "Boolean engine",
+        tr("page.tiles.fields.boolean_engine", "Boolean engine"),
         ["manifold", "auto", "blender", "scad"],
-        help="If slicing fails, try 'auto' or install a robust engine (e.g., manifold3d).",
+        help=tr("page.tiles.help.boolean_engine", "If slicing fails, try 'auto' or install a robust engine (e.g., manifold3d)."),
         key="engine",
     )
 
-    export_zip = st.checkbox("Export as ZIP (STLs + settings)", key="export_zip")
-    include_source = st.checkbox("Include original upload in ZIP", key="include_source")
+    export_zip = st.checkbox(tr("page.tiles.fields.export_zip", "Export as ZIP (STLs + settings)"), key="export_zip")
+    include_source = st.checkbox(tr("page.tiles.fields.include_source", "Include original upload in ZIP"), key="include_source")
 
     if not ui_ok:
-        st.warning("Fix the settings above before building.")
+        st.warning(tr("page.tiles.messages.fix_settings", "Fix the settings above before building."))
 if up is None:
-    st.info("Upload a mesh to begin.")
+    st.info(tr("page.tiles.messages.upload_mesh", "Upload a mesh to begin."))
     st.stop()
 
 
@@ -1008,7 +1031,7 @@ if up is None:
 try:
     src_mesh = load_mesh(up)
 except Exception as e:
-    st.error(f"Could not load mesh: {type(e).__name__}: {e}")
+    st.error(tr("page.tiles.errors.load_mesh", "Could not load mesh: {error_type}: {error}", error_type=type(e).__name__, error=e))
     st.stop()
 
 base = safe_base_name(up.name)
@@ -1045,11 +1068,11 @@ dirty = st.session_state.get("built_fingerprint") != current_fp
 
 # --- user feedback ---
 if dirty and st.session_state.get("zip_bytes") is not None:
-    st.info("Settings changed — rebuild to update the export.")
+    st.info(tr("page.tiles.messages.rebuild", "Settings changed - rebuild to update the export."))
 
 
 # --- SLICE PREVIEW (2D) ---
-st.subheader("Slice preview")
+st.subheader(tr("page.tiles.sections.preview", "Slice preview"))
 try:
     svg = slice_preview_svg(
         bounds=src_mesh.bounds,
@@ -1057,7 +1080,7 @@ try:
         split_axis=settings.split_axis,
         n_panels=settings.n_panels,
         gap_mm=settings.gap_mm,
-        percent_widths=split_percents if settings.slice_mode == "percent" else None,
+        percent_widths=split_percents if settings.slice_mode == "percents" else None,
         tiles_x=settings.tiles_x,
         tiles_y=settings.tiles_y,
         tile_gap_mm=settings.tile_gap_mm,
@@ -1068,18 +1091,18 @@ try:
     )
     st.markdown(svg, unsafe_allow_html=True)
 except Exception as e:
-    st.warning(f"Preview unavailable: {type(e).__name__}: {e}")
+    st.warning(tr("page.tiles.messages.preview_unavailable", "Preview unavailable: {error_type}: {error}", error_type=type(e).__name__, error=e))
 
 
 # --- BUILD BUTTON ---
 build = st.button(
-    "Build mesh and enable download",
+    tr("page.tiles.actions.build", "Build slices and enable download"),
     type="primary"
 )
 
 # --- BUILD ACTION ---
 if build:
-    with st.spinner("Slicing mesh into panels…"):
+    with st.spinner(tr("page.tiles.messages.building", "Slicing mesh into panels...")):
 
         if settings.mode == "tiles":
             panels, meta = slice_mesh_into_tiles(src_mesh, settings)
@@ -1097,7 +1120,7 @@ if build:
 
 # --- DOWNLOAD BUTTON ---
 st.download_button(
-    "Download ZIP (STL + settings)",
+    tr("page.tiles.actions.download_zip", "Download ZIP (STL + settings)"),
     data=st.session_state.get("zip_bytes") or b"",
     file_name=st.session_state.get("zip_name") or f"{base}_panels.zip",
     mime="application/zip",

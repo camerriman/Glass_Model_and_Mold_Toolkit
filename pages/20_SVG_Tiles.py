@@ -16,13 +16,15 @@ import tempfile, zipfile
 from copy import deepcopy
 from lxml import etree
 import streamlit as st
+from i18n import render_app_sidebar, t as tr
 
 # ── page config ───────────────────────────────────────────────
 st.set_page_config(
-    page_title="SVG Tiler",
+    page_title=tr("page.svg_tiles.title", "SVG Tiler"),
     page_icon="✂️"
 
 )
+render_app_sidebar()
 
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK  = "http://www.w3.org/1999/xlink"
@@ -275,46 +277,46 @@ def svg_to_b64_img(svg_bytes):
 # ═══════════════════════════════════════════════════════════════
 # UI
 # ═══════════════════════════════════════════════════════════════
-st.title("✂️ SVG Tiler")
-st.caption("Upload · pre-process with vpype · preview grid · download tiles.")
+st.title(f"✂️ {tr('page.svg_tiles.title', 'SVG Tiler')}")
+st.caption(tr("page.svg_tiles.caption", "Upload | pre-process with vpype | preview grid | download tiles."))
 
 col_ctrl, col_prev = st.columns([1, 2], gap="large")
 
 # ── LEFT: controls ────────────────────────────────────────────
 with col_ctrl:
 
-    uploaded = st.file_uploader("Upload SVG", type=["svg"])
+    uploaded = st.file_uploader(tr("page.svg_tiles.fields.upload_svg", "Upload SVG"), type=["svg"])
     st.divider()
 
     # ── vpype section ──
-    st.markdown("**vpype pre-processing**")
+    st.markdown(f"**{tr('page.svg_tiles.sections.vpype', 'vpype pre-processing')}**")
 
     ver = vpype_version()
     if VPYPE_BIN and ver:
-        st.success(f"vpype found: {ver}")
+        st.success(tr("page.svg_tiles.messages.vpype_found", "vpype found: {version}", version=ver))
     else:
-        st.warning("vpype not found — install with `pip install vpype`")
+        st.warning(tr("page.svg_tiles.messages.vpype_missing", "vpype not found - install with `pip install vpype`"))
 
     use_vpype = st.checkbox(
-        "Run vpype before tiling",
+        tr("page.svg_tiles.fields.run_vpype", "Run vpype before tiling"),
         value=bool(VPYPE_BIN),
         disabled=not bool(VPYPE_BIN),
     )
 
     linemerge_tol = st.slider(
-        "linemerge --tolerance (mm)",
+        tr("page.svg_tiles.fields.linemerge_tol", "linemerge --tolerance (mm)"),
         min_value=0.0, max_value=2.0, value=0.0, step=0.05,
-        help="Join paths whose endpoints are within this distance. 0 = disabled.",
+        help=tr("page.svg_tiles.help.linemerge_tol", "Join paths whose endpoints are within this distance. 0 = disabled."),
         disabled=not use_vpype,
     )
     min_length = st.slider(
-        "filter --min-length (mm)",
+        tr("page.svg_tiles.fields.min_length", "filter --min-length (mm)"),
         min_value=0.0, max_value=20.0, value=2.0, step=0.5,
-        help="Remove paths shorter than this. 0 = disabled.",
+        help=tr("page.svg_tiles.help.min_length", "Remove paths shorter than this. 0 = disabled."),
         disabled=not use_vpype,
     )
     do_linesort = st.checkbox(
-        "linesort  (minimise pen travel)",
+        tr("page.svg_tiles.fields.linesort", "linesort (minimise pen travel)"),
         value=True,
         disabled=not use_vpype,
     )
@@ -322,23 +324,23 @@ with col_ctrl:
     st.divider()
 
     # ── tiling section ──
-    st.markdown("**Tiling**")
-    rows        = st.slider("Rows",    1, 10, 2)
-    cols        = st.slider("Columns", 1, 10, 2)
+    st.markdown(f"**{tr('page.svg_tiles.sections.tiling', 'Tiling')}**")
+    rows        = st.slider(tr("page.svg_tiles.fields.rows", "Rows"),    1, 10, 2)
+    cols        = st.slider(tr("page.svg_tiles.fields.columns", "Columns"), 1, 10, 2)
 
     st.divider()
 
-    st.markdown("**Output**")
-    dpi         = st.number_input("DPI", min_value=72, max_value=300,
+    st.markdown(f"**{tr('page.svg_tiles.sections.output', 'Output')}**")
+    dpi         = st.number_input(tr("page.svg_tiles.fields.dpi", "DPI"), min_value=72, max_value=300,
                                   value=96, step=1)
-    label_size  = st.slider("Label font size (px)", 6, 48, 12)
-    show_border = st.checkbox("Show tile border", value=True)
+    label_size  = st.slider(tr("page.svg_tiles.fields.label_size", "Label font size (px)"), 6, 48, 12)
+    show_border = st.checkbox(tr("page.svg_tiles.fields.show_border", "Show tile border"), value=True)
 
 # ── RIGHT: preview + download ─────────────────────────────────
 with col_prev:
 
     if uploaded is None:
-        st.info("Upload an SVG on the left to get started.")
+        st.info(tr("page.svg_tiles.messages.upload_to_start", "Upload an SVG on the left to get started."))
         st.stop()
 
     raw       = uploaded.read()
@@ -348,26 +350,26 @@ with col_prev:
     processed_raw = raw
     if use_vpype and VPYPE_BIN:
         if linemerge_tol > 0 or min_length > 0 or do_linesort:
-            with st.spinner("Running vpype…"):
+            with st.spinner(tr("page.svg_tiles.messages.running_vpype", "Running vpype...")):
                 try:
                     processed_raw, cmd_str = run_vpype(
                         raw, min_length, do_linesort, linemerge_tol
                     )
-                    with st.expander("vpype command", expanded=False):
+                    with st.expander(tr("page.svg_tiles.sections.vpype_command", "vpype command"), expanded=False):
                         st.code(cmd_str, language="bash")
-                    st.success("vpype completed.")
+                    st.success(tr("page.svg_tiles.messages.vpype_completed", "vpype completed."))
                 except RuntimeError as e:
-                    st.error(f"vpype failed:\n\n{e}")
+                    st.error(tr("page.svg_tiles.errors.vpype_failed", "vpype failed:\n\n{error}", error=e))
                     st.stop()
         else:
-            st.info("vpype enabled but all operations are off — skipping.")
+            st.info(tr("page.svg_tiles.messages.vpype_skipped", "vpype enabled but all operations are off - skipping."))
 
     # ── parse SVG ──
     try:
         parser = etree.XMLParser(remove_comments=False)
         root   = etree.fromstring(processed_raw, parser)
     except etree.XMLSyntaxError as e:
-        st.error(f"Could not parse SVG: {e}")
+        st.error(tr("page.svg_tiles.errors.parse_svg", "Could not parse SVG: {error}", error=e))
         st.stop()
 
     canvas_w, canvas_h, vb_str = get_canvas(root, dpi)
@@ -377,14 +379,13 @@ with col_prev:
     th = canvas_h / rows
 
     # ── canvas info ──
-    st.markdown(f"""
-**Source canvas:** {canvas_w:.0f} × {canvas_h:.0f} px
-&nbsp;·&nbsp; {canvas_w/dpi:.3f}\" × {canvas_h/dpi:.3f}\"
+    st.markdown(
+        f"""
+**{tr('page.svg_tiles.labels.source_canvas', 'Source canvas: {width:.0f} x {height:.0f} px | {inch_width:.3f}" x {inch_height:.3f}"', width=canvas_w, height=canvas_h, inch_width=canvas_w/dpi, inch_height=canvas_h/dpi)}**
 
-**Tile size:** {tw:.0f} × {th:.0f} px
-&nbsp;·&nbsp; {tw/dpi:.3f}\" × {th/dpi:.3f}\"
-&nbsp;·&nbsp; **{rows * cols} tiles total**
-    """)
+**{tr('page.svg_tiles.labels.tile_size', 'Tile size: {width:.0f} x {height:.0f} px | {inch_width:.3f}" x {inch_height:.3f}" | {count} tiles total', width=tw, height=th, inch_width=tw/dpi, inch_height=th/dpi, count=rows * cols)}**
+        """
+    )
 
     # ── overlay preview ──
     overlay = build_overlay_svg(norm_root, canvas_w, canvas_h, rows, cols)
@@ -393,7 +394,7 @@ with col_prev:
     st.divider()
 
     # ── tile map ──
-    st.markdown("**Tile map**")
+    st.markdown(f"**{tr('page.svg_tiles.sections.tile_map', 'Tile map')}**")
     header  = "| " + " | ".join(col_letter(c) for c in range(cols)) + " |"
     sep     = "| " + " | ".join(["---"] * cols) + " |"
     rows_md = ["| " + " | ".join(
@@ -407,7 +408,7 @@ with col_prev:
     zip_buf = build_zip(norm_root, canvas_w, canvas_h,
                         rows, cols, base_name, label_size, show_border)
     st.download_button(
-        label=f"⬇️ Download all {rows * cols} tiles (.zip)",
+        label=f"⬇️ {tr('page.svg_tiles.actions.download_all', 'Download all {count} tiles (.zip)', count=rows * cols)}",
         data=zip_buf,
         file_name=f"{base_name}_tiles_{rows}x{cols}.zip",
         mime="application/zip",

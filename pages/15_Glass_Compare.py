@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
+from i18n import join_list, render_app_sidebar, t, translate_element_name, translate_family_name
+
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
 IMG_ROOT = APP_ROOT / "images"
@@ -25,11 +27,6 @@ FAMILY_PREFIX_BY_CODE = {
     "1": "opal",
     "2": "transparent",
     "3": "tint",
-}
-
-MODE_LABELS = {
-    "R": "Reflected",
-    "T": "Transmitted",
 }
 
 ELEMENT_MAP = {
@@ -59,7 +56,8 @@ ELEMENT_COLOURS = {
     "Gold": "#d4a020",
 }
 
-st.set_page_config(page_title="Glass Compare", layout="wide")
+st.set_page_config(page_title=t("compare.title", "Glass Compare"), layout="wide")
+render_app_sidebar()
 st.markdown(
     """
     <style>
@@ -165,11 +163,15 @@ def compare_title_markup(glass_id: str, title: str) -> str:
 
 
 def join_phrases(parts: list[str]) -> str:
-    if not parts:
-        return ""
-    if len(parts) == 1:
-        return parts[0]
-    return ", ".join(parts[:-1]) + " and " + parts[-1]
+    return join_list(parts)
+
+
+def mode_label(mode: str) -> str:
+    labels = {
+        "R": t("shared.mode.reflected", "Reflected"),
+        "T": t("shared.mode.transmitted", "Transmitted"),
+    }
+    return labels.get(mode, mode)
 
 
 def circular_hue_delta(reference_value, compare_value) -> float | None:
@@ -203,7 +205,7 @@ def chip_row_markup(chips: list[tuple[str, str]], *, max_chips: int | None = Non
     if max_chips is not None:
         chips = chips[:max_chips]
     if not chips:
-        chips = [("Close match", "neutral")]
+        chips = [(t("compare.badge.close_match", "Close match"), "neutral")]
     spans = []
     for label, tone in chips:
         tone_name = tone if tone in {"reference", "pos", "neg", "chem", "neutral"} else "neutral"
@@ -224,7 +226,7 @@ def comparison_delta_chips(
     is_reference: bool = False,
 ) -> list[tuple[str, str]]:
     if is_reference:
-        return [("Reference sample", "reference")]
+        return [(t("compare.badge.reference_sample", "Reference sample"), "reference")]
 
     chips: list[tuple[str, str]] = []
     for mode_short, reference_row, compare_row in (("R", reference_r, compare_r), ("T", reference_t, compare_t)):
@@ -247,10 +249,10 @@ def comparison_delta_chips(
     reference_striker = safe_int(reference_catalog.get("is_striker"), 0) == 1
     compare_striker = safe_int(compare_catalog.get("is_striker"), 0) == 1
     if reference_striker != compare_striker:
-        chips.append((("Striker" if compare_striker else "Not striker"), "chem"))
+        chips.append(((t("compare.badge.striker", "Striker") if compare_striker else t("compare.badge.not_striker", "Not striker")), "chem"))
 
     if not chips:
-        chips.append(("Close match", "neutral"))
+        chips.append((t("compare.badge.close_match", "Close match"), "neutral"))
     return chips
 
 
@@ -264,7 +266,7 @@ def describe_change(
 ) -> str | None:
     if delta is None or abs(delta) < slight_threshold:
         return None
-    qualifier = "slightly " if abs(delta) < strong_threshold else ""
+    qualifier = t("shared.qualifier.slightly", "slightly ") if abs(delta) < strong_threshold else ""
     return f"{qualifier}{positive_text if delta > 0 else negative_text}"
 
 
@@ -276,8 +278,8 @@ def describe_hue_shift(
 ) -> str | None:
     if delta is None or abs(delta) < slight_threshold:
         return None
-    qualifier = "slightly " if abs(delta) < strong_threshold else "noticeably "
-    return f"{qualifier}shifted by {abs(delta):.0f}°"
+    qualifier = t("shared.qualifier.slightly", "slightly ") if abs(delta) < strong_threshold else t("shared.qualifier.noticeably", "noticeably ")
+    return t("compare.summary.hue_shift", "{qualifier}shifted by {degrees:.0f} deg", qualifier=qualifier, degrees=abs(delta))
 
 
 def measurement_interpretation_lines(
@@ -292,24 +294,38 @@ def measurement_interpretation_lines(
     qualities: list[str] = []
     brightness_text = describe_change(
         measurement_delta_value(reference_row, compare_row, "v"),
-        "brighter",
-        "darker",
+        t("predictor.summary.brighter", "brighter"),
+        t("predictor.summary.darker", "darker"),
     )
     saturation_text = describe_change(
         measurement_delta_value(reference_row, compare_row, "s"),
-        "more saturated",
-        "less saturated",
+        t("predictor.summary.more_saturated", "more saturated"),
+        t("predictor.summary.less_saturated", "less saturated"),
     )
     if brightness_text:
         qualities.append(brightness_text)
     if saturation_text:
         qualities.append(saturation_text)
     if qualities:
-        lines.append(f"In {mode_label}, it reads {join_phrases(qualities)} than the reference.")
+        lines.append(
+            t(
+                "compare.summary.mode_read",
+                "In {mode}, it reads {qualities} than the reference.",
+                mode=mode_label,
+                qualities=join_phrases(qualities),
+            )
+        )
 
     hue_text = describe_hue_shift(measurement_delta_value(reference_row, compare_row, "h"))
     if hue_text:
-        lines.append(f"Its {mode_label} hue is {hue_text}.")
+        lines.append(
+            t(
+                "compare.summary.mode_hue",
+                "Its {mode} hue is {hue_text}.",
+                mode=mode_label,
+                hue_text=hue_text,
+            )
+        )
 
     return lines
 
@@ -323,13 +339,20 @@ def comparison_interpretation_lines(
     compare_t: pd.Series | None,
 ) -> list[str]:
     lines: list[str] = []
-    lines.extend(measurement_interpretation_lines("reflected light", reference_r, compare_r))
-    lines.extend(measurement_interpretation_lines("transmission", reference_t, compare_t))
+    lines.extend(measurement_interpretation_lines(t("compare.summary.reflected_light", "reflected light"), reference_r, compare_r))
+    lines.extend(measurement_interpretation_lines(t("compare.summary.transmission", "transmission"), reference_t, compare_t))
 
     reference_family = str(reference_catalog.get("family_name") or reference_catalog.get("glass_family") or "")
     compare_family = str(compare_catalog.get("family_name") or compare_catalog.get("glass_family") or "")
     if compare_family and reference_family and compare_family != reference_family:
-        lines.append(f"It belongs to the {compare_family} family rather than {reference_family}.")
+        lines.append(
+            t(
+                "compare.summary.family_change",
+                "It belongs to the {compare_family} family rather than {reference_family}.",
+                compare_family=translate_family_name(str(compare_catalog.get("glass_family") or ""), compare_family),
+                reference_family=translate_family_name(str(reference_catalog.get("glass_family") or ""), reference_family),
+            )
+        )
 
     reference_elements = set(element_labels(reference_catalog))
     compare_elements = set(element_labels(compare_catalog))
@@ -338,10 +361,10 @@ def comparison_interpretation_lines(
     if added_elements or removed_elements:
         chemistry_bits: list[str] = []
         if added_elements:
-            chemistry_bits.append(f"adds {join_labels(added_elements)}")
+            chemistry_bits.append(t("compare.summary.chemistry_adds", "adds {items}", items=join_labels(added_elements)))
         if removed_elements:
-            chemistry_bits.append(f"omits {join_labels(removed_elements)}")
-        lines.append("Chemistry: it " + join_phrases(chemistry_bits) + ".")
+            chemistry_bits.append(t("compare.summary.chemistry_omits", "omits {items}", items=join_labels(removed_elements)))
+        lines.append(t("compare.summary.chemistry", "Chemistry: it {details}.", details=join_phrases(chemistry_bits)))
 
     reference_reactive = set(reactive_labels(reference_catalog))
     compare_reactive = set(reactive_labels(compare_catalog))
@@ -350,21 +373,21 @@ def comparison_interpretation_lines(
     if added_reactive or removed_reactive:
         reactive_bits: list[str] = []
         if added_reactive:
-            reactive_bits.append(f"may react with {join_labels(added_reactive)}")
+            reactive_bits.append(t("compare.summary.reactive_adds", "may react with {items}", items=join_labels(added_reactive)))
         if removed_reactive:
-            reactive_bits.append(f"is less likely to react with {join_labels(removed_reactive)}")
-        lines.append("Reactive potential: it " + join_phrases(reactive_bits) + ".")
+            reactive_bits.append(t("compare.summary.reactive_less", "is less likely to react with {items}", items=join_labels(removed_reactive)))
+        lines.append(t("compare.summary.reactive", "Reactive potential: it {details}.", details=join_phrases(reactive_bits)))
 
     reference_striker = safe_int(reference_catalog.get("is_striker"), 0) == 1
     compare_striker = safe_int(compare_catalog.get("is_striker"), 0) == 1
     if reference_striker != compare_striker:
         if compare_striker:
-            lines.append("It is a striker, unlike the reference.")
+            lines.append(t("compare.summary.striker_yes", "It is a striker, unlike the reference."))
         else:
-            lines.append("It is not a striker, unlike the reference.")
+            lines.append(t("compare.summary.striker_no", "It is not a striker, unlike the reference."))
 
     if not lines:
-        lines.append("It reads very close to the reference sample in the current summary.")
+        lines.append(t("compare.summary.close_to_reference", "It reads very close to the reference sample in the current summary."))
 
     return lines
 
@@ -426,7 +449,7 @@ def switch_to_page(target: str) -> bool:
 @st.cache_data
 def load_catalog() -> pd.DataFrame:
     if not DB_PATH.exists():
-        st.error(f"Missing database: {DB_PATH}")
+        st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
 
     with sqlite3.connect(DB_PATH) as con:
@@ -455,14 +478,14 @@ def load_catalog() -> pd.DataFrame:
                 con,
             )
         except Exception as exc:
-            st.error(f"Failed to load catalog data: {exc}")
+            st.error(t("library.errors.catalog_load", "Failed to load catalog data: {error}", error=exc))
             st.stop()
 
 
 @st.cache_data
 def load_measurements() -> pd.DataFrame:
     if not DB_PATH.exists():
-        st.error(f"Missing database: {DB_PATH}")
+        st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
 
     with sqlite3.connect(DB_PATH) as con:
@@ -485,7 +508,7 @@ def load_measurements() -> pd.DataFrame:
                 con,
             )
         except Exception as exc:
-            st.error(f"Failed to load measurement data: {exc}")
+            st.error(t("library.errors.measurement_load", "Failed to load measurement data: {error}", error=exc))
             st.stop()
 
 
@@ -524,7 +547,8 @@ def badge_markup(labels: list[str], *, muted: bool = False) -> str:
     for label in labels:
         bg = ELEMENT_COLOURS.get(label, "#888")
         opacity = "opacity:0.7;" if muted else ""
-        text = f"* {label}" if muted else label
+        display_label = translate_element_name(label)
+        text = f"* {display_label}" if muted else display_label
         spans.append(
             f'<span style="background:{bg};color:white;font-size:11px;'
             f'font-weight:bold;padding:2px 7px;border-radius:3px;margin-right:4px;'
@@ -546,7 +570,7 @@ def striker_badge_markup(is_striker: bool) -> str:
         '<div style="font-family:sans-serif;margin-top:4px;line-height:2.2;">'
         '<span style="background:#e05020;color:white;font-size:11px;'
         'font-weight:bold;padding:2px 8px;border-radius:3px;margin-right:8px;">'
-        "STRIKER</span></div>"
+        f"{t('compare.badge.striker', 'STRIKER')}</span></div>"
     )
 
 
@@ -583,7 +607,7 @@ def note_markup(raw_text: str | None) -> str:
 def render_notes(title: str, raw_text: str | None) -> None:
     markup = note_markup(raw_text)
     if not markup:
-        st.caption(f"{title}: none")
+        st.caption(t("compare.notes.empty", "{title}: none", title=title))
         return
     with st.expander(title, expanded=False):
         st.markdown(markup, unsafe_allow_html=True)
@@ -599,7 +623,7 @@ def render_measurement_panel(glass_id: str, prefix: str, row: pd.Series | None, 
         st.image(str(MISSING_ICON), width="content")
 
     if row is None:
-        st.write("No measurement data for this mode.")
+        st.write(t("compare.messages.no_measurement_mode", "No measurement data for this mode."))
         return
 
     st.markdown(
@@ -607,7 +631,7 @@ def render_measurement_panel(glass_id: str, prefix: str, row: pd.Series | None, 
             [
                 f"**RGB:** ({row.get('r')}, {row.get('g')}, {row.get('b')})  ",
                 f"**HSB:** ({row.get('h')}, {row.get('s')}, {row.get('v')})  ",
-                f"**Thickness:** {row.get('thickness_mm') or '-'} mm",
+                f"**{t('editor.fields.thickness', 'Thickness (mm)').replace(' (mm)', '')}:** {row.get('thickness_mm') or '-'} mm",
             ]
         )
     )
@@ -723,8 +747,8 @@ def rgb_curve_figure(meas: pd.Series, thickness: float, max_thickness: float, ti
     fig.add_vline(x=thickness, line_dash="dash", line_color="gray")
     fig.update_layout(
         title=title,
-        xaxis_title="Thickness (mm)",
-        yaxis_title="Channel Value",
+        xaxis_title=t("editor.fields.thickness", "Thickness (mm)"),
+        yaxis_title=t("compare.figure.channel_value", "Channel Value"),
         yaxis=dict(range=[0, 260]),
         xaxis=dict(range=[0, max_thickness]),
         legend=dict(orientation="h", y=1.08),
@@ -753,7 +777,7 @@ def bs_curve_figure(meas: pd.Series, thickness: float, max_thickness: float, tit
             x=thickness_values,
             y=brightness,
             mode="lines",
-            name="Brightness",
+            name=t("detail.table.brightness", "Brightness"),
             line=dict(color="cornflowerblue", width=2),
         )
     )
@@ -762,15 +786,15 @@ def bs_curve_figure(meas: pd.Series, thickness: float, max_thickness: float, tit
             x=thickness_values,
             y=saturation,
             mode="lines",
-            name="Saturation",
+            name=t("detail.table.saturation", "Saturation"),
             line=dict(color="limegreen", width=2),
         )
     )
     fig.add_vline(x=thickness, line_dash="dash", line_color="gray")
     fig.update_layout(
         title=title,
-        xaxis_title="Thickness (mm)",
-        yaxis_title="0–100",
+        xaxis_title=t("editor.fields.thickness", "Thickness (mm)"),
+        yaxis_title=t("predictor.figure.zero_to_hundred", "0-100"),
         yaxis=dict(range=[0, 105]),
         xaxis=dict(range=[0, max_thickness]),
         legend=dict(orientation="h", y=1.08),
@@ -825,7 +849,7 @@ def overlay_rgb_curve_figure(
                 x=thickness_values,
                 y=reference_curve,
                 mode="lines",
-                name=f"Ref {label}",
+                name=t("compare.figure.ref_channel", "Ref {label}", label=label),
                 line=dict(color=neutral, width=4, dash=reference_dash),
             )
         )
@@ -834,7 +858,7 @@ def overlay_rgb_curve_figure(
                 x=compare_x,
                 y=compare_curve,
                 mode="lines",
-                name=f"Sample {label}",
+                name=t("compare.figure.sample_channel", "Sample {label}", label=label),
                 line=dict(color=compare_colour, width=2.3),
             )
         )
@@ -842,8 +866,8 @@ def overlay_rgb_curve_figure(
     fig.add_vline(x=compare_thickness, line_dash="dot", line_color="#31364a", opacity=0.35)
     fig.update_layout(
         title=title,
-        xaxis_title="Thickness (mm)",
-        yaxis_title="Channel Value",
+        xaxis_title=t("editor.fields.thickness", "Thickness (mm)"),
+        yaxis_title=t("compare.figure.channel_value", "Channel Value"),
         yaxis=dict(range=[0, 260]),
         xaxis=dict(range=[0, max_thickness]),
         legend=dict(orientation="h", y=1.12, x=0),
@@ -895,7 +919,7 @@ def overlay_bs_curve_figure(
             x=reference_x,
             y=reference_brightness,
             mode="lines",
-            name="Ref Brightness",
+            name=t("compare.figure.ref_brightness", "Ref Brightness"),
             line=dict(color=neutral, width=4),
         )
     )
@@ -904,7 +928,7 @@ def overlay_bs_curve_figure(
             x=reference_x,
             y=reference_saturation,
             mode="lines",
-            name="Ref Saturation",
+            name=t("compare.figure.ref_saturation", "Ref Saturation"),
             line=dict(color=neutral, width=4, dash="dash"),
         )
     )
@@ -913,7 +937,7 @@ def overlay_bs_curve_figure(
             x=compare_x,
             y=compare_brightness,
             mode="lines",
-            name="Sample Brightness",
+            name=t("compare.figure.sample_brightness", "Sample Brightness"),
             line=dict(color="cornflowerblue", width=2.3),
         )
     )
@@ -922,7 +946,7 @@ def overlay_bs_curve_figure(
             x=compare_x,
             y=compare_saturation,
             mode="lines",
-            name="Sample Saturation",
+            name=t("compare.figure.sample_saturation", "Sample Saturation"),
             line=dict(color="limegreen", width=2.3),
         )
     )
@@ -930,8 +954,8 @@ def overlay_bs_curve_figure(
     fig.add_vline(x=compare_thickness, line_dash="dot", line_color="#31364a", opacity=0.35)
     fig.update_layout(
         title=title,
-        xaxis_title="Thickness (mm)",
-        yaxis_title="0–100",
+        xaxis_title=t("editor.fields.thickness", "Thickness (mm)"),
+        yaxis_title=t("predictor.figure.zero_to_hundred", "0-100"),
         yaxis=dict(range=[0, 105]),
         xaxis=dict(range=[0, max_thickness]),
         legend=dict(orientation="h", y=1.12, x=0),
@@ -945,9 +969,9 @@ def render_measurement_detail(glass_id: str, prefix: str, row: pd.Series | None,
     image = full_path(str(glass_id), prefix, mode)
     if row is not None:
         components.html(measurement_table_html(row), height=110)
-        st.caption(f"Thickness: {row.get('thickness_mm') or '-'} mm")
+        st.caption(f"{t('editor.fields.thickness', 'Thickness (mm)').replace(' (mm)', '')}: {row.get('thickness_mm') or '-'} mm")
     else:
-        st.write("No measurement data for this mode.")
+        st.write(t("compare.messages.no_measurement_mode", "No measurement data for this mode."))
 
     if image is not None:
         st.image(str(image), width="content")
@@ -965,7 +989,7 @@ def render_optical_detail(
 ) -> None:
     available_rows = [row for row in (row_r, row_t) if row is not None]
     if not available_rows:
-        st.caption("No optical response data available.")
+        st.caption(t("compare.messages.no_optical_response", "No optical response data available."))
         return
 
     thickness = safe_float(
@@ -981,13 +1005,13 @@ def render_optical_detail(
             st.image(str(reflected_icon), width=140)
         elif MISSING_ICON.exists():
             st.image(str(MISSING_ICON), width=140)
-        st.markdown("#### Reflected optical response")
+        st.markdown(f"#### {t('compare.sections.reflected_overlay', 'Reflected overlay')}")
         st.plotly_chart(
-            rgb_curve_figure(row_r, thickness, max_thickness, "Reflected Color Shift"),
+            rgb_curve_figure(row_r, thickness, max_thickness, t("detail.figure.color_shift.reflected", "Reflected Color Shift")),
             config={"displaylogo": False},
         )
         st.plotly_chart(
-            bs_curve_figure(row_r, thickness, max_thickness, "Reflected Brightness & Saturation"),
+            bs_curve_figure(row_r, thickness, max_thickness, t("detail.figure.bs.reflected", "Reflected Brightness & Saturation")),
             config={"displaylogo": False},
         )
     if row_t is not None:
@@ -996,19 +1020,20 @@ def render_optical_detail(
             st.image(str(transmitted_icon), width=140)
         elif MISSING_ICON.exists():
             st.image(str(MISSING_ICON), width=140)
-        st.markdown("#### Transmitted optical response")
+        st.markdown(f"#### {t('compare.sections.transmitted_overlay', 'Transmitted overlay')}")
         st.plotly_chart(
-            rgb_curve_figure(row_t, thickness, max_thickness, "Transmitted Color Shift"),
+            rgb_curve_figure(row_t, thickness, max_thickness, t("detail.figure.color_shift.transmitted", "Transmitted Color Shift")),
             config={"displaylogo": False},
         )
         st.plotly_chart(
-            bs_curve_figure(row_t, thickness, max_thickness, "Transmitted Brightness & Saturation"),
+            bs_curve_figure(row_t, thickness, max_thickness, t("detail.figure.bs.transmitted", "Transmitted Brightness & Saturation")),
             config={"displaylogo": False},
         )
 
 
 def join_labels(values: list[str]) -> str:
-    return ", ".join(values) if values else "-"
+    display_values = [translate_element_name(value) for value in values]
+    return ", ".join(display_values) if display_values else "-"
 
 
 def measurement_delta_lines(
@@ -1019,9 +1044,9 @@ def measurement_delta_lines(
     if reference_row is None and compare_row is None:
         return []
     if reference_row is None:
-        return [f"{mode_label}: no reference measurement"]
+        return [t("compare.delta.no_reference", "{mode}: no reference measurement", mode=mode_label)]
     if compare_row is None:
-        return [f"{mode_label}: no measurement"]
+        return [t("compare.delta.no_measurement", "{mode}: no measurement", mode=mode_label)]
 
     lines = []
     for field, label in (
@@ -1041,11 +1066,11 @@ def measurement_delta_lines(
         if abs(delta) < 1e-9:
             continue
         if field == "thickness_mm":
-            lines.append(f"{mode_label} thickness: {delta:+.2f} mm")
+            lines.append(t("compare.delta.thickness", "{mode} thickness: {delta:+.2f} mm", mode=mode_label, delta=delta))
         elif field in {"h", "s", "v"}:
-            lines.append(f"{mode_label} {label}: {delta:+.0f}")
+            lines.append(t("compare.delta.channel", "{mode} {label}: {delta:+.0f}", mode=mode_label, label=label, delta=delta))
         else:
-            lines.append(f"{mode_label} {label}: {delta:+.0f}")
+            lines.append(t("compare.delta.channel", "{mode} {label}: {delta:+.0f}", mode=mode_label, label=label, delta=delta))
     return lines
 
 
@@ -1063,9 +1088,13 @@ def render_differences(
     reference_r = measurement_row(measurements, reference_id, "R")
     reference_t = measurement_row(measurements, reference_id, "T")
 
-    st.markdown("## Differences")
+    st.markdown(f"## {t('compare.sections.differences', 'Differences')}")
     st.caption(
-        f"Reference sample: {reference_label}. Gray curves show the reference sample and colour curves show the compared glass."
+        t(
+            "compare.messages.reference_curves",
+            "Reference sample: {label}. Gray curves show the reference sample and colour curves show the compared glass.",
+            label=reference_label,
+        )
     )
 
     for row in selected.iloc[1:].itertuples(index=False):
@@ -1096,49 +1125,49 @@ def render_differences(
         )
 
         with st.expander(f"{compare_label} vs {reference_label}", expanded=False):
-            st.markdown("**Plain-language read**")
+            st.markdown(f"**{t('compare.sections.plain_language', 'Plain-language read')}**")
             for line in summary_lines:
                 st.markdown(f"- {line}")
 
-            st.markdown("**Quick deltas**")
+            st.markdown(f"**{t('compare.sections.quick_deltas', 'Quick deltas')}**")
             st.markdown(chip_markup, unsafe_allow_html=True)
 
             overlay_left, overlay_right = st.columns(2, gap="large")
             with overlay_left:
-                st.markdown("**Reflected overlay**")
+                st.markdown(f"**{t('compare.sections.reflected_overlay', 'Reflected overlay')}**")
                 reflected_rgb = overlay_rgb_curve_figure(
                     reference_r,
                     compare_r,
-                    "Reflected Color Shift Overlay",
+                    t("compare.figure.color_shift_overlay_reflected", "Reflected Color Shift Overlay"),
                 )
                 reflected_bs = overlay_bs_curve_figure(
                     reference_r,
                     compare_r,
-                    "Reflected Brightness & Saturation Overlay",
+                    t("compare.figure.bs_overlay_reflected", "Reflected Brightness & Saturation Overlay"),
                 )
                 if reflected_rgb is not None:
                     st.plotly_chart(reflected_rgb, config={"displaylogo": False})
                     st.plotly_chart(reflected_bs, config={"displaylogo": False})
                 else:
-                    st.caption("No reflected overlay data available.")
+                    st.caption(t("compare.messages.no_reflected_overlay", "No reflected overlay data available."))
 
             with overlay_right:
-                st.markdown("**Transmitted overlay**")
+                st.markdown(f"**{t('compare.sections.transmitted_overlay', 'Transmitted overlay')}**")
                 transmitted_rgb = overlay_rgb_curve_figure(
                     reference_t,
                     compare_t,
-                    "Transmitted Color Shift Overlay",
+                    t("compare.figure.color_shift_overlay_transmitted", "Transmitted Color Shift Overlay"),
                 )
                 transmitted_bs = overlay_bs_curve_figure(
                     reference_t,
                     compare_t,
-                    "Transmitted Brightness & Saturation Overlay",
+                    t("compare.figure.bs_overlay_transmitted", "Transmitted Brightness & Saturation Overlay"),
                 )
                 if transmitted_rgb is not None:
                     st.plotly_chart(transmitted_rgb, config={"displaylogo": False})
                     st.plotly_chart(transmitted_bs, config={"displaylogo": False})
                 else:
-                    st.caption("No transmitted overlay data available.")
+                    st.caption(t("compare.messages.no_transmitted_overlay", "No transmitted overlay data available."))
 
 catalog = load_catalog().copy()
 measurements = load_measurements().copy()
@@ -1153,14 +1182,14 @@ st.session_state["compare_glass_ids"] = compare_ids
 
 header_left, header_mid, header_right = st.columns([0.18, 0.58, 0.24], gap="small")
 with header_left:
-    if st.button("← Glass Library", key="compare_back", width="content"):
+    if st.button(t("compare.actions.back_to_library", "<- Glass Library"), key="compare_back", width="content"):
         if not switch_to_page(LIBRARY_PAGE):
-            st.warning("Could not return to the library.")
+            st.warning(t("compare.messages.back_failed", "Could not return to the library."))
 with header_mid:
-    st.title("Glass Compare")
+    st.title(t("compare.title", "Glass Compare"))
 with header_right:
     if st.button(
-        "Clear compare set",
+        t("compare.actions.clear_set", "Clear compare set"),
         key="compare_clear",
         width="content",
         disabled=not compare_ids,
@@ -1170,7 +1199,7 @@ with header_right:
             st.rerun()
 
 if not compare_ids:
-    st.info("Select 2-4 samples in the Glass Library, then open the compare page.")
+    st.info(t("compare.messages.select_from_library", "Select 2-4 samples in the Glass Library, then open the compare page."))
     st.stop()
 
 selected = catalog[catalog["glass_id"].isin(compare_ids)].copy()
@@ -1185,7 +1214,7 @@ if available_ids != compare_ids:
     st.session_state["compare_glass_ids"] = compare_ids
 
 if len(compare_ids) < 2:
-    st.info("Select at least two valid samples in the Glass Library to compare.")
+    st.info(t("compare.messages.select_two", "Select at least two valid samples in the Glass Library to compare."))
     st.stop()
 
 reference = selected.iloc[0].copy()
@@ -1193,7 +1222,7 @@ reference_id = str(reference["glass_id"])
 reference_r = measurement_row(measurements, reference_id, "R")
 reference_t = measurement_row(measurements, reference_id, "T")
 
-st.caption(f"{len(compare_ids)} samples selected.")
+st.caption(t("compare.messages.selected_count", "{count} samples selected.", count=len(compare_ids)))
 render_differences(selected, measurements)
 
 sample_columns = st.columns(len(compare_ids), gap="large")
@@ -1230,7 +1259,7 @@ for column, row in zip(sample_columns, selected.itertuples(index=False)):
         with st.container(border=True):
             title = str(row.color_name or "").strip()
             st.markdown(compare_title_markup(glass_id, title), unsafe_allow_html=True)
-            st.caption(f"Family: {family_name}")
+            st.caption(t("color_wheel.labels.family", "Family: {family}", family=translate_family_name(str(row.glass_family or ""), family_name)))
             st.markdown(
                 striker_badge_markup(safe_int(getattr(row, "is_striker", 0), 0) == 1),
                 unsafe_allow_html=True,
@@ -1238,7 +1267,7 @@ for column, row in zip(sample_columns, selected.itertuples(index=False)):
             st.markdown(chip_markup, unsafe_allow_html=True)
             if is_reference_sample:
                 st.markdown(
-                    '<div class="compare-summary">Anchor sample for the difference summaries below.</div>',
+                    f'<div class="compare-summary">{html.escape(t("compare.messages.anchor_sample", "Anchor sample for the difference summaries below."))}</div>',
                     unsafe_allow_html=True,
                 )
             elif summary_lines:
@@ -1250,19 +1279,19 @@ for column, row in zip(sample_columns, selected.itertuples(index=False)):
             action_left, action_right = st.columns(2, gap="small")
             with action_left:
                 if st.button(
-                    "Open full datasheet",
+                    t("library.detail.open_datasheet", "Open full datasheet"),
                     key=f"compare_open_{glass_id}",
                     width="content",
                     disabled=current_detail_target() is None,
                 ):
                     st.session_state["detail_glass_id"] = glass_id
                     st.session_state["detail_return_page"] = "pages/15_Glass_Compare.py"
-                    st.session_state["detail_return_label"] = "Glass Compare"
+                    st.session_state["detail_return_label_key"] = "compare.title"
                     if not switch_to_page(DETAIL_PAGE):
-                        st.warning("Could not navigate to the full datasheet page.")
+                        st.warning(t("compare.messages.open_datasheet_failed", "Could not navigate to the full datasheet page."))
             with action_right:
                 if st.button(
-                    "Remove",
+                    t("compare.actions.remove", "Remove"),
                     key=f"compare_remove_{glass_id}",
                     width="content",
                 ):

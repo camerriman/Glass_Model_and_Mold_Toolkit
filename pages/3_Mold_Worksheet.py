@@ -12,13 +12,20 @@ from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
+from i18n import format_date, format_datetime, render_app_sidebar, t
 
 # ─────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────
-st.set_page_config(page_title="Mold Worksheet", layout="wide")
-st.title("Mold Worksheet")
-st.caption("Pre-fill from a settings.txt or enter values manually. Select the mold type tab to see its calculations.")
+st.set_page_config(page_title=t("worksheet.title", "Mold Worksheet"), layout="wide")
+render_app_sidebar()
+st.title(t("worksheet.title", "Mold Worksheet"))
+st.caption(
+    t(
+        "worksheet.caption",
+        "Pre-fill from a settings.txt or enter values manually. Select the mold type tab to see its calculations.",
+    )
+)
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "mold_records.db"
@@ -278,6 +285,14 @@ def _reset_state():
     st.session_state["ws_loaded_id"] = None
 
 
+def mold_type_label(value: str) -> str:
+    labels = {
+        "Alginate + Investment": t("worksheet.mold.alginate_investment", "Alginate + Investment"),
+        "Silicone": t("worksheet.mold.silicone", "Silicone"),
+    }
+    return labels.get(value, value)
+
+
 # ─────────────────────────────────────────
 # UI card helper
 # ─────────────────────────────────────────
@@ -307,10 +322,18 @@ def card(title: str, rows: list,
 top_left, top_right = st.columns([1, 1], gap="large")
 
 with top_left:
-    with st.expander("📄 Import from settings.txt", expanded=False):
-        uploaded = st.file_uploader("Drop a settings.txt here", type=["txt"], key="settings_upload")
-        paste    = st.text_area("…or paste the contents", height=120, key="settings_paste")
-        if st.button("Parse & pre-fill", use_container_width=True):
+    with st.expander(t("worksheet.import.title", "Import from settings.txt"), expanded=False):
+        uploaded = st.file_uploader(
+            t("worksheet.import.upload", "Drop a settings.txt here"),
+            type=["txt"],
+            key="settings_upload",
+        )
+        paste = st.text_area(
+            t("worksheet.import.paste", "...or paste the contents"),
+            height=120,
+            key="settings_paste",
+        )
+        if st.button(t("worksheet.import.parse", "Parse & pre-fill"), use_container_width=True):
             raw = ""
             if uploaded:
                 raw = uploaded.read().decode("utf-8", errors="replace")
@@ -333,30 +356,43 @@ with top_left:
                 if not st.session_state["ws_title"] and "image_name" in parsed:
                     st.session_state["ws_title"] = parsed["image_name"].rsplit(".", 1)[0]
                 if filled:
-                    st.success(f"Pre-filled: {', '.join(filled)}")
+                    st.success(
+                        t(
+                            "worksheet.import.prefilled",
+                            "Pre-filled: {fields}",
+                            fields=", ".join(filled),
+                        )
+                    )
                 else:
-                    st.warning("No recognised fields found.")
+                    st.warning(t("worksheet.import.none_found", "No recognised fields found."))
             else:
-                st.warning("Nothing to parse.")
+                st.warning(t("worksheet.import.empty", "Nothing to parse."))
 
 with top_right:
-    st.subheader("Saved Records")
+    st.subheader(t("worksheet.records.title", "Saved Records"))
     records = list_records()
     if not records:
-        st.info("No saved records yet.")
+        st.info(t("worksheet.records.empty", "No saved records yet."))
     else:
         for row in records:
-            mold_label = f"  ·  {row['mold_type']}" if row["mold_type"] else ""
+            mold_label = f"  ·  {mold_type_label(row['mold_type'])}" if row["mold_type"] else ""
+            job_date_text = format_date(row["job_date"]) if row["job_date"] else t("worksheet.records.no_date", "no date")
             rc1, rc2, rc3 = st.columns([4, 1, 1])
             with rc1:
-                st.markdown(f"**{row['title']}**{mold_label}  —  {row['job_date'] or 'no date'}")
-                st.caption(f"Saved {row['created_at'][:16]}")
+                st.markdown(f"**{row['title']}**{mold_label}  —  {job_date_text}")
+                st.caption(
+                    t(
+                        "worksheet.records.saved_at",
+                        "Saved {value}",
+                        value=format_datetime(row["created_at"]),
+                    )
+                )
             with rc2:
-                if st.button("Load", key=f"load_{row['id']}"):
+                if st.button(t("worksheet.actions.load", "Load"), key=f"load_{row['id']}"):
                     _load_into_state(load_record(row["id"]))
                     st.rerun()
             with rc3:
-                if st.button("🗑️", key=f"del_{row['id']}", help="Delete"):
+                if st.button("🗑️", key=f"del_{row['id']}", help=t("worksheet.actions.delete_help", "Delete")):
                     delete_record(row["id"])
                     if st.session_state["ws_loaded_id"] == row["id"]:
                         _reset_state()
@@ -365,16 +401,16 @@ with top_right:
     st.divider()
     bc1, bc2, bc3 = st.columns(3)
     with bc1:
-        if st.button("＋ New", use_container_width=True):
+        if st.button(t("worksheet.actions.new", "+ New"), use_container_width=True):
             _reset_state()
             st.rerun()
     with bc2:
-        if st.button("↺ Reset", use_container_width=True):
+        if st.button(t("worksheet.actions.reset", "Reset"), use_container_width=True):
             _reset_state()
             st.rerun()
     with bc3:
         loaded_id    = st.session_state.get("ws_loaded_id")
-        save_label   = "💾 Update" if loaded_id else "💾 Save"
+        save_label   = t("worksheet.actions.update", "Update") if loaded_id else t("worksheet.actions.save", "Save")
         save_clicked = st.button(save_label, use_container_width=True, type="primary")
 
 st.divider()
@@ -386,39 +422,43 @@ st.divider()
 # ── Title / date ──
 hc1, hc2 = st.columns([3, 1])
 with hc1:
-    st.text_input("Title", key="ws_title", placeholder="e.g. Astrid #1")
+    st.text_input(t("worksheet.fields.title", "Title"), key="ws_title", placeholder=t("worksheet.fields.title_placeholder", "e.g. Astrid #1"))
 with hc2:
-    st.date_input("Date", key="ws_job_date")
+    st.date_input(t("worksheet.fields.date", "Date"), key="ws_job_date")
 
 st.divider()
 
 # ── 3D Print Dimensions (inputs) ──
-st.subheader("3D Print Dimensions")
+st.subheader(t("worksheet.sections.print_dimensions", "3D Print Dimensions"))
 dc1, dc2, dc3, dc4, dc5 = st.columns(5)
 with dc1:
-    st.number_input("Width X (mm)",       min_value=0.0, step=0.5, format="%.1f", key="ws_width_mm")
+    st.number_input(t("worksheet.fields.width", "Width X (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_width_mm")
 with dc2:
-    st.number_input("Depth Y (mm)",       min_value=0.0, step=0.5, format="%.1f", key="ws_depth_mm")
+    st.number_input(t("worksheet.fields.depth", "Depth Y (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_depth_mm")
 with dc3:
-    st.number_input("Base (mm)",       min_value=0.0, step=0.5, format="%.1f", key="ws_base_mm")
+    st.number_input(t("worksheet.fields.base", "Base (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_base_mm")
 with dc4:
-    st.number_input("Relief (mm)", min_value=0.0, step=0.1, format="%.1f", key="ws_height_mm")
+    st.number_input(t("worksheet.fields.relief", "Relief (mm)"), min_value=0.0, step=0.1, format="%.1f", key="ws_height_mm")
 with dc5:
-    st.number_input("STL Volume (cm³)",   min_value=0.0, step=1.0, format="%.1f", key="ws_stl_volume")
+    st.number_input(t("worksheet.fields.stl_volume", "STL Volume (cm3)"), min_value=0.0, step=1.0, format="%.1f", key="ws_stl_volume")
 
 st.divider()
 
 # ── Mold Geometry (inputs) ──
-st.subheader("Mold Geometry")
-st.caption("Gap width between the print and the containment box walls.")
-st.number_input("Gap Width (mm)", min_value=0.0, max_value=30.0, step=1.0, format="%.0f", key="ws_wall_mm")
+st.subheader(t("worksheet.sections.mold_geometry", "Mold Geometry"))
+st.caption(t("worksheet.geometry.caption", "Gap width between the print and the containment box walls."))
+st.number_input(t("worksheet.fields.gap_width", "Gap Width (mm)"), min_value=0.0, max_value=30.0, step=1.0, format="%.0f", key="ws_wall_mm")
 
 st.divider()
 
 # ── Mold type selector ──
-st.subheader("Mold Type")
-st.selectbox("Mold workflow", ["Alginate + Investment", "Silicone"],
-             key="ws_mold_type")
+st.subheader(t("worksheet.sections.mold_type", "Mold Type"))
+st.selectbox(
+    t("worksheet.fields.workflow", "Mold workflow"),
+    ["Alginate + Investment", "Silicone"],
+    format_func=mold_type_label,
+    key="ws_mold_type",
+)
 
 st.divider()
 
@@ -436,20 +476,20 @@ g = calc_geometry(w, d,
                   stl)
 
 # ── 3D Print results ──
-card("3D PRINT CALCULATIONS", [
-    ("Base Volume",       f"{p['base_volume']} cm³"),
-    ("Max Z Height",      f"{p['max_z']} mm"),
-    ("Art Space Volume",  f"{p['art_space_vol']} cm³"),
-    ("Actual Art Volume", f"{p['actual_art_vol']} cm³"),
-    ("Volume to Max Z",   f"{p['vol_to_max_z']} cm³"),
+card(t("worksheet.cards.print_calculations", "3D PRINT CALCULATIONS"), [
+    (t("worksheet.labels.base_volume", "Base Volume"), f"{p['base_volume']} cm3"),
+    (t("worksheet.labels.max_z_height", "Max Z Height"), f"{p['max_z']} mm"),
+    (t("worksheet.labels.art_space_volume", "Art Space Volume"), f"{p['art_space_vol']} cm3"),
+    (t("worksheet.labels.actual_art_volume", "Actual Art Volume"), f"{p['actual_art_vol']} cm3"),
+    (t("worksheet.labels.volume_to_max_z", "Volume to Max Z"), f"{p['vol_to_max_z']} cm3"),
 ], bg="#f0f2f6", border="#888", label_color="#444", value_color="#111")
 
 # ── Mold geometry results ──
-card("MOLD BOX", [
-    ("Box W × D",       f"{g['box_w']:.0f} × {g['box_d']:.0f} mm"),
-    ("Box Volume",      f"{g['box_volume']} cm³"),
-    ("Model Volume",    f"{g['model_volume']} cm³"),
-    ("Mold Volume",     f"{g['mold_vol']} cm³"),
+card(t("worksheet.cards.mold_box", "MOLD BOX"), [
+    (t("worksheet.labels.box_wd", "Box W x D"), f"{g['box_w']:.0f} x {g['box_d']:.0f} mm"),
+    (t("worksheet.labels.box_volume", "Box Volume"), f"{g['box_volume']} cm3"),
+    (t("worksheet.labels.model_volume", "Model Volume"), f"{g['model_volume']} cm3"),
+    (t("worksheet.labels.mold_volume", "Mold Volume"), f"{g['mold_vol']} cm3"),
 ], bg="#f0f2f6", border="#888", label_color="#444", value_color="#111")
 
 # ── Mold-type-specific inputs + results ──
@@ -457,64 +497,69 @@ mold_type = st.session_state["ws_mold_type"]
 
 if mold_type == "Alginate + Investment":
     # ── Alginate inputs ──
-    st.subheader("Alginate")
-    st.number_input("Adjust Base Z (mm)", min_value=0.0, step=0.5, format="%.1f",
+    st.subheader(t("worksheet.alginate.title", "Alginate"))
+    st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
                     key="ws_alg_adjust_zi")
-    st.number_input("Mix Ratio (water : 1 alginate)", min_value=1.0, max_value=20.0,
+    st.number_input(t("worksheet.fields.alginate_ratio", "Mix Ratio (water : 1 alginate)"), min_value=1.0, max_value=20.0,
                     step=0.5, format="%.1f", key="ws_alg_mix_ratio",
-                    help="e.g. 5.5 = 5.5 parts water to 1 part alginate")
+                    help=t("worksheet.fields.alginate_ratio_help", "e.g. 5.5 = 5.5 parts water to 1 part alginate"))
     a = calc_alginate(w, d, g["mold_vol"], p["max_z"],
                       st.session_state["ws_wall_mm"],
                       st.session_state["ws_alg_adjust_zi"],
                       st.session_state["ws_alg_mix_ratio"])
-    card(f"ACCU-CAST ALGINATE 570 PGV  ·  {st.session_state['ws_alg_mix_ratio']:.1f} : 1", [
-        ("Mold Volume  (Box − Model + Z)", f"{a['alg_mold_vol']} cm³"),
-        ("Water",                              f"{a['alg_water_g']} g"),
-        ("Alginate",                           f"{a['alg_alginate_g']} g"),
-        ("Mold Thickness",                     f"{a['alg_thickness']} mm"),
-        ("Total Thickness",                    f"{a['alg_total_thick']} mm"),
+    card(t("worksheet.cards.alginate", "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1", ratio=f"{st.session_state['ws_alg_mix_ratio']:.1f}"), [
+        (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{a['alg_mold_vol']} cm3"),
+        (t("worksheet.labels.water", "Water"), f"{a['alg_water_g']} g"),
+        (t("worksheet.labels.alginate", "Alginate"), f"{a['alg_alginate_g']} g"),
+        (t("worksheet.labels.mold_thickness", "Mold Thickness"), f"{a['alg_thickness']} mm"),
+        (t("worksheet.labels.total_thickness", "Total Thickness"), f"{a['alg_total_thick']} mm"),
     ], bg="#dcfce7", border="#22c55e", label_color="#166534", value_color="#14532d")
 
     st.divider()
 
     # ── Investment inputs ──
-    st.subheader("Investment")
-    st.number_input("Adjust Base Z (mm)", min_value=0.0, step=0.5, format="%.1f",
+    st.subheader(t("worksheet.investment.title", "Investment"))
+    st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
                     key="ws_inv_adjust_zi")
     i = calc_investment(w, d, g["mold_vol"], p["max_z"],
                         st.session_state["ws_wall_mm"],
                         st.session_state["ws_inv_adjust_zi"])
-    card(f"DRY INVESTMENT / PLASTER + SILICA  ·  Mold vol {i['inv_vol']} cm³", [
-        ("Mold Volume  (Box − Model + Z)", f"{i['inv_vol']} cm³"),
-        ("Dry Investment",                     f"{i['dry_investment']} g"),
-        ("Plaster",                            f"{i['plaster_g']} g"),
-        ("Silica Flour",                       f"{i['silica_g']} g"),
-        ("Water",                              f"{i['inv_water_g']} g"),
-        ("Total Thickness",                    f"{i['inv_total_thick']} mm"),
+    card(t("worksheet.cards.dry_investment", "DRY INVESTMENT / PLASTER + SILICA · Mold vol {volume} cm3", volume=f"{i['inv_vol']}"), [
+        (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{i['inv_vol']} cm3"),
+        (t("worksheet.labels.dry_investment", "Dry Investment"), f"{i['dry_investment']} g"),
+        (t("worksheet.labels.plaster", "Plaster"), f"{i['plaster_g']} g"),
+        (t("worksheet.labels.silica_flour", "Silica Flour"), f"{i['silica_g']} g"),
+        (t("worksheet.labels.water", "Water"), f"{i['inv_water_g']} g"),
+        (t("worksheet.labels.total_thickness", "Total Thickness"), f"{i['inv_total_thick']} mm"),
     ], bg="#fef9c3", border="#eab308", label_color="#92400e", value_color="#78350f")
-    card(f"R&R 910  ·  Mold vol {i['inv_vol']} cm³ × 1.88", [
-        ("R&R 910", f"{i['rr910_g']} g"),
-        ("Water",   f"{i['rr910_water_g']} g"),
+    card(t("worksheet.cards.rr910", "R&R 910 · Mold vol {volume} cm3 x 1.88", volume=f"{i['inv_vol']}"), [
+        (t("worksheet.labels.rr910", "R&R 910"), f"{i['rr910_g']} g"),
+        (t("worksheet.labels.water", "Water"), f"{i['rr910_water_g']} g"),
     ], bg="#f3e8ff", border="#a855f7", label_color="#6b21a8", value_color="#581c87")
 
 elif mold_type == "Silicone":
-    st.number_input("Adjust Base Z (mm)", min_value=0.0, step=0.5, format="%.1f",
+    st.subheader(t("worksheet.silicone.title", "Silicone"))
+    st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
                     key="ws_si_adjust_zi")
-    st.number_input("Mix Ratio (x : 1)", min_value=1.0, max_value=20.0,
+    st.number_input(t("worksheet.fields.silicone_ratio", "Mix Ratio (x : 1)"), min_value=1.0, max_value=20.0,
                     step=0.5, format="%.1f", key="ws_si_mix_ratio")
     s = calc_silicone(w, d, g["box_volume"], g["model_volume"],
                       st.session_state["ws_si_adjust_zi"],
                       st.session_state["ws_si_mix_ratio"])
-    card(f"SIRATECH SILICONE  ·  ratio {st.session_state['ws_si_mix_ratio']:.1f} : 1", [
-        ("Mold Volume  (Box − Model + Z)", f"{s['mold_volume_si']} cm³"),
-        ("Total  (× 1.12)",                  f"{s['silicone_g']} g"),
-        ("Part A",                              f"{s['part_a']} g"),
-        ("Part B",                              f"{s['part_b']} g"),
+    card(t("worksheet.cards.silicone", "SIRATECH SILICONE · ratio {ratio} : 1", ratio=f"{st.session_state['ws_si_mix_ratio']:.1f}"), [
+        (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{s['mold_volume_si']} cm3"),
+        (t("worksheet.labels.total", "Total"), f"{s['silicone_g']} g"),
+        (t("worksheet.labels.part_a", "Part A"), f"{s['part_a']} g"),
+        (t("worksheet.labels.part_b", "Part B"), f"{s['part_b']} g"),
     ], bg="#dbeafe", border="#3b82f6", label_color="#1e40af", value_color="#1e3a8a")
 
 st.divider()
-st.text_area("Notes", key="ws_notes", height=80,
-             placeholder="Any observations, adjustments, or special instructions…")
+st.text_area(
+    t("worksheet.sections.notes", "Notes"),
+    key="ws_notes",
+    height=80,
+    placeholder=t("worksheet.fields.notes_placeholder", "Any observations, adjustments, or special instructions..."),
+)
 
 # ─────────────────────────────────────────
 # Save
@@ -522,7 +567,7 @@ st.text_area("Notes", key="ws_notes", height=80,
 if save_clicked:
     title = st.session_state["ws_title"].strip()
     if not title:
-        st.error("Please enter a title before saving.")
+        st.error(t("errors.worksheet.title_required", "Please enter a title before saving."))
     else:
         job_date_val = st.session_state["ws_job_date"]
         job_date_str = job_date_val.isoformat() if hasattr(job_date_val, "isoformat") else str(job_date_val)
@@ -546,9 +591,9 @@ if save_clicked:
         )
         if loaded_id:
             update_record(loaded_id, rec)
-            st.success(f"Record updated: {title}")
+            st.success(t("messages.worksheet.record_updated", "Record updated: {title}", title=title))
         else:
             new_id = save_record(rec)
             st.session_state["ws_loaded_id"] = new_id
-            st.success(f"Record saved: {title}")
+            st.success(t("messages.worksheet.record_saved", "Record saved: {title}", title=title))
         st.rerun()

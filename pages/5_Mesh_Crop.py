@@ -17,10 +17,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from i18n import render_app_sidebar, t as tr
 
-st.set_page_config(page_title="Mesh Crop", layout="wide")
-st.title("Mesh Crop")
-st.caption("Upload STL → rotate proxy image → draw crop box → download.")
+st.set_page_config(page_title=tr("page.mesh_crop.title", "Mesh Crop"), layout="wide")
+render_app_sidebar()
+st.title(tr("page.mesh_crop.title", "Mesh Crop"))
+st.caption(tr("page.mesh_crop.caption", "Upload STL | rotate proxy image | draw crop box | download."))
 
 # ─────────────────────────────────────────
 # Constants
@@ -54,7 +56,7 @@ def parse_stl(data: bytes):
                 remap[used] = np.arange(len(used))
                 return verts[used], remap[tris]
         except Exception as e:
-            st.warning(f"Binary parse issue ({e}), trying ASCII…")
+            st.warning(tr("page.mesh_crop.messages.parse_ascii_fallback", "Binary parse issue ({error}); trying ASCII...", error=e))
     text = data.decode("utf-8", errors="replace")
     verts, tris, buf = [], [], []
     for line in text.splitlines():
@@ -209,11 +211,11 @@ for k, v in defaults.items():
 # ─────────────────────────────────────────
 # Upload
 # ─────────────────────────────────────────
-uploaded = st.file_uploader("Upload STL", type=["stl"])
+uploaded = st.file_uploader(tr("page.mesh_crop.fields.upload_stl", "Upload STL"), type=["stl"])
 if uploaded and uploaded.name != st.session_state["filename"]:
-    with st.spinner("Parsing STL…"):
+    with st.spinner(tr("page.mesh_crop.messages.parsing", "Parsing STL...")):
         v, t = parse_stl(uploaded.read())
-    with st.spinner("Rendering proxy…"):
+    with st.spinner(tr("page.mesh_crop.messages.rendering_proxy", "Rendering proxy...")):
         png, transform = render_proxy(v, deg=0)
     st.session_state.update({
         "raw_verts": v, "raw_tris": t,
@@ -221,10 +223,10 @@ if uploaded and uploaded.name != st.session_state["filename"]:
         "proxy_png": png, "proxy_transform": transform,
         "proxy_deg": 0, "sel_px": None,
     })
-    st.success(f"**{uploaded.name}** — {len(t):,} triangles")
+    st.success(tr("page.mesh_crop.messages.file_loaded", "**{name}** | {triangles} triangles", name=uploaded.name, triangles=f"{len(t):,}"))
 
 if st.session_state["raw_verts"] is None:
-    st.info("Upload an STL to get started.")
+    st.info(tr("page.mesh_crop.messages.upload_to_start", "Upload an STL to get started."))
     st.stop()
 
 st.divider()
@@ -235,12 +237,12 @@ st.divider()
 left, right = st.columns([1, 3], gap="large")
 
 with left:
-    st.subheader("Rotation")
-    deg = st.slider("Rotate Z°", -180, 180,
+    st.subheader(tr("page.mesh_crop.sections.rotation", "Rotation"))
+    deg = st.slider(tr("page.mesh_crop.fields.rotate_z", "Rotate Z degrees"), -180, 180,
                     value=st.session_state["proxy_deg"], key="rot_slider")
 
-    if st.button("Apply rotation", use_container_width=True):
-        with st.spinner("Re-rendering…"):
+    if st.button(tr("page.mesh_crop.actions.apply_rotation", "Apply rotation"), use_container_width=True):
+        with st.spinner(tr("page.mesh_crop.messages.rerendering", "Re-rendering...")):
             png, transform = render_proxy(st.session_state["raw_verts"], deg)
         st.session_state.update({
             "proxy_png": png,
@@ -251,16 +253,16 @@ with left:
         st.rerun()
 
     st.divider()
-    st.subheader("Crop")
+    st.subheader(tr("page.mesh_crop.sections.crop", "Crop"))
 
     sel = st.session_state["sel_px"]
 
     if sel:
         transform = st.session_state["proxy_transform"]
         mx0, mx1, my0, my1 = pixels_to_mesh(*sel, transform, IMG_W, IMG_H)
-        st.markdown("**Selection (mesh coords)**")
-        st.caption(f"X: {mx0:.1f} → {mx1:.1f}")
-        st.caption(f"Y: {my0:.1f} → {my1:.1f}")
+        st.markdown(f"**{tr('page.mesh_crop.labels.selection_coords', 'Selection (mesh coords)')}**")
+        st.caption(tr("page.mesh_crop.labels.selection_x", "X: {start} -> {end}", start=f"{mx0:.1f}", end=f"{mx1:.1f}"))
+        st.caption(tr("page.mesh_crop.labels.selection_y", "Y: {start} -> {end}", start=f"{my0:.1f}", end=f"{my1:.1f}"))
         st.divider()
 
         raw_v = st.session_state["raw_verts"]
@@ -278,13 +280,13 @@ with left:
         c_verts, c_tris, n_kept = crop_mesh_xy(
             rotated, raw_t, mx0, mx1, my0, my1)
 
-        st.metric("Triangles in crop", f"{n_kept:,}")
+        st.metric(tr("page.mesh_crop.metrics.triangles_in_crop", "Triangles in crop"), f"{n_kept:,}")
 
         if n_kept > 0:
             stl_bytes = write_stl_binary(c_verts, c_tris)
             stem = st.session_state["filename"].rsplit(".", 1)[0]
             st.download_button(
-                "⬇️ Download cropped STL",
+                f"⬇️ {tr('page.mesh_crop.actions.download_cropped_stl', 'Download cropped STL')}",
                 data=stl_bytes,
                 file_name=f"{stem}_cropped.stl",
                 mime="application/octet-stream",
@@ -292,13 +294,13 @@ with left:
                 type="primary",
             )
         else:
-            st.warning("No triangles in selection — try a larger box.")
+            st.warning(tr("page.mesh_crop.messages.no_triangles", "No triangles in selection - try a larger box."))
 
-        if st.button("✕ Clear selection", use_container_width=True):
+        if st.button(f"✕ {tr('page.mesh_crop.actions.clear_selection', 'Clear selection')}", use_container_width=True):
             st.session_state["sel_px"] = None
             st.rerun()
     else:
-        st.caption("Draw a box on the image, then click **Confirm crop**.")
+        st.caption(tr("page.mesh_crop.caption.draw_box", "Draw a box on the image to create the crop selection."))
 
 # ─────────────────────────────────────────
 # Preview

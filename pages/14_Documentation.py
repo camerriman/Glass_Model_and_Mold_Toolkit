@@ -4,15 +4,17 @@ Reference documentation for the 3D Mold Making workflow.
 """
 
 import streamlit as st
+from i18n import render_app_sidebar, t as tr
 
-st.set_page_config(page_title="Documentation", layout="wide")
-st.title("Documentation")
-st.caption("Reference materials, material specs, and workflow notes for the 3D mold making process.")
+st.set_page_config(page_title=tr("page.documentation.title", "Documentation"), layout="wide")
+render_app_sidebar()
+st.title(tr("page.documentation.title", "Documentation"))
+st.caption(tr("page.documentation.caption", "Reference materials, material specs, and workflow notes for the 3D mold making process."))
 
 # ─────────────────────────────────────────
 # Materials
 # ─────────────────────────────────────────
-st.header("Materials")
+st.header(tr("page.documentation.materials", "Materials"))
 
 with st.expander("Accu-Cast Alginate 570 PGV", expanded=False):
     st.markdown("""
@@ -87,7 +89,7 @@ st.divider()
 # ─────────────────────────────────────────
 # Workflows
 # ─────────────────────────────────────────
-st.header("Workflows")
+st.header(tr("page.documentation.workflows", "Workflows"))
 
 with st.expander("Alginate Mold — Step by Step", expanded=False):
     st.markdown("""
@@ -135,7 +137,7 @@ st.divider()
 # ─────────────────────────────────────────
 # Tools & Output
 # ─────────────────────────────────────────
-st.header("Tools & Output")
+st.header(tr("page.documentation.tools_output", "Tools & Output"))
 
 with st.expander("What The STL Files Are Used For", expanded=False):
     st.markdown("""
@@ -232,7 +234,7 @@ st.divider()
 # ─────────────────────────────────────────
 # Glossary
 # ─────────────────────────────────────────
-st.header("Glossary")
+st.header(tr("page.documentation.glossary", "Glossary"))
 
 with st.expander("Terms & Definitions", expanded=False):
     st.markdown("""
@@ -255,7 +257,7 @@ st.divider()
 # ─────────────────────────────────────────
 # Safety & Handling
 # ─────────────────────────────────────────
-st.header("Safety & Handling")
+st.header(tr("page.documentation.safety", "Safety & Handling"))
 
 with st.expander("Alginate", expanded=False):
     st.markdown("_Placeholder — add safety and handling notes here._")
@@ -271,5 +273,5 @@ st.divider()
 # ─────────────────────────────────────────
 # Notes
 # ─────────────────────────────────────────
-st.header("General Notes")
+st.header(tr("page.documentation.general_notes", "General Notes"))
 st.markdown("_Placeholder — add general workflow notes, tips, and observations here._")

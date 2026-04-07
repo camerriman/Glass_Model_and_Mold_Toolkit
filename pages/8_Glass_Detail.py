@@ -16,6 +16,8 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
+from i18n import render_app_sidebar, t, translate_element_name, translate_family_name
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -64,9 +66,10 @@ REACTION_RULES = {
 
 _early_cat_id = st.query_params.get("cat_id", "")
 st.set_page_config(
-    page_title=f"Glass Detail · {_early_cat_id}" if _early_cat_id else "Glass Detail",
+    page_title=f"{t('detail.title', 'Glass Detail')} | {_early_cat_id}" if _early_cat_id else t("detail.title", "Glass Detail"),
     layout="wide",
 )
+render_app_sidebar()
 
 # ---------------------------------------------------------------------------
 # Print stylesheet — hides sidebar, expands content, fixes iframe tables
@@ -336,7 +339,10 @@ if query_return_label:
 
 if not glass_id:
     st.info(
-        'No glass selected. Open this page from the Glass Library or Color Wheel by clicking "Open full datasheet".'
+        t(
+            "detail.messages.no_glass_selected",
+            'No glass selected. Open this page from the Glass Library or Color Wheel by clicking "Open full datasheet".',
+        )
     )
     st.stop()
 
@@ -351,7 +357,7 @@ if not st.session_state.get("_detail_loaded"):
 # ---------------------------------------------------------------------------
 catalog = fetch_catalog(str(glass_id))
 if not catalog:
-    st.error(f"No catalog entry found for {glass_id}.")
+    st.error(t("detail.messages.not_found", "No catalog entry found for {glass_id}.", glass_id=glass_id))
     st.stop()
 
 meas_r = fetch_meas(str(glass_id), "R") or {}
@@ -359,7 +365,7 @@ meas_t = fetch_meas(str(glass_id), "T") or {}
 
 family_code = str(catalog.get("glass_family") or "1")
 prefix = FAMILY_CODE_TO_PREFIX.get(family_code, "opal")
-family_name = FAMILY_CODE_TO_NAME.get(family_code, "Glass")
+family_name = translate_family_name(family_code, FAMILY_CODE_TO_NAME.get(family_code, "Glass"))
 thickness = safe_float(
     meas_r.get("thickness_mm") or meas_t.get("thickness_mm"), default=2.0
 )
@@ -388,7 +394,12 @@ if color_name:
     st.html(f"<title>{glass_id} {color_name}</title>")
 
 detail_return_page = st.session_state.get("detail_return_page") or query_return_page
-detail_return_label = st.session_state.get("detail_return_label") or query_return_label or "Back"
+detail_return_label_key = st.session_state.get("detail_return_label_key")
+detail_return_label = (
+    t(detail_return_label_key, query_return_label or "Back")
+    if detail_return_label_key
+    else st.session_state.get("detail_return_label") or query_return_label or t("shared.actions.back", "Back")
+)
 
 # ---------------------------------------------------------------------------
 # Page header
@@ -399,7 +410,7 @@ with col_back:
     if st.button(f"\u2190 {detail_return_label}", key="detail_back", width="content"):
         target = detail_return_page or "pages/6_Glass_Library.py"
         if not switch_to_page(target):
-            st.warning("Could not return to the previous page.")
+            st.warning(t("detail.messages.return_failed", "Could not return to the previous page."))
 with col_title:
     st.title(f"{glass_id}  {color_name}")
 
@@ -426,36 +437,44 @@ with col_title:
         badge_html += (
             '<span style="background:#e05020;color:white;font-size:11px;'
             'font-weight:bold;padding:2px 8px;border-radius:3px;margin-right:8px;">'
-            'STRIKER</span>'
+            f"{t('compare.badge.striker', 'STRIKER')}</span>"
         )
 
     # Contains badges
     if contains:
-        badge_html += '<span style="font-size:12px;color:#555;margin-right:6px;font-weight:bold;">Contains:</span>'
+        badge_html += (
+            '<span style="font-size:12px;color:#555;margin-right:6px;font-weight:bold;">'
+            f"{t('detail.labels.contains', 'Contains:')}"
+            "</span>"
+        )
         for el in contains:
             bg = ELEMENT_COLOURS.get(el, "#888")
             badge_html += (
                 f'<span style="background:{bg};color:white;font-size:11px;'
                 f'font-weight:bold;padding:2px 7px;border-radius:3px;margin-right:4px;">'
-                f'{el}</span>'
+                f'{translate_element_name(el)}</span>'
             )
 
     # Reacts with badges
     if reacts:
-        badge_html += '<span style="font-size:12px;color:#555;margin-left:10px;margin-right:6px;font-weight:bold;">May react with:</span>'
+        badge_html += (
+            '<span style="font-size:12px;color:#555;margin-left:10px;margin-right:6px;font-weight:bold;">'
+            f"{t('detail.labels.may_react_with', 'May react with:')}"
+            "</span>"
+        )
         for el in reacts:
             bg = ELEMENT_COLOURS.get(el, "#888")
             badge_html += (
                 f'<span style="background:{bg};color:white;font-size:11px;'
                 f'font-weight:bold;padding:2px 7px;border-radius:3px;margin-right:4px;'
-                f'opacity:0.7;">* {el}</span>'
+                f'opacity:0.7;">* {translate_element_name(el)}</span>'
             )
 
     badge_html += '</div>'
     st.markdown(badge_html, unsafe_allow_html=True)
 with col_print:
     st.download_button(
-        "Download PDF",
+        t("detail.actions.download_pdf", "Download PDF"),
         data=pdf_bytes,
         file_name=f"{glass_id}_glass_detail.pdf",
         mime="application/pdf",
@@ -505,11 +524,11 @@ def measurement_table(meas: dict):
 # Reflected row
 r_col1, r_col2, r_col3 = st.columns([0.4, 0.2, 0.4])
 with r_col1:
-    st.markdown("#### Reflected Light")
+    st.markdown(f"#### {t('detail.sections.reflected_light', 'Reflected Light')}")
     if meas_r:
         measurement_table(meas_r)
     else:
-        st.write("No reflected measurement data.")
+        st.write(t("detail.messages.no_reflected_data", "No reflected measurement data."))
 with r_col2:
     fp = reflected_full_image
     if fp:
@@ -518,18 +537,18 @@ with r_col2:
         st.image(str(MISSING_FULL), width=300)
 
 with r_col3:
-    st.markdown(f"**Thickness (ref):** {thickness} mm")
+    st.markdown(t("detail.messages.thickness_ref", "**Thickness (ref):** {thickness} mm", thickness=thickness))
 
 st.divider()
 
 # Transmitted row
 t_col1, t_col2, _ = st.columns([0.4, 0.2, 0.4])
 with t_col1:
-    st.markdown("#### Transmitted Light")
+    st.markdown(f"#### {t('detail.sections.transmitted_light', 'Transmitted Light')}")
     if meas_t:
         measurement_table(meas_t)
     else:
-        st.write("No transmitted measurement data.")
+        st.write(t("detail.messages.no_transmitted_data", "No transmitted measurement data."))
 with t_col2:
     fp = transmitted_full_image
     if fp:
@@ -545,10 +564,14 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Beer-Lambert curves + data tables
 # ---------------------------------------------------------------------------
-st.markdown("### Optical Response Curves")
+st.markdown(f"### {t('detail.sections.optical_curves', 'Optical Response Curves')}")
 st.caption(
-    f"Beer-Lambert extrapolation from reference measurement at {thickness} mm · "
-    f"Range: 0 – {max_t:.1f} mm"
+    t(
+        "detail.caption.optical_curves",
+        "Beer-Lambert extrapolation from reference measurement at {thickness} mm · Range: 0 - {max_thickness} mm",
+        thickness=thickness,
+        max_thickness=f"{max_t:.1f}",
+    )
 )
 
 def color_shift_table_html(meas: dict, thickness: float, max_t: float, title: str) -> str:
@@ -588,7 +611,7 @@ def color_shift_table_html(meas: dict, thickness: float, max_t: float, title: st
           <th style="padding:4px 10px; text-align:center;">R</th>
           <th style="padding:4px 10px; text-align:center;">G</th>
           <th style="padding:4px 10px; text-align:center;">B</th>
-          <th style="padding:4px 10px; text-align:center;">Color</th>
+          <th style="padding:4px 10px; text-align:center;">{t('detail.table.color', 'Color')}</th>
         </tr>
       </thead>
       <tbody>{rows_html}</tbody>
@@ -623,8 +646,8 @@ def bs_table_html(meas: dict, thickness: float, max_t: float, title: str) -> str
         </tr>
         <tr style="background:#666; color:white;">
           <th style="padding:4px 10px; text-align:left;">mm</th>
-          <th style="padding:4px 10px; text-align:center;">Brightness</th>
-          <th style="padding:4px 10px; text-align:center;">Saturation</th>
+          <th style="padding:4px 10px; text-align:center;">{t('detail.table.brightness', 'Brightness')}</th>
+          <th style="padding:4px 10px; text-align:center;">{t('detail.table.saturation', 'Saturation')}</th>
         </tr>
       </thead>
       <tbody>{rows_html}</tbody>
@@ -638,9 +661,9 @@ def rgb_curve_figure(meas: dict, thickness: float, max_t: float, title: str) -> 
         fig.add_trace(go.Scatter(x=t_arr, y=I_arr, mode="lines", name=label,
                                   line=dict(color=color, width=2)))
     fig.add_vline(x=thickness, line_dash="dash", line_color="gray",
-                  annotation_text=f"ref {thickness}mm", annotation_position="top right")
-    fig.update_layout(title=title, xaxis_title="Thickness (mm)",
-                      yaxis_title="Channel Value (0–255)",
+                  annotation_text=t("detail.figure.ref_marker", "ref {thickness} mm", thickness=thickness), annotation_position="top right")
+    fig.update_layout(title=title, xaxis_title=t("editor.fields.thickness", "Thickness (mm)"),
+                      yaxis_title=t("detail.figure.channel_value", "Channel Value (0-255)"),
                       yaxis=dict(range=[0, 260]), xaxis=dict(range=[0, max_t]),
                       legend=dict(orientation="h", y=1.1), height=350,
                       margin=dict(l=40, r=20, t=60, b=40))
@@ -654,14 +677,14 @@ def bs_curve_figure(meas: dict, thickness: float, max_t: float, title: str) -> g
     b_val = safe_int(meas.get("B"))
     t_arr, V_arr = hsv_brightness_curve(v_val, thickness, max_t)
     t_arr, S_arr = hsv_saturation_curve(r_val, g_val, b_val, thickness, max_t)
-    fig.add_trace(go.Scatter(x=t_arr, y=V_arr, mode="lines", name="Brightness",
+    fig.add_trace(go.Scatter(x=t_arr, y=V_arr, mode="lines", name=t("detail.table.brightness", "Brightness"),
                               line=dict(color="cornflowerblue", width=2)))
-    fig.add_trace(go.Scatter(x=t_arr, y=S_arr, mode="lines", name="Saturation",
+    fig.add_trace(go.Scatter(x=t_arr, y=S_arr, mode="lines", name=t("detail.table.saturation", "Saturation"),
                               line=dict(color="limegreen", width=2)))
     fig.add_vline(x=thickness, line_dash="dash", line_color="gray",
-                  annotation_text=f"ref {thickness}mm", annotation_position="top right")
-    fig.update_layout(title=title, xaxis_title="Thickness (mm)",
-                      yaxis_title="Brightness (0–100)",
+                  annotation_text=t("detail.figure.ref_marker", "ref {thickness} mm", thickness=thickness), annotation_position="top right")
+    fig.update_layout(title=title, xaxis_title=t("editor.fields.thickness", "Thickness (mm)"),
+                      yaxis_title=t("detail.figure.brightness_axis", "Brightness (0-100)"),
                       yaxis=dict(range=[0, 105]), xaxis=dict(range=[0, max_t]),
                       legend=dict(orientation="h", y=1.1), height=350,
                       margin=dict(l=40, r=20, t=60, b=40))
@@ -672,32 +695,32 @@ table_height = 60 + (table_rows * 26)
 
 # --- Reflected curves + tables ---
 if meas_r:
-    st.markdown("#### Reflected")
+    st.markdown(f"#### {t('detail.sections.reflected', 'Reflected')}")
     rc1, rc2 = st.columns(2)
     with rc1:
-        st.plotly_chart(rgb_curve_figure(meas_r, thickness, max_t, "Reflected Color Shift"),
+        st.plotly_chart(rgb_curve_figure(meas_r, thickness, max_t, t("detail.figure.color_shift.reflected", "Reflected Color Shift")),
                         width='stretch')
-        components.html(color_shift_table_html(meas_r, thickness, max_t, "Reflected Color Shift"),
+        components.html(color_shift_table_html(meas_r, thickness, max_t, t("detail.figure.color_shift.reflected", "Reflected Color Shift")),
                         height=table_height, scrolling=False)
     with rc2:
-        st.plotly_chart(bs_curve_figure(meas_r, thickness, max_t, "Reflected Brightness & Saturation"),
+        st.plotly_chart(bs_curve_figure(meas_r, thickness, max_t, t("detail.figure.bs.reflected", "Reflected Brightness & Saturation")),
                         width='stretch')
-        components.html(bs_table_html(meas_r, thickness, max_t, "Reflected Brightness & Saturation"),
+        components.html(bs_table_html(meas_r, thickness, max_t, t("detail.figure.bs.reflected", "Reflected Brightness & Saturation")),
                         height=table_height, scrolling=False)
 
 # --- Transmitted curves + tables ---
 if meas_t:
-    st.markdown("#### Transmitted")
+    st.markdown(f"#### {t('detail.sections.transmitted', 'Transmitted')}")
     tc1, tc2 = st.columns(2)
     with tc1:
-        st.plotly_chart(rgb_curve_figure(meas_t, thickness, max_t, "Transmitted Color Shift"),
+        st.plotly_chart(rgb_curve_figure(meas_t, thickness, max_t, t("detail.figure.color_shift.transmitted", "Transmitted Color Shift")),
                         width='stretch')
-        components.html(color_shift_table_html(meas_t, thickness, max_t, "Transmitted Color Shift"),
+        components.html(color_shift_table_html(meas_t, thickness, max_t, t("detail.figure.color_shift.transmitted", "Transmitted Color Shift")),
                         height=table_height, scrolling=False)
     with tc2:
-        st.plotly_chart(bs_curve_figure(meas_t, thickness, max_t, "Transmitted Brightness & Saturation"),
+        st.plotly_chart(bs_curve_figure(meas_t, thickness, max_t, t("detail.figure.bs.transmitted", "Transmitted Brightness & Saturation")),
                         width='stretch')
-        components.html(bs_table_html(meas_t, thickness, max_t, "Transmitted Brightness & Saturation"),
+        components.html(bs_table_html(meas_t, thickness, max_t, t("detail.figure.bs.transmitted", "Transmitted Brightness & Saturation")),
                         height=table_height, scrolling=False)
 
 st.divider()
@@ -712,7 +735,7 @@ work = (catalog.get("working_notes") or "").strip()
 
 with notes_col1:
     if cold:
-        st.markdown("### Cold Characteristics")
+        st.markdown(f"### {t('shared.sections.cold_characteristics', 'Cold Characteristics')}")
         cold_height = min(max(100, len(cold) // 2), 1000)
         components.html(
             note_markup(cold),
@@ -721,7 +744,7 @@ with notes_col1:
 
 with notes_col2:
     if work:
-        st.markdown("### Working Notes")
+        st.markdown(f"### {t('shared.sections.working_notes', 'Working Notes')}")
         work_height = min(max(100, len(work) // 2), 1000)
         components.html(
             note_markup(work),

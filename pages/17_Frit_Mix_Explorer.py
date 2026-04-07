@@ -11,6 +11,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from i18n import join_list, render_app_sidebar, t, translate_family_name, translate_mode_name
+
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
 IMG_ROOT = APP_ROOT / "images"
@@ -25,23 +27,20 @@ FAMILY_PREFIX_BY_CODE = {
 FRIT_BEHAVIOUR = {
     "Powdered": {
         "factor": 0.18,
-        "label": "Powdered glass should integrate most smoothly, but bubble control matters more before firing.",
     },
     "Fine": {
         "factor": 0.35,
-        "label": "Fine frit should integrate more softly and visually average more quickly.",
     },
     "Medium": {
         "factor": 0.65,
-        "label": "Medium frit keeps some local contrast while still reading as a blended field.",
     },
     "Coarse": {
         "factor": 1.0,
-        "label": "Coarse frit is more likely to keep individual colour pockets visible.",
     },
 }
 
-st.set_page_config(page_title="Frit Mix Explorer", layout="wide")
+st.set_page_config(page_title=t("frit.title", "Frit Mix Explorer"), layout="wide")
+render_app_sidebar()
 st.markdown(
     """
     <style>
@@ -356,18 +355,14 @@ def colour_distance(rgb_a: tuple[int, int, int], rgb_b: tuple[int, int, int]) ->
 
 def contrast_label(distance: float) -> str:
     if distance < 50:
-        return "Low local separation"
+        return t("frit.contrast.low", "Low local separation")
     if distance < 110:
-        return "Moderate local separation"
-    return "High local separation"
+        return t("frit.contrast.medium", "Moderate local separation")
+    return t("frit.contrast.high", "High local separation")
 
 
 def join_phrases(parts: list[str]) -> str:
-    if not parts:
-        return ""
-    if len(parts) == 1:
-        return parts[0]
-    return ", ".join(parts[:-1]) + " and " + parts[-1]
+    return join_list(parts)
 
 
 def describe_change(
@@ -380,8 +375,28 @@ def describe_change(
 ) -> str | None:
     if abs(delta) < slight_threshold:
         return None
-    qualifier = "slightly " if abs(delta) < strong_threshold else ""
+    qualifier = t("shared.qualifier.slightly", "slightly ") if abs(delta) < strong_threshold else ""
     return f"{qualifier}{positive_text if delta > 0 else negative_text}"
+
+
+def frit_size_label(size: str) -> str:
+    labels = {
+        "Powdered": t("frit.size.powdered", "Powdered"),
+        "Fine": t("frit.size.fine", "Fine"),
+        "Medium": t("frit.size.medium", "Medium"),
+        "Coarse": t("frit.size.coarse", "Coarse"),
+    }
+    return labels.get(size, size)
+
+
+def frit_behaviour_label(size: str) -> str:
+    labels = {
+        "Powdered": t("frit.behaviour.powdered", "Powdered glass should integrate most smoothly, but bubble control matters more before firing."),
+        "Fine": t("frit.behaviour.fine", "Fine frit should integrate more softly and visually average more quickly."),
+        "Medium": t("frit.behaviour.medium", "Medium frit keeps some local contrast while still reading as a blended field."),
+        "Coarse": t("frit.behaviour.coarse", "Coarse frit is more likely to keep individual colour pockets visible."),
+    }
+    return labels.get(size, size)
 
 
 def layered_mix_summary_lines(
@@ -392,34 +407,51 @@ def layered_mix_summary_lines(
     depth_mm: float,
 ) -> list[str]:
     lines = [
-        f"Over {base_label}, the frit field is treated as a transmitted filter with a {depth_mm * 2.0:.2f} mm round trip through the mix."
+        t(
+            "frit.summary.layered.path",
+            "Over {base_label}, the frit field is treated as a transmitted filter with a {path_length:.2f} mm round trip through the mix.",
+            base_label=base_label,
+            path_length=depth_mm * 2.0,
+        )
     ]
 
     qualities = []
     brightness_phrase = describe_change(
         result_hsb[2] - base_hsb[2],
-        "brighter",
-        "darker",
+        t("predictor.summary.brighter", "brighter"),
+        t("predictor.summary.darker", "darker"),
     )
     saturation_phrase = describe_change(
         result_hsb[1] - base_hsb[1],
-        "more saturated",
-        "less saturated",
+        t("predictor.summary.more_saturated", "more saturated"),
+        t("predictor.summary.less_saturated", "less saturated"),
     )
     if brightness_phrase:
         qualities.append(brightness_phrase)
     if saturation_phrase:
         qualities.append(saturation_phrase)
     if qualities:
-        lines.append(f"Compared with the base by itself, the layered read looks {join_phrases(qualities)}.")
+        lines.append(
+            t(
+                "frit.summary.layered.compared_with_base",
+                "Compared with the base by itself, the layered read looks {qualities}.",
+                qualities=join_phrases(qualities),
+            )
+        )
 
     if result_hsb[2] <= mix_filter_hsb[2] - 5:
         lines.append(
-            "Compared with the frit field on its own bright scan backing, the layered result comes back darker because the base is limiting the return light."
+            t(
+                "frit.summary.layered.darker_than_filter",
+                "Compared with the frit field on its own bright scan backing, the layered result comes back darker because the base is limiting the return light.",
+            )
         )
 
     lines.append(
-        "This is a first-pass reflected stack estimate: the frit mix is modeled as a filter over the chosen light base rather than as a full melt blend."
+        t(
+            "frit.summary.layered.first_pass",
+            "This is a first-pass reflected stack estimate: the frit mix is modeled as a filter over the chosen light base rather than as a full melt blend.",
+        )
     )
     return lines
 
@@ -442,10 +474,21 @@ def mix_summary_lines(
     ]
 
     lines = [
-        f"This estimate treats the mix as {join_phrases(component_phrases)} through {depth_mm:.2f} mm of depth."
+        t(
+            "frit.summary.mix.components",
+            "This estimate treats the mix as {components} through {depth:.2f} mm of depth.",
+            components=join_phrases(component_phrases),
+            depth=depth_mm,
+        )
     ]
     lines.append(
-        f"Weighted B calculation: ({' + '.join(weighted_terms)}) / {total_grams:.2f} = {weighted_b:.1f}."
+        t(
+            "frit.summary.mix.weighted_b",
+            "Weighted B calculation: ({terms}) / {total:.2f} = {weighted_b:.1f}.",
+            terms=" + ".join(weighted_terms),
+            total=total_grams,
+            weighted_b=weighted_b,
+        )
     )
 
     reference_component = active_components[0]
@@ -453,13 +496,13 @@ def mix_summary_lines(
     qualities = []
     brightness_phrase = describe_change(
         result_hsb[2] - reference_hsb[2],
-        "brighter",
-        "darker",
+        t("predictor.summary.brighter", "brighter"),
+        t("predictor.summary.darker", "darker"),
     )
     saturation_phrase = describe_change(
         result_hsb[1] - reference_hsb[1],
-        "more saturated",
-        "less saturated",
+        t("predictor.summary.more_saturated", "more saturated"),
+        t("predictor.summary.less_saturated", "less saturated"),
     )
     if brightness_phrase:
         qualities.append(brightness_phrase)
@@ -467,28 +510,50 @@ def mix_summary_lines(
         qualities.append(saturation_phrase)
     if qualities:
         lines.append(
-            f"Compared with {reference_component['slot']} by itself at this depth, the mixed read looks {join_phrases(qualities)}."
+            t(
+                "frit.summary.mix.reference_compare",
+                "Compared with {slot} by itself at this depth, the mixed read looks {qualities}.",
+                slot=reference_component["slot"],
+                qualities=join_phrases(qualities),
+            )
         )
 
     if len(active_components) == 1:
-        lines.append(f"Only {reference_component['slot']} is active right now, so the predicted read matches that frit.")
+        lines.append(
+            t(
+                "frit.summary.mix.single_component",
+                "Only {slot} is active right now, so the predicted read matches that frit.",
+                slot=reference_component["slot"],
+            )
+        )
     else:
         dominant_component = max(active_components, key=lambda component: float(component["grams"]))
         dominant_share_pct = int(round((float(dominant_component["grams"]) / total_grams) * 100.0))
         if dominant_share_pct >= 60:
             lines.append(
-                f"{dominant_component['slot']} is doing most of the visual work here, so the result should lean strongly toward that colour family."
+                t(
+                    "frit.summary.mix.dominant_strong",
+                    "{slot} is doing most of the visual work here, so the result should lean strongly toward that colour family.",
+                    slot=dominant_component["slot"],
+                )
             )
         elif dominant_share_pct >= 40:
             lines.append(
-                f"{dominant_component['slot']} is leading the mix, but the other frits should still be visibly shaping the result."
+                t(
+                    "frit.summary.mix.dominant_moderate",
+                    "{slot} is leading the mix, but the other frits should still be visibly shaping the result.",
+                    slot=dominant_component["slot"],
+                )
             )
         else:
-            lines.append("No single frit is dominating outright, so the result should read as a more balanced field.")
+            lines.append(t("frit.summary.mix.balanced", "No single frit is dominating outright, so the result should read as a more balanced field."))
 
-    lines.append(f"{local_separation_label}. {FRIT_BEHAVIOUR[frit_size]['label']}")
+    lines.append(f"{local_separation_label}. {frit_behaviour_label(frit_size)}")
     lines.append(
-        "This page is still a heuristic: it uses optical averaging of the visible read rather than assuming the frit fully homogenizes during firing."
+        t(
+            "frit.summary.mix.heuristic",
+            "This page is still a heuristic: it uses optical averaging of the visible read rather than assuming the frit fully homogenizes during firing.",
+        )
     )
     return lines
 
@@ -525,7 +590,7 @@ def brightness_depth_figure(
                 x=depth_values,
                 y=component_brightness[str(component["slot"])],
                 mode="lines",
-                name=f"{component['slot']} brightness",
+                name=t("frit.figure.slot_brightness", "{slot} brightness", slot=component["slot"]),
                 line=dict(color=line_colors[index % len(line_colors)], width=2.2),
             )
         )
@@ -534,15 +599,15 @@ def brightness_depth_figure(
             x=depth_values,
             y=mixed_brightness,
             mode="lines",
-            name="Mixed brightness",
+            name=t("frit.figure.mixed_brightness", "Mixed brightness"),
             line=dict(color="#2f6a40", width=3),
         )
     )
     figure.add_vline(x=depth_selected, line_dash="dash", line_color="gray")
     figure.update_layout(
-        title="Brightness Across Depth",
-        xaxis_title="Depth (mm)",
-        yaxis_title="Brightness (B)",
+        title=t("frit.figure.brightness", "Brightness Across Depth"),
+        xaxis_title=t("frit.figure.depth_axis", "Depth (mm)"),
+        yaxis_title=t("frit.figure.brightness_axis", "Brightness (B)"),
         yaxis=dict(range=[0, 105]),
         xaxis=dict(range=[0, max_depth]),
         legend=dict(orientation="h", y=1.08),
@@ -578,9 +643,9 @@ def mixed_rgb_depth_figure(
     figure.add_trace(go.Scatter(x=depth_values, y=channels["B"], mode="lines", name="B", line=dict(color="blue", width=2.2)))
     figure.add_vline(x=depth_selected, line_dash="dash", line_color="gray")
     figure.update_layout(
-        title="Predicted Mixed RGB Across Depth",
-        xaxis_title="Depth (mm)",
-        yaxis_title="Channel value",
+        title=t("frit.figure.mixed_rgb", "Predicted Mixed RGB Across Depth"),
+        xaxis_title=t("frit.figure.depth_axis", "Depth (mm)"),
+        yaxis_title=t("frit.figure.channel_value", "Channel value"),
         yaxis=dict(range=[0, 260]),
         xaxis=dict(range=[0, max_depth]),
         legend=dict(orientation="h", y=1.08),
@@ -602,28 +667,37 @@ measurements["glass_id"] = measurements["glass_id"].astype(str)
 measurements["mode"] = measurements["mode"].astype(str).str.upper()
 
 if catalog.empty or measurements.empty:
-    st.error("Glass catalog or measurement data is missing.")
+    st.error(t("frit.messages.missing_data", "Glass catalog or measurement data is missing."))
     st.stop()
 
 family_options = ["All"] + families["name"].tolist()
 
-st.sidebar.header("Mix Setup")
-mode_label = st.sidebar.radio("Reference measurements", ["Transmitted", "Reflected"], index=0)
-mode = "T" if mode_label == "Transmitted" else "R"
+st.sidebar.header(t("frit.sidebar.mix_setup", "Mix Setup"))
+mode = st.sidebar.radio(
+    t("frit.fields.reference_measurements", "Reference measurements"),
+    ["T", "R"],
+    index=0,
+    format_func=translate_mode_name,
+)
 
-st.sidebar.header("Light Base")
+st.sidebar.header(t("frit.sidebar.light_base", "Light Base"))
 base_family_default = family_options.index("Opalescent") if "Opalescent" in family_options else 0
-base_family = st.sidebar.selectbox("Base family", family_options, index=base_family_default)
+base_family = st.sidebar.selectbox(
+    t("frit.fields.base_family", "Base family"),
+    family_options,
+    index=base_family_default,
+    format_func=lambda value: translate_family_name(None, value),
+)
 base_candidates = filter_catalog_by_family(catalog, base_family)
 if base_candidates.empty:
-    st.error("No glass samples match the current base family filter.")
+    st.error(t("frit.messages.no_base_matches", "No glass samples match the current base family filter."))
     st.stop()
 
 base_default_id = default_sample_id(base_candidates, ["French Vanilla", "Almond", "White"])
 base_labels = sample_labels(base_candidates)
 base_index = base_candidates["glass_id"].tolist().index(base_default_id)
 base_id = st.sidebar.selectbox(
-    "Base glass",
+    t("frit.fields.base_glass", "Base glass"),
     base_candidates["glass_id"].tolist(),
     index=base_index,
     format_func=lambda glass_id: base_labels.get(glass_id, glass_id),
@@ -631,7 +705,13 @@ base_id = st.sidebar.selectbox(
 base_catalog_row = base_candidates[base_candidates["glass_id"] == base_id].iloc[0]
 base_row_r = measurement_row(measurements, base_id, "R")
 if base_row_r is None:
-    st.error(f"{base_labels.get(base_id, base_id)} is missing reflected data.")
+    st.error(
+        t(
+            "frit.messages.base_missing_reflected",
+            "{label} is missing reflected data.",
+            label=base_labels.get(base_id, base_id),
+        )
+    )
     st.stop()
 
 frit_setup = [
@@ -642,10 +722,21 @@ frit_setup = [
 
 
 def select_frit_component(slot_label: str, preferred_terms: list[str], default_grams: float) -> dict[str, object]:
-    family_name = st.sidebar.selectbox(f"{slot_label} family", family_options, index=0)
+    family_name = st.sidebar.selectbox(
+        t("frit.fields.slot_family", "{slot} family", slot=slot_label),
+        family_options,
+        index=0,
+        format_func=lambda value: translate_family_name(None, value),
+    )
     candidates = filter_catalog_by_family(catalog, family_name)
     if candidates.empty:
-        st.error(f"No glass samples match the current filter for {slot_label}.")
+        st.error(
+            t(
+                "frit.messages.no_slot_matches",
+                "No glass samples match the current filter for {slot}.",
+                slot=slot_label,
+            )
+        )
         st.stop()
 
     labels = sample_labels(candidates)
@@ -658,12 +749,25 @@ def select_frit_component(slot_label: str, preferred_terms: list[str], default_g
         index=default_index,
         format_func=lambda candidate_id: labels.get(candidate_id, candidate_id),
     )
-    grams = st.sidebar.number_input(f"{slot_label} grams", min_value=0.0, value=default_grams, step=0.1, format="%.2f")
+    grams = st.sidebar.number_input(
+        t("frit.fields.grams", "{slot} grams", slot=slot_label),
+        min_value=0.0,
+        value=default_grams,
+        step=0.1,
+        format="%.2f",
+    )
 
     catalog_row = candidates[candidates["glass_id"] == glass_id].iloc[0]
     measurement = measurement_row(measurements, glass_id, mode)
     if measurement is None and grams > 0:
-        st.error(f"{labels.get(glass_id, glass_id)} is missing {mode_label.lower()} data.")
+        st.error(
+            t(
+                "frit.messages.slot_missing_mode",
+                "{label} is missing {mode} data.",
+                label=labels.get(glass_id, glass_id),
+                mode=translate_mode_name(mode).lower(),
+            )
+        )
         st.stop()
 
     return {
@@ -692,7 +796,7 @@ reference_depth = max(
 )
 depth_max = max(8.0, reference_depth * 3.0)
 depth_mm = st.sidebar.slider(
-    "Mix depth (mm)",
+    t("frit.fields.mix_depth", "Mix depth (mm)"),
     min_value=0.0,
     max_value=float(round(depth_max, 1)),
     value=float(round(reference_depth, 1)),
@@ -700,7 +804,12 @@ depth_mm = st.sidebar.slider(
 )
 frit_options = list(FRIT_BEHAVIOUR.keys())
 default_frit_index = frit_options.index("Powdered")
-frit_size = st.sidebar.selectbox("Frit size", frit_options, index=default_frit_index)
+frit_size = st.sidebar.selectbox(
+    t("frit.fields.frit_size", "Frit size"),
+    frit_options,
+    index=default_frit_index,
+    format_func=frit_size_label,
+)
 
 for component in components:
     row = component["row"]
@@ -716,7 +825,7 @@ for component in components:
 active_components = [component for component in components if float(component["grams"]) > 0]
 total_grams = sum(float(component["grams"]) for component in active_components)
 if total_grams <= 0:
-    st.error("Enter at least some frit by weight so the mix can be estimated.")
+    st.error(t("frit.messages.enter_grams", "Enter at least some frit by weight so the mix can be estimated."))
     st.stop()
 
 mixed_rgb = weighted_rgb(
@@ -780,9 +889,12 @@ summary_lines = mix_summary_lines(
     local_separation_label,
 )
 
-st.title("Frit Mix Explorer")
+st.title(t("frit.title", "Frit Mix Explorer"))
 st.caption(
-    "First-pass frit heuristic: the visible read is estimated as optical averaging across depth, with frit size affecting how much local colour separation is likely to remain."
+    t(
+        "frit.caption.intro",
+        "First-pass frit heuristic: the visible read is estimated as optical averaging across depth, with frit size affecting how much local colour separation is likely to remain.",
+    )
 )
 
 st.markdown(
@@ -794,15 +906,15 @@ st.markdown(
 
 badge_markup = "".join(
     [
-        f'<span class="mix-badge">Mode: {html.escape(mode_label)}</span>',
-        f'<span class="mix-badge">Depth: {depth_mm:.2f} mm</span>',
+        f'<span class="mix-badge">{t("color_wheel.fields.mode", "Mode")}: {html.escape(translate_mode_name(mode))}</span>',
+        f'<span class="mix-badge">{t("frit.figure.depth_axis", "Depth (mm)").replace(" (mm)", "")}: {depth_mm:.2f} mm</span>',
         *[
             f'<span class="mix-badge">{html.escape(str(component["slot"]))}: {float(component["grams"]):.2f} g</span>'
             for component in components
         ],
-        f'<span class="mix-badge">Total: {total_grams:.2f} g</span>',
+        f'<span class="mix-badge">{t("worksheet.labels.total", "Total")}: {total_grams:.2f} g</span>',
         f'<span class="mix-badge">Weighted B: {weighted_b:.1f}</span>',
-        f'<span class="mix-badge">Frit size: {html.escape(frit_size)}</span>',
+        f'<span class="mix-badge">{t("frit.fields.frit_size", "Frit size")}: {html.escape(frit_size_label(frit_size))}</span>',
         f'<span class="mix-badge">{html.escape(local_separation_label)}</span>',
     ]
 )
@@ -812,24 +924,24 @@ card_cols = st.columns(4, gap="medium")
 for column, component in zip(card_cols[:3], components):
     with column:
         st.markdown(f"### {component['label']}")
-        st.caption(f"{component['slot']} at the selected depth.")
+        st.caption(t("frit.cards.slot_caption", "{slot} at the selected depth.", slot=component["slot"]))
         if component["icon"] is not None:
             st.image(str(component["icon"]), width="content")
         elif MISSING_ICON.exists():
             st.image(str(MISSING_ICON), width="content")
 
-        contribution_note = "Modeled from the selected measurement mode over the chosen depth."
+        contribution_note = t("frit.cards.note_default", "Modeled from the selected measurement mode over the chosen depth.")
         if component["slot"] == "Frit 2":
-            contribution_note = "Useful as a second colour body or as a nudge, depending on the selected grams."
+            contribution_note = t("frit.cards.note_frit2", "Useful as a second colour body or as a nudge, depending on the selected grams.")
         if component["slot"] == "Frit 3":
-            contribution_note = "Optional third frit for nudging the turn-to-black point or helping a difficult mix fit."
+            contribution_note = t("frit.cards.note_frit3", "Optional third frit for nudging the turn-to-black point or helping a difficult mix fit.")
         if float(component["grams"]) <= 0:
-            contribution_note = "Currently parked at 0.00 g, so it is ready for use without changing the current mix."
+            contribution_note = t("frit.cards.note_zero", "Currently parked at 0.00 g, so it is ready for use without changing the current mix.")
 
         st.markdown(
             swatch_markup(
-                f"{component['slot']} contribution",
-                f"{float(component['grams']):.2f} g in the mix",
+                t("frit.cards.slot_title", "{slot} contribution", slot=component["slot"]),
+                t("frit.cards.slot_subtitle", "{grams:.2f} g in the mix", grams=float(component["grams"])),
                 component["rgb"],
                 component["hsb"],
                 contribution_note,
@@ -838,23 +950,26 @@ for column, component in zip(card_cols[:3], components):
         )
 
 with card_cols[3]:
-    st.markdown("### Predicted mixed read")
-    st.caption("Optically averaged result at the selected depth.")
+    st.markdown(f"### {t('frit.sections.predicted_mix', 'Predicted mixed read')}")
+    st.caption(t("frit.cards.mix_caption", "Optically averaged result at the selected depth."))
     st.markdown(
         swatch_markup(
-            "Predicted mixed result",
-            f"Weighted visual read from {total_grams:.2f} g total",
+            t("frit.cards.mix_title", "Predicted mixed result"),
+            t("frit.cards.mix_subtitle", "Weighted visual read from {total:.2f} g total", total=total_grams),
             mixed_rgb,
             mixed_hsb,
-            f"This is not a full melt blend. It is a first-pass estimate of how the mixed frit field may read. Weighted B = {weighted_b:.1f}.",
+            t("frit.cards.mix_note", "This is not a full melt blend. It is a first-pass estimate of how the mixed frit field may read. Weighted B = {weighted_b:.1f}.", weighted_b=weighted_b),
         ),
         unsafe_allow_html=True,
     )
 
 if layering_ready:
-    st.markdown("### Layered over light base")
+    st.markdown(f"### {t('frit.sections.layered_base', 'Layered over light base')}")
     st.caption(
-        "This section uses the selected frit mix as a transmitted filter over the chosen light base, with a round-trip path through the frit field."
+        t(
+            "frit.cards.layered_caption",
+            "This section uses the selected frit mix as a transmitted filter over the chosen light base, with a round-trip path through the frit field.",
+        )
     )
     st.markdown(
         '<div class="mix-summary">'
@@ -866,53 +981,56 @@ if layering_ready:
     layered_cols = st.columns(3, gap="large")
     with layered_cols[0]:
         st.markdown(f"### {base_labels.get(base_id, base_id)}")
-        st.caption("Light base used as the reflected return source.")
+        st.caption(t("frit.cards.base_caption", "Light base used as the reflected return source."))
         if base_icon is not None:
             st.image(str(base_icon), width="content")
         elif MISSING_ICON.exists():
             st.image(str(MISSING_ICON), width="content")
         st.markdown(
             swatch_markup(
-                "Base reflected source",
-                "Measured reflected scan",
+                t("predictor.sections.base", "Base reflected source"),
+                t("predictor.cards.base_subtitle", "Measured reflected scan"),
                 base_rgb,
                 base_hsb,
-                "This is the return light from the base before the frit field filters it.",
+                t("frit.cards.base_note", "This is the return light from the base before the frit field filters it."),
             ),
             unsafe_allow_html=True,
         )
 
     with layered_cols[1]:
-        st.markdown("### Mixed frit field")
-        st.caption("The selected frit mix treated as the top filter.")
+        st.markdown(f"### {t('frit.sections.mixed_field', 'Mixed frit field')}")
+        st.caption(t("frit.cards.filter_caption", "The selected frit mix treated as the top filter."))
         st.markdown(
             swatch_markup(
-                "Mixed frit filter",
-                f"One-way transmission through {depth_mm:.2f} mm",
+                t("frit.cards.filter_title", "Mixed frit filter"),
+                t("frit.cards.filter_subtitle", "One-way transmission through {depth:.2f} mm", depth=depth_mm),
                 mixed_filter_single_rgb,
                 mixed_filter_single_hsb,
-                "This is the first-pass optical filter read of the mixed frit field before the reflected return from the base.",
+                t("frit.cards.filter_note", "This is the first-pass optical filter read of the mixed frit field before the reflected return from the base."),
             ),
             unsafe_allow_html=True,
         )
 
     with layered_cols[2]:
-        st.markdown("### Predicted layered read")
-        st.caption("Round-trip prediction over the chosen base.")
+        st.markdown(f"### {t('frit.sections.predicted_layered', 'Predicted layered read')}")
+        st.caption(t("frit.cards.layered_result_caption", "Round-trip prediction over the chosen base."))
         st.markdown(
             swatch_markup(
-                "Predicted reflected result",
-                f"Round trip through {depth_mm * 2.0:.2f} mm of frit depth",
+                t("predictor.cards.result_title", "Predicted reflected result"),
+                t("frit.cards.layered_result_subtitle", "Round trip through {depth:.2f} mm of frit depth", depth=depth_mm * 2.0),
                 layered_mix_rgb,
                 layered_mix_hsb,
-                "This is the first-pass estimate of what comes back from the base once the frit field filters the light down and back.",
+                t("frit.cards.layered_result_note", "This is the first-pass estimate of what comes back from the base once the frit field filters the light down and back."),
             ),
             unsafe_allow_html=True,
         )
 else:
     st.info(
-        "Layered-over-base preview is unavailable for the current mix because transmitted data is missing for: "
-        + ", ".join(missing_layer_ids)
+        t(
+            "frit.messages.layered_unavailable",
+            "Layered-over-base preview is unavailable for the current mix because transmitted data is missing for: {items}",
+            items=", ".join(missing_layer_ids),
+        )
     )
 
 chart_left, chart_right = st.columns(2, gap="large")
@@ -927,15 +1045,15 @@ with chart_right:
         config={"displaylogo": False},
     )
 
-st.markdown("### Model Notes")
+st.markdown(f"### {t('frit.sections.model_notes', 'Model Notes')}")
 st.markdown(
     "\n".join(
         [
-            "- This page is exploratory rather than prescriptive. It gives a studio-friendly estimate of the visible read.",
-            "- Frit size does not change the weighted average colour directly here; it changes the expected amount of local colour separation that may still be visible.",
-            "- Powdered glass is treated here as the smoothest-integrating option, but in practice trapped air and bubbles still need to be addressed before firing.",
-            "- The page does not assume complete homogenization during firing.",
-            "- The brightness chart is there because brightness is often the easiest depth signal to use when you are building a transition through a thicker frit field.",
+            f"- {t('frit.notes.exploratory', 'This page is exploratory rather than prescriptive. It gives a studio-friendly estimate of the visible read.')}",
+            f"- {t('frit.notes.frit_size', 'Frit size does not change the weighted average colour directly here; it changes the expected amount of local colour separation that may still be visible.')}",
+            f"- {t('frit.notes.powdered', 'Powdered glass is treated here as the smoothest-integrating option, but in practice trapped air and bubbles still need to be addressed before firing.')}",
+            f"- {t('frit.notes.homogenization', 'The page does not assume complete homogenization during firing.')}",
+            f"- {t('frit.notes.brightness_chart', 'The brightness chart is there because brightness is often the easiest depth signal to use when you are building a transition through a thicker frit field.')}",
         ]
     )
 )

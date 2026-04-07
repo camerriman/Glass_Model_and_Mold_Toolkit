@@ -5,6 +5,8 @@ import streamlit as st
 from streamlit_quill import st_quill
 from PIL import Image
 
+from i18n import render_app_sidebar, t, translate_family_name
+
 # ------------------------------------------------------------
 # Paths
 # ------------------------------------------------------------
@@ -218,37 +220,72 @@ def save_full_image(uploaded_file, dest: Path) -> None:
 # ------------------------------------------------------------
 # Page
 # ------------------------------------------------------------
-st.set_page_config(page_title="Add Glass Sample", layout="wide")
+st.set_page_config(page_title=t("editor.add.title", "Add Glass Sample"), layout="wide")
 ensure_tables()
 
-st.title("Add Glass Sample")
+render_app_sidebar()
+st.title(t("editor.add.title", "Add Glass Sample"))
+
+
+def family_label(code: str, name: str) -> str:
+    return translate_family_name(code, name)
+
+
+def element_full_label(key: str) -> str:
+    labels = {
+        "se": t("editor.element.se", "Se (Selenium)"),
+        "su": t("editor.element.su", "S (Sulfur)"),
+        "cu": t("editor.element.cu", "Cu (Copper)"),
+        "pb": t("editor.element.pb", "Pb (Lead)"),
+        "ag": t("editor.element.ag", "Ag (Silver)"),
+        "au": t("editor.element.au", "Au (Gold)"),
+    }
+    return labels.get(key, key)
 
 # ---- Inputs (top) ----
 left, right = st.columns([3, 2])
 
 with left:
-    raw = st.text_input("cat_id (6 digits, e.g., 001234)", value="", placeholder="001234")
+    raw = st.text_input(
+        t("editor.fields.cat_id", "cat_id (6 digits, e.g., 001234)"),
+        value="",
+        placeholder=t("editor.fields.cat_id_placeholder", "001234"),
+    )
     cat_id = normalize_cat_id(raw)
     if raw and cat_id != raw:
-        st.caption(f"Normalized to: **{cat_id}**")
+        st.caption(t("editor.messages.normalized", "Normalized to: **{cat_id}**", cat_id=cat_id))
 
-    color_name = st.text_input("Color name", value="")
+    color_name = st.text_input(t("editor.fields.color_name", "Color name"), value="")
 
     # Glass family dropdown sourced from DB
     fam_rows = list_families_from_db()
     if fam_rows:
         fam_names = [name for _, name in fam_rows]
         fam_codes = [code for code, _ in fam_rows]
-        sel_index = st.selectbox("Glass family", options=range(len(fam_names)),
-                                 format_func=lambda i: fam_names[i], index=0)
+        sel_index = st.selectbox(
+            t("editor.fields.glass_family", "Glass family"),
+            options=range(len(fam_names)),
+            format_func=lambda i: family_label(fam_codes[i], fam_names[i]),
+            index=0,
+        )
         glass_family_code = fam_codes[sel_index]
     else:
         glass_family_code = None
-        st.warning("glass_families table not found (or empty). Family selection disabled until it exists.")
+        st.warning(
+            t(
+                "editor.warnings.families_missing",
+                "glass_families table not found (or empty). Family selection disabled until it exists.",
+            )
+        )
 
 # --- Elements contained (optional) ---
-st.markdown("### Elements contained (optional)")
-st.caption("Select what the glass contains. The app will derive a 'may react with' summary automatically.")
+st.markdown(f"### {t('editor.sections.elements', 'Elements contained (optional)')}")
+st.caption(
+    t(
+        "editor.sections.elements_caption",
+        "Select what the glass contains. The app will derive a 'may react with' summary automatically.",
+    )
+)
 
 ELEMENTS = [
     ("se", "Se (Selenium)"),
@@ -275,7 +312,7 @@ cols = [c_e1, c_e2, c_e3]
 _contains = {}
 for i, (k, label) in enumerate(ELEMENTS):
     with cols[i % 3]:
-        _contains[k] = 1 if st.checkbox(label, value=False, key=f"contains_{k}") else 0
+        _contains[k] = 1 if st.checkbox(element_full_label(k), value=False, key=f"contains_{k}") else 0
 
 se = _contains["se"]
 su = _contains["su"]
@@ -290,19 +327,19 @@ for k, present in _contains.items():
         for tgt in REACT_RULES.get(k, set()):
             _reacts[tgt] = 1
 
-react_labels = [label for (k, label) in ELEMENTS if _reacts.get(k, 0) == 1]
-st.markdown("**May react with (derived)**")
-st.write(", ".join(react_labels) if react_labels else "—")
+react_labels = [element_full_label(k) for (k, _) in ELEMENTS if _reacts.get(k, 0) == 1]
+st.markdown(f"**{t('editor.sections.reacts', 'May react with (derived)')}**")
+st.write(", ".join(react_labels) if react_labels else "-")
 
 with right:
-    is_striker = st.checkbox("Striker", value=False)
+    is_striker = st.checkbox(t("editor.fields.striker", "Striker"), value=False)
 
 # ---- Notes ----
 n1, n2 = st.columns([2, 1])
 with n1:
-    st.markdown("**Cold characteristics (optional)**")
+    st.markdown(f"**{t('editor.sections.cold', 'Cold characteristics (optional)')}**")
     cold_characteristics = st_quill(
-        placeholder="Enter cold characteristics...",
+        placeholder=t("editor.placeholders.cold", "Enter cold characteristics..."),
         html=True,
         toolbar=[{"size": ["8px", "10px", "12px", "14px", "18px", "24px"]},
                  "bold", "italic", "underline",
@@ -310,9 +347,9 @@ with n1:
         key="quill_cold",
     ) or ""
 with n2:
-    st.markdown("**Working notes (optional)**")
+    st.markdown(f"**{t('editor.sections.work', 'Working notes (optional)')}**")
     working_notes = st_quill(
-        placeholder="Enter working notes...",
+        placeholder=t("editor.placeholders.work", "Enter working notes..."),
         html=True,
         toolbar=[{"size": ["8px", "10px", "12px", "14px", "18px", "24px"]},
                  "bold", "italic", "underline",
@@ -324,46 +361,53 @@ with n2:
 left2, right2 = st.columns([1, 1], gap="large")
 
 with left2:
-    st.subheader("Measurements (Reflected / Transmitted)")
+    st.subheader(t("editor.sections.measurements", "Measurements (Reflected / Transmitted)"))
 
     thickness_mm = st.number_input(
-        "Thickness (mm)", min_value=0.0, max_value=25.0, value=2.0, step=0.1,
+        t("editor.fields.thickness", "Thickness (mm)"), min_value=0.0, max_value=25.0, value=2.0, step=0.1,
         format="%.1f", key="thickness_mm",
     )
 
-    tabT, tabR = st.tabs(["Transmitted", "Reflected"])
+    tabT, tabR = st.tabs(
+        [
+            t("editor.tabs.transmitted", "Transmitted"),
+            t("editor.tabs.reflected", "Reflected"),
+        ]
+    )
 
     with tabT:
-        RT = st.number_input("Red (R)", 0, 255, 0, key="RT")
-        GT = st.number_input("Green (G)", 0, 255, 0, key="GT")
-        BT = st.number_input("Blue (B)", 0, 255, 0, key="BT")
-        HT = st.number_input("Hue (H)", 0, 360, 0, key="HT")
-        ST_ = st.number_input("Saturation (S)", 0, 100, 0, key="ST")
-        VT = st.number_input("Brightness (B)", 0, 100, 0, key="VT")
+        RT = st.number_input(t("editor.fields.red", "Red (R)"), 0, 255, 0, key="RT")
+        GT = st.number_input(t("editor.fields.green", "Green (G)"), 0, 255, 0, key="GT")
+        BT = st.number_input(t("editor.fields.blue", "Blue (B)"), 0, 255, 0, key="BT")
+        HT = st.number_input(t("editor.fields.hue", "Hue (H)"), 0, 360, 0, key="HT")
+        ST_ = st.number_input(t("editor.fields.saturation", "Saturation (S)"), 0, 100, 0, key="ST")
+        VT = st.number_input(t("editor.fields.brightness", "Brightness (B)"), 0, 100, 0, key="VT")
 
     with tabR:
-        RR = st.number_input("Red (R)", 0, 255, 0, key="RR")
-        GR = st.number_input("Green (G)", 0, 255, 0, key="GR")
-        BR = st.number_input("Blue (B)", 0, 255, 0, key="BR")
-        HR = st.number_input("Hue (H)", 0, 360, 0, key="HR")
-        SR_ = st.number_input("Saturation (S)", 0, 100, 0, key="SR")
-        VR = st.number_input("Brightness (B)", 0, 100, 0, key="VR")
+        RR = st.number_input(t("editor.fields.red", "Red (R)"), 0, 255, 0, key="RR")
+        GR = st.number_input(t("editor.fields.green", "Green (G)"), 0, 255, 0, key="GR")
+        BR = st.number_input(t("editor.fields.blue", "Blue (B)"), 0, 255, 0, key="BR")
+        HR = st.number_input(t("editor.fields.hue", "Hue (H)"), 0, 360, 0, key="HR")
+        SR_ = st.number_input(t("editor.fields.saturation", "Saturation (S)"), 0, 100, 0, key="SR")
+        VR = st.number_input(t("editor.fields.brightness", "Brightness (B)"), 0, 100, 0, key="VR")
 
 with right2:
-    st.subheader("Images (optional)")
+    st.subheader(t("editor.sections.images", "Images (optional)"))
     st.caption(
-        "Upload full-res images (T and/or R). Icons will be auto-generated (72×72 JPG) "
-        "from the uploaded full image(s). If you skip uploads, the library will show placeholders."
+        t(
+            "editor.images.caption_add",
+            "Upload full-res images (T and/or R). Icons will be auto-generated (72x72 JPG) from the uploaded full image(s). If you skip uploads, the library will show placeholders.",
+        )
     )
 
     full_up_T = st.file_uploader(
-        "Full image for Transmitted (T) (TIFF/JPG/PNG)",
+        t("editor.images.full_t", "Full image for Transmitted (T) (TIFF/JPG/PNG)"),
         type=["tif", "tiff", "jpg", "jpeg", "png"],
         key="full_T_upload",
     )
 
     full_up_R = st.file_uploader(
-        "Full image for Reflected (R) (TIFF/JPG/PNG)",
+        t("editor.images.full_r", "Full image for Reflected (R) (TIFF/JPG/PNG)"),
         type=["tif", "tiff", "jpg", "jpeg", "png"],
         key="full_R_upload",
     )
@@ -372,7 +416,7 @@ with right2:
         cat_id_norm = normalize_cat_id(cat_id)
         paths = image_paths(cat_id_norm, glass_family_code or "1")
 
-        st.caption("Preview (what the library will show if you saved right now)")
+        st.caption(t("editor.images.preview_now", "Preview (what the library will show if you saved right now)"))
 
         icon_preview_T = paths["icon_T"] if paths["icon_T"].exists() else PLACEHOLDER_ICON
         icon_preview_R = paths["icon_R"] if paths["icon_R"].exists() else PLACEHOLDER_ICON
@@ -381,41 +425,52 @@ with right2:
 
         p1, p2, p3 = st.columns(3)
         with p1:
-            st.text("Icons")
-            st.caption("T")
+            st.text(t("editor.images.icons", "Icons"))
+            st.caption(t("editor.images.icon_t_short", "Icon (T)"))
             st.image(str(icon_preview_T), width="stretch")
-            st.caption("R")
+            st.caption(t("editor.images.icon_r_short", "Icon (R)"))
             st.image(str(icon_preview_R), width="stretch")
         with p2:
-            st.text("Full (T)")
+            st.text(t("editor.images.full_t_short", "Full (T)"))
             st.image(str(full_preview_T), width="stretch")
         with p3:
-            st.text("Full (R)")
+            st.text(t("editor.images.full_r_short", "Full (R)"))
             st.image(str(full_preview_R), width="stretch")
     else:
-        st.info("Enter a cat_id to see destination filenames and previews.")
+        st.info(t("editor.images.enter_cat_id", "Enter a cat_id to see destination filenames and previews."))
 
 # ---- Bottom buttons ----
 st.divider()
 
 b1, b2 = st.columns([1, 1])
-save_clicked = b1.button("Save", type="primary", use_container_width=True)
-cancel_clicked = b2.button("Cancel", use_container_width=True)
+save_clicked = b1.button(t("editor.actions.save", "Save"), type="primary", use_container_width=True)
+cancel_clicked = b2.button(t("editor.actions.cancel", "Cancel"), use_container_width=True)
 
 if cancel_clicked:
     target = pick_library_page()
     if not target or not switch_to_page(target):
-        st.warning("Could not find the Glass Library page in /pages. Please navigate from the sidebar.")
+        st.warning(
+            t(
+                "editor.warnings.library_navigation_missing",
+                "Could not find the Glass Library page in /pages. Please navigate from the sidebar.",
+            )
+        )
 
 if save_clicked:
     cat_id_norm = (cat_id or "").strip()
 
     if not is_valid_cat_id(cat_id_norm):
-        st.error("cat_id must be exactly 6 digits (e.g., 001234).")
+        st.error(t("errors.editor.invalid_cat_id", "cat_id must be exactly 6 digits (e.g., 001234)."))
         st.stop()
 
     if cat_id_exists(cat_id_norm):
-        st.error(f"cat_id {cat_id_norm} already exists in glass_catalog. Choose a new id or edit the existing record.")
+        st.error(
+            t(
+                "errors.editor.duplicate_cat_id",
+                "cat_id {cat_id} already exists in glass_catalog. Choose a new id or edit the existing record.",
+                cat_id=cat_id_norm,
+            )
+        )
         st.stop()
 
     # Always create both rows (T and R). Leave values at 0 if unknown.
@@ -471,11 +526,18 @@ if save_clicked:
 
             conn.commit()
 
-        st.success(f"Saved {cat_id_norm}.")
+        st.success(t("editor.messages.saved_with_id", "Saved {cat_id}.", cat_id=cat_id_norm))
         st.cache_data.clear()
         target = pick_library_page()
         if not target or not switch_to_page(target):
-            st.info(f"Saved {cat_id_norm}. Open {LIBRARY_PAGE} to review it in the library.")
+            st.info(
+                t(
+                    "editor.messages.saved_open_library",
+                    "Saved {cat_id}. Open {page} to review it in the library.",
+                    cat_id=cat_id_norm,
+                    page=LIBRARY_PAGE,
+                )
+            )
 
     except Exception as e:
-        st.error(f"Save failed: {e}")
+        st.error(t("errors.editor.save_failed", "Save failed: {error}", error=e))

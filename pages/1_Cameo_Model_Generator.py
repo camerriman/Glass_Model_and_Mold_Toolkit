@@ -5,6 +5,7 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 import trimesh
+from i18n import render_app_sidebar, t as tr
 
 # Optional helpers (may not exist in every trimesh build)
 try:
@@ -12,12 +13,16 @@ try:
 except Exception:  # pragma: no cover
     repair = None
 
-st.set_page_config(page_title="Cameo Mold Model Generator", layout="wide")
-st.title("Cameo Mold Model Generator")
+st.set_page_config(page_title=tr("page.cameo.title", "Cameo Mold Model Generator"), layout="wide")
+render_app_sidebar()
+st.title(tr("page.cameo.title", "Cameo Mold Model Generator"))
 st.caption(
-    "Grayscale values are translated into a sculpted digital relief and inverted to form a mold, "
-    "allowing the cameo image to emerge correctly in the finished glass. "
-    "Controls adjust depth, backing thickness, and sampling resolution."
+    tr(
+        "page.cameo.caption",
+        "Grayscale values are translated into a sculpted digital relief and inverted to form a mold, "
+        "allowing the cameo image to emerge correctly in the finished glass. "
+        "Controls adjust depth, backing thickness, and sampling resolution.",
+    )
 )
 
 # ----------------------------
@@ -219,22 +224,23 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
 
-    up = st.file_uploader("Upload image", type=["png", "jpg", "jpeg", "tif", "tiff", "bmp"])
-    with st.expander("What do these controls do?", expanded=False):
+    up = st.file_uploader(tr("page.cameo.fields.upload_image", "Upload image"), type=["png", "jpg", "jpeg", "tif", "tiff", "bmp"])
+    with st.expander(tr("page.cameo.controls", "What do these controls do?"), expanded=False):
         st.markdown(
-            """
-- **Target width (mm):** Sets final model width; height follows the image aspect ratio.
-- **Relief Maximum (mm):** Sets the relief range from **0.00 mm** up to the chosen maximum.
-- **Base backing thickness (mm):** Adds a flat structural base under the relief.
-- **Invert relief:** Swaps the tone mapping so light areas become deeper (and vice versa) Leave checked for cameo.
-- **Resolution:** Max image dimension used for the heightmap; higher = more detail + slower.
-            """.strip()
+            tr(
+                "page.cameo.controls.body",
+                "- **Target width (mm):** Sets final model width; height follows the image aspect ratio.\n"
+                "- **Relief Maximum (mm):** Sets the relief range from **0.00 mm** up to the chosen maximum.\n"
+                "- **Base backing thickness (mm):** Adds a flat structural base under the relief.\n"
+                "- **Invert relief:** Swaps the tone mapping so light areas become deeper (and vice versa). Leave checked for cameo.\n"
+                "- **Resolution:** Max image dimension used for the heightmap; higher = more detail + slower.",
+            ).strip()
         )
 
 
 
 with col2:
-    st.subheader("Settings")
+    st.subheader(tr("page.cameo.settings", "Settings"))
 
     # Defaults (used for reset)
     DEFAULTS = dict(
@@ -250,7 +256,7 @@ with col2:
         st.session_state.setdefault(k, v)
 
     # Reset button
-    if st.button("Reset settings", use_container_width=True):
+    if st.button(tr("page.cameo.actions.reset", "Reset settings"), use_container_width=True):
         for k, v in DEFAULTS.items():
             st.session_state[k] = v
         # Also clear any previously built mesh/stl
@@ -259,16 +265,16 @@ with col2:
         st.session_state.pop("stl_bytes", None)
         st.rerun()
 
-    width_mm = st.slider("Target Mold Width (mm)", 30.0, 250.0, step=1.0, key="width_mm")
-    t_max = st.slider("Artwork relief maximum (mm)", 0.5, 60.0, step=0.1, key="t_max")
-    base_thickness = st.slider("Base Backing Thickness (mm)", 0.0, 20.0, step=0.5, key="base_thickness")
-    invert = st.checkbox("Invert Relief", key="invert")
-    max_dim = st.slider("Resolution", 200, 1200, step=50, key="max_dim")
+    width_mm = st.slider(tr("page.cameo.fields.target_width", "Target Mold Width (mm)"), 30.0, 250.0, step=1.0, key="width_mm")
+    t_max = st.slider(tr("page.cameo.fields.relief_max", "Artwork relief maximum (mm)"), 0.5, 60.0, step=0.1, key="t_max")
+    base_thickness = st.slider(tr("page.cameo.fields.base_backing", "Base Backing Thickness (mm)"), 0.0, 20.0, step=0.5, key="base_thickness")
+    invert = st.checkbox(tr("page.cameo.fields.invert_relief", "Invert Relief"), key="invert")
+    max_dim = st.slider(tr("page.cameo.fields.resolution", "Resolution"), 200, 1200, step=50, key="max_dim")
 
-    st.caption("Higher = more detail + slower. 600–900 is a good sweet spot.")
+    st.caption(tr("page.cameo.caption.resolution", "Higher = more detail + slower. 600-900 is a good sweet spot."))
 
 if up is None:
-    st.info("Upload an image to preview the mirrored heightmap. Mesh is generated only when you export.")
+    st.info(tr("page.cameo.messages.upload_first", "Upload an image to preview the mirrored heightmap. Mesh is generated only when you export."))
     st.stop()
 
 img = Image.open(up)
@@ -285,12 +291,12 @@ hm_img = Image.fromarray(hm_preview, mode="L")
 pcol1, pcol2 = st.columns([1, 1])
 
 with pcol1:
-    st.subheader("Input")
+    st.subheader(tr("page.cameo.sections.input", "Input"))
 #    framed_image(img)
     st.image(img, width="stretch")
 
 with pcol2:
-    st.subheader("Heightmap preview (mirrored)")
+    st.subheader(tr("page.cameo.sections.preview", "Heightmap preview (mirrored)"))
 #    framed_image(hm_img)
     st.image(hm_img, width="stretch")
 
@@ -299,7 +305,7 @@ with pcol2:
 # Export (deferred mesh build)
 # ----------------------------
 st.divider()
-st.subheader("Export")
+st.subheader(tr("page.cameo.sections.export", "Export"))
 
 current_sig = (
     getattr(up, "name", None),
@@ -315,9 +321,9 @@ last_sig = st.session_state.get("last_sig")
 dirty = (last_sig != current_sig)
 
 if dirty and st.session_state.get("stl_bytes") is not None:
-    st.info("Settings changed — rebuild the mesh to update the export.")
+    st.info(tr("page.cameo.messages.rebuild", "Settings changed - rebuild the mesh to update the export."))
 
-build = st.button("Build mesh and enable download", type="primary")
+build = st.button(tr("page.cameo.actions.build", "Build mesh and enable download"), type="primary")
 
 if build:
     # Clear any stale outputs first
@@ -327,7 +333,7 @@ if build:
     st.session_state["report_text"] = None
     st.session_state["height_mm"] = None
 
-    with st.spinner("Building mesh…"):
+    with st.spinner(tr("page.cameo.messages.building", "Building mesh...")):
         height01_full = image_to_heightmap(img, max_dim=max_dim, invert=invert)
         mesh, height_mm = build_mold_solid(
             height01_full,
@@ -386,21 +392,21 @@ report_text = st.session_state.get("report_text")
 
 # Stats (only when we have a built mesh that matches current settings)
 if (mesh is not None) and (zip_bytes is not None) and (st.session_state.get("last_sig") == current_sig):
-    st.write(f"**Output size:** {width_mm:.1f} mm × {height_mm_built:.1f} mm")
-    st.write(f"**Watertight:** {'✅' if mesh.is_watertight else '⚠️'}")
+    st.write(f"**{tr('page.cameo.labels.output_size', 'Output size')}:** {width_mm:.1f} mm x {height_mm_built:.1f} mm")
+    st.write(f"**{tr('page.cameo.labels.watertight', 'Watertight')}:** {'✅' if mesh.is_watertight else '⚠️'}")
 
     if mesh.is_watertight:
         volume_mm3 = mesh.volume
-        st.write(f"**Total volume:** {volume_mm3/1000:,.2f} cm³")
+        st.write(f"**{tr('page.cameo.labels.total_volume', 'Total volume')}:** {volume_mm3/1000:,.2f} cm3")
 else:
-    st.write(f"**Output size:** {width_mm:.1f} mm × {height_mm_est:.1f} mm")
+    st.write(f"**{tr('page.cameo.labels.output_size', 'Output size')}:** {width_mm:.1f} mm x {height_mm_est:.1f} mm")
 
 # Download (disabled until built + up-to-date)
 name = up.name.rsplit(".", 1)[0]
 can_download = (zip_bytes is not None) and (st.session_state.get("last_sig") == current_sig)
 
 st.download_button(
-    "Download ZIP (STL + settings)",
+    tr("page.cameo.actions.download_zip", "Download ZIP (STL + settings)"),
     data=zip_bytes if can_download else b"",
     file_name=f"{name}_mold.zip",
     mime="application/zip",

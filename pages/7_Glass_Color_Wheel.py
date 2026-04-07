@@ -10,6 +10,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from i18n import join_list, render_app_sidebar, t, translate_element_name, translate_family_name, translate_mode_name
+
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
 IMG_ROOT = APP_ROOT / "images"
@@ -26,11 +28,6 @@ FAMILY_SYMBOLS = {
     "Opalescent": "circle",
     "Transparent": "diamond",
     "Tint": "square",
-}
-
-MODE_LABELS = {
-    "R": "Reflected",
-    "T": "Transmitted",
 }
 
 HARMONY_SCHEMES = {
@@ -84,7 +81,48 @@ ELEMENT_COLOURS = {
     "Gold": "#d4a020",
 }
 
-st.set_page_config(page_title="Glass Color Wheel", layout="wide")
+st.set_page_config(page_title=t("color_wheel.title", "Glass Color Wheel"), layout="wide")
+render_app_sidebar()
+
+
+def mode_label(mode: str) -> str:
+    return translate_mode_name(mode)
+
+
+def harmony_scheme_label(value: str) -> str:
+    labels = {
+        "None": t("color_wheel.harmony.none", "None"),
+        "Complementary": t("color_wheel.harmony.complementary", "Complementary"),
+        "Analogous": t("color_wheel.harmony.analogous", "Analogous"),
+        "Split Complementary": t("color_wheel.harmony.split_complementary", "Split Complementary"),
+        "Triadic": t("color_wheel.harmony.triadic", "Triadic"),
+        "Square": t("color_wheel.harmony.square", "Square"),
+    }
+    return labels.get(value, value)
+
+
+def view_mode_label(value: str) -> str:
+    labels = {
+        "2d": t("color_wheel.view.2d", "2D Wheel"),
+        "3d": t("color_wheel.view.3d", "3D Wheel"),
+    }
+    return labels.get(value, value)
+
+
+def harmony_target_label(value: str) -> str:
+    labels = {
+        "Complementary": t("color_wheel.target.complementary", "Complementary"),
+        "Analogous -30": t("color_wheel.target.analogous_minus", "Analogous -30"),
+        "Analogous +30": t("color_wheel.target.analogous_plus", "Analogous +30"),
+        "Split -150": t("color_wheel.target.split_minus", "Split -150"),
+        "Split +150": t("color_wheel.target.split_plus", "Split +150"),
+        "Triadic +120": t("color_wheel.target.triadic_plus", "Triadic +120"),
+        "Triadic -120": t("color_wheel.target.triadic_minus", "Triadic -120"),
+        "Square +90": t("color_wheel.target.square_90", "Square +90"),
+        "Square +180": t("color_wheel.target.square_180", "Square +180"),
+        "Square +270": t("color_wheel.target.square_270", "Square +270"),
+    }
+    return labels.get(value, value)
 
 
 def safe_int(value, default: int = 0) -> int:
@@ -153,7 +191,7 @@ def event_mapping(value) -> dict:
 @st.cache_data
 def load_wheel_data() -> pd.DataFrame:
     if not DB_PATH.exists():
-        st.error(f"Missing database: {DB_PATH}")
+        st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
 
     with sqlite3.connect(DB_PATH) as con:
@@ -191,7 +229,7 @@ def load_wheel_data() -> pd.DataFrame:
                 con,
             )
         except Exception as exc:
-            st.error(f"Failed to load color-wheel data: {exc}")
+            st.error(t("color_wheel.errors.load", "Failed to load color-wheel data: {error}", error=exc))
             st.stop()
 
 
@@ -230,7 +268,8 @@ def badge_markup(labels: list[str], *, muted: bool = False) -> str:
     for label in labels:
         bg = ELEMENT_COLOURS.get(label, "#888")
         opacity = "opacity:0.7;" if muted else ""
-        text = f"R {label}" if muted else label
+        display_label = translate_element_name(label)
+        text = f"R {display_label}" if muted else display_label
         spans.append(
             f'<span style="background:{bg};color:white;font-size:11px;'
             f'font-weight:bold;padding:2px 7px;border-radius:3px;margin-right:4px;'
@@ -252,7 +291,7 @@ def striker_badge_markup(is_striker: bool) -> str:
         '<div style="font-family:sans-serif;margin-top:4px;line-height:2.2;">'
         '<span style="background:#e05020;color:white;font-size:11px;'
         'font-weight:bold;padding:2px 8px;border-radius:3px;margin-right:8px;">'
-        "STRIKER</span></div>"
+        f"{t('compare.badge.striker', 'STRIKER')}</span></div>"
     )
 
 
@@ -290,7 +329,7 @@ def harmony_targets(base_hue: float, scheme_name: str) -> list[dict]:
         targets.append(
             {
                 "short": str(spec["short"]),
-                "label": str(spec["label"]),
+                "label": harmony_target_label(str(spec["label"])),
                 "target_hue": target_hue,
                 "colour": harmony_colour(target_hue),
             }
@@ -346,7 +385,7 @@ def harmony_matches(
             {
                 "glass_id": str(match["glass_id"]),
                 "color_name": str(match.get("color_name") or ""),
-                "family_name": str(match.get("family_name") or ""),
+                "family_name": translate_family_name(str(match.get("glass_family") or ""), str(match.get("family_name") or "")),
                 "h": safe_int(match.get("h")),
                 "s": safe_int(match.get("s")),
                 "v": safe_int(match.get("v")),
@@ -433,12 +472,12 @@ def build_wheel_figure(
         )
 
     axis_labels = [
-        ("Red", 0),
-        ("Yellow", 60),
-        ("Green", 120),
-        ("Cyan", 180),
-        ("Blue", 240),
-        ("Magenta", 300),
+        (t("color_wheel.axis.red", "Red"), 0),
+        (t("color_wheel.axis.yellow", "Yellow"), 60),
+        (t("color_wheel.axis.green", "Green"), 120),
+        (t("color_wheel.axis.cyan", "Cyan"), 180),
+        (t("color_wheel.axis.blue", "Blue"), 240),
+        (t("color_wheel.axis.magenta", "Magenta"), 300),
     ]
     for label, hue in axis_labels:
         label_x, label_y = wheel_xy(hue, 110)
@@ -498,7 +537,7 @@ def build_wheel_figure(
                 x=[wheel_xy(item["target_hue"], 100)[0] for item in harmony_overlay],
                 y=[wheel_xy(item["target_hue"], 100)[1] for item in harmony_overlay],
                 mode="markers",
-                name="Harmony targets",
+                name=t("color_wheel.figure.harmony_targets", "Harmony targets"),
                 marker=dict(
                     size=10,
                     color=[item["colour"] for item in harmony_overlay],
@@ -507,7 +546,8 @@ def build_wheel_figure(
                 ),
                 hovertemplate=(
                     "<b>%{customdata[0]}</b><br>"
-                    "Target hue: %{customdata[1]} deg"
+                    f"{t('color_wheel.figure.target_hue', 'Target hue')}: "
+                    "%{customdata[1]} deg"
                     "<extra></extra>"
                 ),
                 customdata=[
@@ -520,9 +560,13 @@ def build_wheel_figure(
         family_rows = plotted[plotted["family_name"] == family_name].copy()
         if family_rows.empty:
             continue
+        family_rows["family_name_display"] = [
+            translate_family_name(str(row.get("glass_family") or ""), str(row.get("family_name") or ""))
+            for _, row in family_rows.iterrows()
+        ]
 
         customdata = family_rows[
-            ["glass_id", "color_name", "family_name", "h", "s", "v", "r", "g", "b"]
+            ["glass_id", "color_name", "family_name_display", "h", "s", "v", "r", "g", "b"]
         ].fillna("").values
 
         fig.add_trace(
@@ -542,7 +586,8 @@ def build_wheel_figure(
                 ),
                 hovertemplate=(
                     "<b>%{customdata[0]}</b> %{customdata[1]}<br>"
-                    "Family: %{customdata[2]}<br>"
+                    f"{t('color_wheel.figure.family', 'Family')}: "
+                    "%{customdata[2]}<br>"
                     "HSB: (%{customdata[3]}, %{customdata[4]}, %{customdata[5]})<br>"
                     "RGB: (%{customdata[6]}, %{customdata[7]}, %{customdata[8]})"
                     "<extra></extra>"
@@ -587,7 +632,7 @@ def build_wheel_figure(
                     for item in matched_points
                 ],
                 mode="markers+text",
-                name="Harmony matches",
+                name=t("color_wheel.figure.harmony_matches", "Harmony matches"),
                 ids=[item["glass_id"] for item in matched_points],
                 text=[item["short"] for item in matched_points],
                 textposition="middle center",
@@ -615,17 +660,19 @@ def build_wheel_figure(
                 ),
                 hovertemplate=(
                     "<b>%{customdata[0]}</b> %{customdata[1]}<br>"
-                    "Family: %{customdata[2]}<br>"
+                    f"{t('color_wheel.figure.family', 'Family')}: "
+                    "%{customdata[2]}<br>"
                     "HSB: (%{customdata[3]}, %{customdata[4]}, %{customdata[5]})<br>"
                     "RGB: (%{customdata[6]}, %{customdata[7]}, %{customdata[8]})<br>"
-                    "Harmony: %{customdata[9]}"
+                    f"{t('color_wheel.figure.harmony', 'Harmony')}: "
+                    "%{customdata[9]}"
                     "<extra></extra>"
                 ),
             )
         )
 
     fig.update_layout(
-        title=dict(text=f"{mode_label} Color Wheel", x=0.5),
+        title=dict(text=f"{translate_mode_name(mode_label)} {t('color_wheel.title', 'Glass Color Wheel')}", x=0.5),
         template="plotly_white",
         width=780,
         height=780,
@@ -706,12 +753,12 @@ def build_wheel_3d_figure(
         )
 
     axis_labels = [
-        ("Red", 0),
-        ("Yellow", 60),
-        ("Green", 120),
-        ("Cyan", 180),
-        ("Blue", 240),
-        ("Magenta", 300),
+        (t("color_wheel.axis.red", "Red"), 0),
+        (t("color_wheel.axis.yellow", "Yellow"), 60),
+        (t("color_wheel.axis.green", "Green"), 120),
+        (t("color_wheel.axis.cyan", "Cyan"), 180),
+        (t("color_wheel.axis.blue", "Blue"), 240),
+        (t("color_wheel.axis.magenta", "Magenta"), 300),
     ]
     for label, hue in axis_labels:
         label_x, label_y = wheel_xy(hue, 108)
@@ -749,7 +796,7 @@ def build_wheel_3d_figure(
                 y=[wheel_xy(item["target_hue"], 100)[1] for item in harmony_overlay],
                 z=[0.0 for _ in harmony_overlay],
                 mode="markers+text",
-                name="Harmony targets",
+                name=t("color_wheel.figure.harmony_targets", "Harmony targets"),
                 text=[item["short"] for item in harmony_overlay],
                 textposition="top center",
                 textfont=dict(size=10, color="#444"),
@@ -761,7 +808,8 @@ def build_wheel_3d_figure(
                 ),
                 hovertemplate=(
                     "<b>%{customdata[0]}</b><br>"
-                    "Target hue: %{customdata[1]} deg"
+                    f"{t('color_wheel.figure.target_hue', 'Target hue')}: "
+                    "%{customdata[1]} deg"
                     "<extra></extra>"
                 ),
                 customdata=[
@@ -774,9 +822,13 @@ def build_wheel_3d_figure(
         family_rows = plotted[plotted["family_name"] == family_name].copy()
         if family_rows.empty:
             continue
+        family_rows["family_name_display"] = [
+            translate_family_name(str(row.get("glass_family") or ""), str(row.get("family_name") or ""))
+            for _, row in family_rows.iterrows()
+        ]
 
         customdata = family_rows[
-            ["glass_id", "color_name", "family_name", "h", "s", "v", "r", "g", "b"]
+            ["glass_id", "color_name", "family_name_display", "h", "s", "v", "r", "g", "b"]
         ].fillna("").values
 
         fig.add_trace(
@@ -797,7 +849,8 @@ def build_wheel_3d_figure(
                 ),
                 hovertemplate=(
                     "<b>%{customdata[0]}</b> %{customdata[1]}<br>"
-                    "Family: %{customdata[2]}<br>"
+                    f"{t('color_wheel.figure.family', 'Family')}: "
+                    "%{customdata[2]}<br>"
                     "HSB: (%{customdata[3]}, %{customdata[4]}, %{customdata[5]})<br>"
                     "RGB: (%{customdata[6]}, %{customdata[7]}, %{customdata[8]})"
                     "<extra></extra>"
@@ -838,7 +891,7 @@ def build_wheel_3d_figure(
                 y=[wheel_xy(item["h"], item["s"])[1] for item in matched_points],
                 z=[item["v"] for item in matched_points],
                 mode="markers+text",
-                name="Harmony matches",
+                name=t("color_wheel.figure.harmony_matches", "Harmony matches"),
                 ids=[item["glass_id"] for item in matched_points],
                 text=[item["short"] for item in matched_points],
                 textposition="top center",
@@ -866,17 +919,19 @@ def build_wheel_3d_figure(
                 ),
                 hovertemplate=(
                     "<b>%{customdata[0]}</b> %{customdata[1]}<br>"
-                    "Family: %{customdata[2]}<br>"
+                    f"{t('color_wheel.figure.family', 'Family')}: "
+                    "%{customdata[2]}<br>"
                     "HSB: (%{customdata[3]}, %{customdata[4]}, %{customdata[5]})<br>"
                     "RGB: (%{customdata[6]}, %{customdata[7]}, %{customdata[8]})<br>"
-                    "Harmony: %{customdata[9]}"
+                    f"{t('color_wheel.figure.harmony', 'Harmony')}: "
+                    "%{customdata[9]}"
                     "<extra></extra>"
                 ),
             )
         )
 
     fig.update_layout(
-        title=dict(text=f"{mode_label} HSB Wheel (3D)", x=0.5),
+        title=dict(text=f"{translate_mode_name(mode_label)} HSB {view_mode_label('3d')}", x=0.5),
         template="plotly_white",
         width=780,
         height=780,
@@ -900,7 +955,7 @@ def build_wheel_3d_figure(
                 zeroline=False,
             ),
             zaxis=dict(
-                title="Brightness (B)",
+                title=t("editor.fields.brightness", "Brightness (B)"),
                 range=[0, 100],
                 tickmode="array",
                 tickvals=[0, 25, 50, 75, 100],
@@ -920,7 +975,7 @@ def build_wheel_3d_figure(
 
 def render_measurement_card(data: pd.DataFrame, glass_id: str, prefix: str, mode: str) -> None:
     row = measurement_row(data, glass_id, mode)
-    st.markdown(f"### {MODE_LABELS[mode]}")
+    st.markdown(f"### {mode_label(mode)}")
 
     preview = icon_path(glass_id, prefix, mode)
     if preview.exists():
@@ -929,7 +984,7 @@ def render_measurement_card(data: pd.DataFrame, glass_id: str, prefix: str, mode
         st.image(str(MISSING_ICON), width="content")
 
     if row is None:
-        st.write("No measurement data for this mode.")
+        st.write(t("library.messages.no_measurement_mode", "No measurement data for this mode."))
         return
 
     swatch = rgb_string(row)
@@ -937,7 +992,7 @@ def render_measurement_card(data: pd.DataFrame, glass_id: str, prefix: str, mode
         f"""
         <div style="display:flex;align-items:center;gap:10px;margin:4px 0 10px 0;">
           <div style="width:28px;height:28px;border-radius:4px;border:1px solid #aaa;background:{swatch};"></div>
-          <div style="font-family:sans-serif;font-size:13px;color:#333;">Measured color</div>
+          <div style="font-family:sans-serif;font-size:13px;color:#333;">{t('color_wheel.labels.measured_color', 'Measured color')}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -948,7 +1003,7 @@ def render_measurement_card(data: pd.DataFrame, glass_id: str, prefix: str, mode
             [
                 f"**RGB:** ({safe_int(row.get('r'))}, {safe_int(row.get('g'))}, {safe_int(row.get('b'))})  ",
                 f"**HSB:** ({safe_int(row.get('h'))}, {safe_int(row.get('s'))}, {safe_int(row.get('v'))})  ",
-                f"**Thickness:** {row.get('thickness_mm') or '-'} mm",
+                f"**{t('editor.fields.thickness', 'Thickness (mm)').replace(' (mm)', '')}:** {row.get('thickness_mm') or '-'} mm",
             ]
         )
     )
@@ -964,7 +1019,7 @@ def render_selected_sample(
 ) -> None:
     current = data[data["glass_id"].astype(str) == str(selected_glass_id)]
     if current.empty:
-        st.info("Select a visible point to inspect a sample.")
+        st.info(t("color_wheel.messages.select_point", "Select a visible point to inspect a sample."))
         return
 
     base_row = current.iloc[0]
@@ -974,7 +1029,7 @@ def render_selected_sample(
 
     title = str(base_row.get("color_name") or "").strip()
     st.subheader(f"{selected_glass_id}  {title}" if title else str(selected_glass_id))
-    st.caption(f"Family: {family_name}")
+    st.caption(t("color_wheel.labels.family", "Family: {family}", family=translate_family_name(str(base_row.get("glass_family") or ""), family_name)))
 
     st.markdown(
         striker_badge_markup(safe_int(base_row.get("is_striker"), 0) == 1),
@@ -982,27 +1037,27 @@ def render_selected_sample(
     )
 
     if current_row is not None:
-        if view_mode == "3D Wheel":
+        if view_mode == "3d":
             position_lines = [
-                f"Mode: {html.escape(MODE_LABELS[current_mode])}",
-                f"H: {safe_int(current_row.get('h'))} deg",
-                f"Radius (S): {safe_int(current_row.get('s'))}",
-                f"Z (B): {safe_int(current_row.get('v'))}",
-                f"B: {safe_int(current_row.get('v'))}",
+                t("color_wheel.position.mode", "Mode: {mode}", mode=html.escape(mode_label(current_mode))),
+                t("color_wheel.position.hue", "H: {value} deg", value=safe_int(current_row.get("h"))),
+                t("color_wheel.position.radius_s", "Radius (S): {value}", value=safe_int(current_row.get("s"))),
+                t("color_wheel.position.z_b", "Z (B): {value}", value=safe_int(current_row.get("v"))),
+                t("color_wheel.position.brightness_b", "B: {value}", value=safe_int(current_row.get("v"))),
             ]
         else:
             position_lines = [
-                f"Mode: {html.escape(MODE_LABELS[current_mode])}",
-                f"H: {safe_int(current_row.get('h'))} deg",
-                f"Radius (B): {safe_int(current_row.get('v'))}",
-                f"S: {safe_int(current_row.get('s'))}",
-                f"B: {safe_int(current_row.get('v'))}",
+                t("color_wheel.position.mode", "Mode: {mode}", mode=html.escape(mode_label(current_mode))),
+                t("color_wheel.position.hue", "H: {value} deg", value=safe_int(current_row.get("h"))),
+                t("color_wheel.position.radius_b", "Radius (B): {value}", value=safe_int(current_row.get("v"))),
+                t("color_wheel.position.saturation_s", "S: {value}", value=safe_int(current_row.get("s"))),
+                t("color_wheel.position.brightness_b", "B: {value}", value=safe_int(current_row.get("v"))),
             ]
         st.markdown(
             f"""
             <div style="font-family:sans-serif;font-size:14px;margin:8px 0 12px 0;
                         padding:10px 12px;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
-              <strong>Wheel position</strong><br>
+              <strong>{t('color_wheel.labels.wheel_position', 'Wheel position')}</strong><br>
               {'<br>'.join(position_lines)}
             </div>
             """,
@@ -1010,7 +1065,7 @@ def render_selected_sample(
         )
 
     if harmony_scheme != "None":
-        st.markdown("### Harmony Overlay")
+        st.markdown(f"### {t('color_wheel.labels.harmony_overlay', 'Harmony Overlay')}")
         if harmony_overlay:
             rows = []
             for item in harmony_overlay:
@@ -1018,7 +1073,7 @@ def render_selected_sample(
                     rows.append(
                         (
                             f"<strong>{html.escape(item['label'])}</strong>: "
-                            f"target {safe_int(item['target_hue'])} deg → "
+                            f"{t('color_wheel.figure.target_hue', 'Target hue').lower()} {safe_int(item['target_hue'])} deg -> "
                             f"{html.escape(item['glass_id'])} {html.escape(item['color_name'])} "
                             f"(ΔH {item['hue_delta']:.1f})"
                         )
@@ -1026,7 +1081,7 @@ def render_selected_sample(
                 else:
                     rows.append(
                         f"<strong>{html.escape(item['label'])}</strong>: "
-                        f"target {safe_int(item['target_hue'])} deg"
+                        f"{t('color_wheel.figure.target_hue', 'Target hue').lower()} {safe_int(item['target_hue'])} deg"
                     )
             st.markdown(
                 (
@@ -1039,24 +1094,24 @@ def render_selected_sample(
                 unsafe_allow_html=True,
             )
         else:
-            st.info("No harmony targets are available for the current selection.")
+            st.info(t("color_wheel.messages.no_harmony", "No harmony targets are available for the current selection."))
 
     if current_detail_target():
         if st.button(
-            "Open full datasheet",
+            t("library.detail.open_datasheet", "Open full datasheet"),
             key=f"open_datasheet_wheel_{selected_glass_id}",
             width="content",
         ):
             st.session_state["detail_glass_id"] = str(selected_glass_id)
             st.session_state["detail_return_page"] = "pages/7_Glass_Color_Wheel.py"
-            st.session_state["detail_return_label"] = "Color Wheel"
+            st.session_state["detail_return_label_key"] = "color_wheel.title"
             if not switch_to_page(DETAIL_PAGE):
-                st.warning("Could not navigate to the full datasheet page.")
+                st.warning(t("color_wheel.messages.open_datasheet_failed", "Could not navigate to the full datasheet page."))
 
-    st.markdown("### Elements Present")
+    st.markdown(f"### {t('shared.sections.elements_present', 'Elements Present')}")
     st.markdown(badge_markup(element_labels(base_row)), unsafe_allow_html=True)
 
-    st.markdown("### Reactive Potential")
+    st.markdown(f"### {t('shared.sections.reactive_potential', 'Reactive Potential')}")
     st.markdown(badge_markup(reactive_labels(base_row), muted=True), unsafe_allow_html=True)
 
     left, right = st.columns(2, gap="large")
@@ -1075,7 +1130,7 @@ wheel_data["mode"] = wheel_data["mode"].astype(str).str.upper()
 for column in ["r", "g", "b", "h", "s", "v", "thickness_mm"]:
     wheel_data[column] = pd.to_numeric(wheel_data[column], errors="coerce")
 
-st.sidebar.header("Color Wheel")
+st.sidebar.header(t("color_wheel.sidebar.title", "Color Wheel"))
 
 family_options = ["All"]
 family_options.extend(
@@ -1088,17 +1143,32 @@ family_options.extend(
     if family not in family_options
 )
 
-selected_family = st.sidebar.selectbox("Family", family_options, index=0)
-view_mode = st.sidebar.radio("View", ["2D Wheel", "3D Wheel"], index=0)
-mode_label = st.sidebar.radio("Mode", ["Reflected", "Transmitted"], index=0)
+selected_family = st.sidebar.selectbox(
+    t("editor.fields.glass_family", "Glass family"),
+    family_options,
+    index=0,
+    format_func=lambda value: translate_family_name(None, value),
+)
+view_mode = st.sidebar.radio(
+    t("color_wheel.fields.view", "View"),
+    ["2d", "3d"],
+    index=0,
+    format_func=view_mode_label,
+)
+mode = st.sidebar.radio(
+    t("color_wheel.fields.mode", "Mode"),
+    ["R", "T"],
+    index=0,
+    format_func=mode_label,
+)
 harmony_scheme = st.sidebar.selectbox(
-    "Harmony Overlay",
+    t("color_wheel.fields.harmony", "Harmony Overlay"),
     list(HARMONY_SCHEMES.keys()),
     index=0,
+    format_func=harmony_scheme_label,
 )
-mode = "R" if mode_label == "Reflected" else "T"
-query = st.sidebar.text_input("Search (id or color)", "")
-only_strikers = st.sidebar.checkbox("Striking only", value=False)
+query = st.sidebar.text_input(t("color_wheel.fields.search", "Search (id or color)"), "")
+only_strikers = st.sidebar.checkbox(t("color_wheel.fields.striking_only", "Striking only"), value=False)
 
 visible = wheel_data[wheel_data["mode"] == mode].copy()
 if selected_family != "All":
@@ -1117,25 +1187,33 @@ if only_strikers:
 visible = visible.dropna(subset=["h", "s", "v"]).copy()
 visible = visible.sort_values(["h", "v", "s", "glass_id"], na_position="last")
 
-st.title("Glass Color Wheel")
-if view_mode == "3D Wheel":
-    caption = (
-        f"{len(visible)} samples on wheel · angle = H · radius = S · z = B · "
-        f"mode: {mode_label.lower()}"
+st.title(t("color_wheel.title", "Glass Color Wheel"))
+if view_mode == "3d":
+    caption = t(
+        "color_wheel.caption.summary_3d",
+        "{count} samples on wheel | angle = H | radius = S | z = B | mode: {mode}",
+        count=len(visible),
+        mode=translate_mode_name(mode).lower(),
     )
 else:
-    caption = (
-        f"{len(visible)} samples on wheel · angle = H · radius = B · "
-        f"mode: {mode_label.lower()}"
+    caption = t(
+        "color_wheel.caption.summary_2d",
+        "{count} samples on wheel | angle = H | radius = B | mode: {mode}",
+        count=len(visible),
+        mode=translate_mode_name(mode).lower(),
     )
 
 if harmony_scheme != "None":
-    caption += f" · harmony: {harmony_scheme.lower()}"
+    caption += t(
+        "color_wheel.caption.harmony",
+        " | harmony: {harmony}",
+        harmony=harmony_scheme_label(harmony_scheme).lower(),
+    )
 
 st.caption(caption)
 
 if visible.empty:
-    st.info("No glass samples match the current filters.")
+    st.info(t("color_wheel.messages.empty", "No glass samples match the current filters."))
     st.stop()
 
 selected_from_chart = selected_glass_id_from_chart_state()
@@ -1153,20 +1231,20 @@ harmony_overlay = harmony_matches(visible, str(selected_glass_id), harmony_schem
 chart_col, detail_col = st.columns([0.62, 0.38], gap="large")
 
 with chart_col:
-    if view_mode == "3D Wheel":
-        st.caption("Click a point to inspect a sample. Drag to orbit the 3D view.")
+    if view_mode == "3d":
+        st.caption(t("color_wheel.caption.click_3d", "Click a point to inspect a sample. Drag to orbit the 3D view."))
         figure = build_wheel_3d_figure(
             visible,
             str(selected_glass_id),
-            mode_label,
+            mode,
             harmony_overlay,
         )
     else:
-        st.caption("Click a point to inspect a sample.")
+        st.caption(t("color_wheel.caption.click_2d", "Click a point to inspect a sample."))
         figure = build_wheel_figure(
             visible,
             str(selected_glass_id),
-            mode_label,
+            mode,
             harmony_overlay,
         )
 

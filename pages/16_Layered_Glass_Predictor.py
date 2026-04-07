@@ -11,6 +11,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from i18n import join_list, render_app_sidebar, t, translate_element_name, translate_family_name
+
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
 IMG_ROOT = APP_ROOT / "images"
@@ -40,7 +42,8 @@ REACTION_RULES = {
     "Gold": [],
 }
 
-st.set_page_config(page_title="Layered Glass Predictor", layout="wide")
+st.set_page_config(page_title=t("predictor.title", "Layered Glass Predictor"), layout="wide")
+render_app_sidebar()
 st.markdown(
     """
     <style>
@@ -272,7 +275,7 @@ def reactive_pairings(base_row: pd.Series, top_row: pd.Series) -> list[str]:
         for source in source_elements:
             for reactive in REACTION_RULES.get(source, []):
                 if reactive in target_elements:
-                    label = f"{source.lower()}/{reactive.lower()}"
+                    label = f"{translate_element_name(source).lower()}/{translate_element_name(reactive).lower()}"
                     if label not in pairings:
                         pairings.append(label)
     return pairings
@@ -352,11 +355,7 @@ def circular_hue_delta(reference_hue: int, compare_hue: int) -> float:
 
 
 def join_phrases(parts: list[str]) -> str:
-    if not parts:
-        return ""
-    if len(parts) == 1:
-        return parts[0]
-    return ", ".join(parts[:-1]) + " and " + parts[-1]
+    return join_list(parts)
 
 
 def describe_change(
@@ -369,7 +368,7 @@ def describe_change(
 ) -> str | None:
     if abs(delta) < slight_threshold:
         return None
-    qualifier = "slightly " if abs(delta) < strong_threshold else ""
+    qualifier = t("shared.qualifier.slightly", "slightly ") if abs(delta) < strong_threshold else ""
     return f"{qualifier}{positive_text if delta > 0 else negative_text}"
 
 
@@ -385,42 +384,73 @@ def layered_summary_lines(
     top_thickness: float,
 ) -> list[str]:
     lines = [
-        f"At {top_thickness:.2f} mm of top glass, the light makes a {top_thickness * 2.0:.2f} mm round trip through that layer before it returns from the base."
+        t(
+            "predictor.summary.path_length",
+            "At {top_thickness:.2f} mm of top glass, the light makes a {path_length:.2f} mm round trip through that layer before it returns from the base.",
+            top_thickness=top_thickness,
+            path_length=top_thickness * 2.0,
+        )
     ]
 
     base_quality = []
-    brightness_phrase = describe_change(result_hsb[2] - base_hsb[2], "brighter", "darker")
+    brightness_phrase = describe_change(result_hsb[2] - base_hsb[2], t("predictor.summary.brighter", "brighter"), t("predictor.summary.darker", "darker"))
     saturation_phrase = describe_change(
         result_hsb[1] - base_hsb[1],
-        "more saturated",
-        "less saturated",
+        t("predictor.summary.more_saturated", "more saturated"),
+        t("predictor.summary.less_saturated", "less saturated"),
     )
     if brightness_phrase:
         base_quality.append(brightness_phrase)
     if saturation_phrase:
         base_quality.append(saturation_phrase)
     if base_quality:
-        lines.append(f"Compared with the base by itself, the layered result reads {join_phrases(base_quality)}.")
+        lines.append(
+            t(
+                "predictor.summary.compared_with_base",
+                "Compared with the base by itself, the layered result reads {qualities}.",
+                qualities=join_phrases(base_quality),
+            )
+        )
 
     hue_delta = circular_hue_delta(base_hsb[0], result_hsb[0])
     if abs(hue_delta) >= 8:
-        lines.append(f"The base hue shifts by about {abs(hue_delta):.0f}° once the top layer is added.")
+        lines.append(
+            t(
+                "predictor.summary.hue_shift",
+                "The base hue shifts by about {degrees:.0f} deg once the top layer is added.",
+                degrees=abs(hue_delta),
+            )
+        )
 
     if result_hsb[2] <= top_single_hsb[2] - 5:
         lines.append(
-            "Compared with the top glass on its own bright scan backing, the layered result comes back darker because the base is limiting the return light."
+            t(
+                "predictor.summary.darker_than_top",
+                "Compared with the top glass on its own bright scan backing, the layered result comes back darker because the base is limiting the return light.",
+            )
         )
 
     avg_result = sum(result_rgb) / 3.0
     avg_base = sum(base_rgb) / 3.0
     if avg_base > 0 and avg_result / avg_base < 0.72:
-        lines.append("This stack is likely to feel noticeably quieter and more muted than the base alone.")
+        lines.append(
+            t(
+                "predictor.summary.quieter_stack",
+                "This stack is likely to feel noticeably quieter and more muted than the base alone.",
+            )
+        )
 
     pairings = reactive_pairings(base_catalog_row, top_catalog_row)
     if pairings:
-        lines.append(f"Reactive potential: Possible {'; '.join(pairings)} reaction.")
+        lines.append(
+            t(
+                "predictor.summary.reactive_yes",
+                "Reactive potential: Possible {pairings} reaction.",
+                pairings="; ".join(pairings),
+            )
+        )
     else:
-        lines.append("Reactive potential: No obvious reactive pairing surfaced.")
+        lines.append(t("predictor.summary.reactive_no", "Reactive potential: No obvious reactive pairing surfaced."))
 
     return lines
 
@@ -460,9 +490,9 @@ def predicted_rgb_curve_figure(
 
     figure.add_vline(x=selected_thickness, line_dash="dash", line_color="gray")
     figure.update_layout(
-        title="Predicted Reflected RGB",
-        xaxis_title="Top thickness (mm)",
-        yaxis_title="Channel value",
+        title=t("predictor.figure.rgb", "Predicted Reflected RGB"),
+        xaxis_title=t("predictor.figure.thickness_axis", "Top thickness (mm)"),
+        yaxis_title=t("predictor.figure.channel_value", "Channel value"),
         yaxis=dict(range=[0, 260]),
         xaxis=dict(range=[0, max_thickness]),
         legend=dict(orientation="h", y=1.08),
@@ -495,7 +525,7 @@ def predicted_hsb_curve_figure(
             x=thickness_values,
             y=brightness_values,
             mode="lines",
-            name="Brightness",
+            name=t("editor.fields.brightness", "Brightness (B)").replace(" (B)", ""),
             line=dict(color="cornflowerblue", width=2.4),
         )
     )
@@ -504,15 +534,15 @@ def predicted_hsb_curve_figure(
             x=thickness_values,
             y=saturation_values,
             mode="lines",
-            name="Saturation",
+            name=t("editor.fields.saturation", "Saturation (S)").replace(" (S)", ""),
             line=dict(color="limegreen", width=2.4),
         )
     )
     figure.add_vline(x=selected_thickness, line_dash="dash", line_color="gray")
     figure.update_layout(
-        title="Predicted Brightness & Saturation",
-        xaxis_title="Top thickness (mm)",
-        yaxis_title="0-100",
+        title=t("predictor.figure.hsb", "Predicted Brightness & Saturation"),
+        xaxis_title=t("predictor.figure.thickness_axis", "Top thickness (mm)"),
+        yaxis_title=t("predictor.figure.zero_to_hundred", "0-100"),
         yaxis=dict(range=[0, 105]),
         xaxis=dict(range=[0, max_thickness]),
         legend=dict(orientation="h", y=1.08),
@@ -534,22 +564,32 @@ measurements["glass_id"] = measurements["glass_id"].astype(str)
 measurements["mode"] = measurements["mode"].astype(str).str.upper()
 
 if catalog.empty or measurements.empty:
-    st.error("Glass catalog or measurement data is missing.")
+    st.error(t("predictor.messages.missing_data", "Glass catalog or measurement data is missing."))
     st.stop()
 
 family_options = ["All"] + families["name"].tolist()
 base_family_default = family_options.index("Opalescent") if "Opalescent" in family_options else 0
 top_family_default = family_options.index("Transparent") if "Transparent" in family_options else 0
 
-st.sidebar.header("Layer Setup")
-base_family = st.sidebar.selectbox("Base family", family_options, index=base_family_default)
-top_family = st.sidebar.selectbox("Top family", family_options, index=top_family_default)
+st.sidebar.header(t("predictor.sidebar.title", "Layer Setup"))
+base_family = st.sidebar.selectbox(
+    t("predictor.fields.base_family", "Base family"),
+    family_options,
+    index=base_family_default,
+    format_func=lambda value: translate_family_name(None, value),
+)
+top_family = st.sidebar.selectbox(
+    t("predictor.fields.top_family", "Top family"),
+    family_options,
+    index=top_family_default,
+    format_func=lambda value: translate_family_name(None, value),
+)
 
 base_candidates = filter_catalog_by_family(catalog, base_family)
 top_candidates = filter_catalog_by_family(catalog, top_family)
 
 if base_candidates.empty or top_candidates.empty:
-    st.error("No glass samples match the current family filters.")
+    st.error(t("predictor.messages.no_family_matches", "No glass samples match the current family filters."))
     st.stop()
 
 base_default_id = default_sample_id(base_candidates, ["French Vanilla"])
@@ -562,13 +602,13 @@ base_index = base_candidates["glass_id"].tolist().index(base_default_id)
 top_index = top_candidates["glass_id"].tolist().index(top_default_id)
 
 base_id = st.sidebar.selectbox(
-    "Base glass",
+    t("predictor.fields.base_glass", "Base glass"),
     base_candidates["glass_id"].tolist(),
     index=base_index,
     format_func=lambda glass_id: base_labels.get(glass_id, glass_id),
 )
 top_id = st.sidebar.selectbox(
-    "Top glass",
+    t("predictor.fields.top_glass", "Top glass"),
     top_candidates["glass_id"].tolist(),
     index=top_index,
     format_func=lambda glass_id: top_labels.get(glass_id, glass_id),
@@ -580,23 +620,35 @@ base_row_r = measurement_row(measurements, base_id, "R")
 top_row_t = measurement_row(measurements, top_id, "T")
 
 if base_row_r is None:
-    st.error(f"{base_labels.get(base_id, base_id)} is missing reflected measurement data.")
+    st.error(
+        t(
+            "predictor.messages.base_missing_reflected",
+            "{label} is missing reflected measurement data.",
+            label=base_labels.get(base_id, base_id),
+        )
+    )
     st.stop()
 if top_row_t is None:
-    st.error(f"{top_labels.get(top_id, top_id)} is missing transmitted measurement data.")
+    st.error(
+        t(
+            "predictor.messages.top_missing_transmitted",
+            "{label} is missing transmitted measurement data.",
+            label=top_labels.get(top_id, top_id),
+        )
+    )
     st.stop()
 
 reference_top_thickness = max(safe_float(top_row_t.get("thickness_mm"), 2.0), 0.01)
 thickness_max = max(8.0, reference_top_thickness * 4.0)
 top_thickness = st.sidebar.slider(
-    "Top thickness (mm)",
+    t("predictor.fields.top_thickness", "Top thickness (mm)"),
     min_value=0.0,
     max_value=float(round(thickness_max, 1)),
     value=float(round(reference_top_thickness, 1)),
     step=0.1,
 )
 st.sidebar.caption(
-    f"Round-trip path through top glass: {top_thickness * 2.0:.2f} mm"
+    t("predictor.caption.path_length", "Round-trip path through top glass: {value} mm", value=f"{top_thickness * 2.0:.2f}")
 )
 
 base_rgb = tuple(safe_int(base_row_r.get(field)) for field in ("r", "g", "b"))
@@ -611,9 +663,12 @@ top_prefix = row_prefix(top_catalog_row)
 base_icon = first_existing_icon(base_id, base_prefix, "R")
 top_icon = first_existing_icon(top_id, top_prefix, "T")
 
-st.title("Layered Glass Predictor")
+st.title(t("predictor.title", "Layered Glass Predictor"))
 st.caption(
-    "First-pass reflected stacking model: base reflected RGB multiplied by the top glass transmission over a double pass through the selected thickness."
+    t(
+        "predictor.caption.intro",
+        "First-pass reflected stacking model: base reflected RGB multiplied by the top glass transmission over a double pass through the selected thickness.",
+    )
 )
 
 summary_lines = layered_summary_lines(
@@ -635,57 +690,60 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.caption(
-    "Reactive potential indicates a possible chemistry interaction. Visible results still depend on firing conditions such as temperature, hold time, thickness, and kiln atmosphere."
+    t(
+        "predictor.caption.reactive",
+        "Reactive potential indicates a possible chemistry interaction. Visible results still depend on firing conditions such as temperature, hold time, thickness, and kiln atmosphere.",
+    )
 )
 
 card_cols = st.columns(3, gap="large")
 
 with card_cols[0]:
     st.markdown(f"### {base_labels.get(base_id, base_id)}")
-    st.caption("Base glass used as the reflected return source.")
+    st.caption(t("predictor.cards.base_caption", "Base glass used as the reflected return source."))
     if base_icon is not None:
         st.image(str(base_icon), width="content")
     elif MISSING_ICON.exists():
         st.image(str(MISSING_ICON), width="content")
     st.markdown(
         swatch_markup(
-            "Base reflected source",
-            "Measured reflected scan",
+            t("predictor.sections.base", "Base reflected source"),
+            t("predictor.cards.base_subtitle", "Measured reflected scan"),
             base_rgb,
             base_hsb,
-            "This is the light coming back from the base before the top layer filters it.",
+            t("predictor.cards.base_note", "This is the light coming back from the base before the top layer filters it."),
         ),
         unsafe_allow_html=True,
     )
 
 with card_cols[1]:
     st.markdown(f"### {top_labels.get(top_id, top_id)}")
-    st.caption("Top glass acting as the colour filter.")
+    st.caption(t("predictor.cards.top_caption", "Top glass acting as the colour filter."))
     if top_icon is not None:
         st.image(str(top_icon), width="content")
     elif MISSING_ICON.exists():
         st.image(str(MISSING_ICON), width="content")
     st.markdown(
         swatch_markup(
-            "Top filter",
-            f"Modeled transmission at {top_thickness:.2f} mm",
+            t("predictor.sections.top", "Top filter"),
+            t("predictor.cards.top_subtitle", "Modeled transmission at {thickness:.2f} mm", thickness=top_thickness),
             top_single_rgb,
             top_single_hsb,
-            f"Reference transmitted scan thickness: {reference_top_thickness:.2f} mm.",
+            t("predictor.cards.top_note", "Reference transmitted scan thickness: {thickness:.2f} mm.", thickness=reference_top_thickness),
         ),
         unsafe_allow_html=True,
     )
 
 with card_cols[2]:
-    st.markdown("### Predicted layered result")
-    st.caption("Double-pass prediction over the chosen base.")
+    st.markdown(f"### {t('predictor.sections.result', 'Predicted layered result')}")
+    st.caption(t("predictor.cards.result_caption", "Double-pass prediction over the chosen base."))
     st.markdown(
         swatch_markup(
-            "Predicted reflected result",
-            f"Round trip through {top_thickness * 2.0:.2f} mm of top glass",
+            t("predictor.cards.result_title", "Predicted reflected result"),
+            t("predictor.cards.result_subtitle", "Round trip through {thickness:.2f} mm of top glass", thickness=top_thickness * 2.0),
             result_rgb,
             result_hsb,
-            "This is the first-pass estimate of what returns to the eye from the layered stack.",
+            t("predictor.cards.result_note", "This is the first-pass estimate of what returns to the eye from the layered stack."),
         ),
         unsafe_allow_html=True,
     )
@@ -702,13 +760,13 @@ with chart_right:
         config={"displaylogo": False},
     )
 
-st.markdown("### Model Notes")
+st.markdown(f"### {t('predictor.sections.model_notes', 'Model Notes')}")
 st.markdown(
     "\n".join(
         [
-            "- The top glass is treated as a transmitted filter using a Beer-Lambert-style attenuation model.",
-            "- Reflected stacking uses a double pass through the top layer: once going down and once coming back.",
-            "- This is a first-pass predictor. It does not yet model interface losses, surface texture scattering, or kiln-formed microstructure.",
+            f"- {t('predictor.notes.filter_model', 'The top glass is treated as a transmitted filter using a Beer-Lambert-style attenuation model.')}",
+            f"- {t('predictor.notes.double_pass', 'Reflected stacking uses a double pass through the top layer: once going down and once coming back.')}",
+            f"- {t('predictor.notes.first_pass', 'This is a first-pass predictor. It does not yet model interface losses, surface texture scattering, or kiln-formed microstructure.')}",
         ]
     )
 )
