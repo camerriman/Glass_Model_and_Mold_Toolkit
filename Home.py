@@ -3,7 +3,7 @@ import streamlit as st
 
 from i18n import render_app_sidebar, t
 
-st.set_page_config(page_title=t("home.title", "Glass Toolkit & Library"), layout="wide")
+st.set_page_config(page_title=t("home.title", "Glass Library & Model and Mold Toolkit"), layout="wide")
 
 # Hide auto-generated sidebar page list
 st.markdown("""
@@ -14,7 +14,7 @@ st.markdown("""
 
 render_app_sidebar(nav_expanded=True)
 
-st.title(t("home.title", "Glass Model and Mold Toolkit & Library"))
+st.title(t("home.title", "Glass Library & Model and Mold Toolkit"))
 st.markdown(t("home.subtitle", "Use the links below to access model generation, mold design tools, and browse glass data."))
 
 st.divider()

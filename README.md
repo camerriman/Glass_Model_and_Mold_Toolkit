@@ -1,6 +1,8 @@
-# Glass Model and Mold Toolkit & Library
+# Glass Library & Model and Mold Toolkit
 
 A Streamlit multipage app for glass mold-making, model generation, SVG utilities, and a Bullseye glass reference library.
+
+The app also includes a built-in localization layer for Streamlit UI text, sidebar navigation, forms, dashboards, and locale-aware date/time display.
 
 The project combines:
 
@@ -13,6 +15,7 @@ The project combines:
 ## Main Areas
 
 - `Home.py`: multipage app entry point
+- `i18n.py`: shared localization module, language selector, and date/time formatting helpers
 - `pages/1_Cameo_Model_Generator.py`: cameo mold model workflow
 - `pages/4_Vessel_Model_Generator.py`: vessel mold model workflow
 - `pages/2_Model_Tiles_Panels.py`: mesh slicing into panels or tiles
@@ -24,12 +27,14 @@ The project combines:
 - `pages/9_Opalescent_Reference.py`, `pages/10_Transparent_Reference.py`, `pages/11_Tint_Reference.py`: printable family reference sheets
 - `pages/12_Add_Glass_Sample.py`, `pages/13_Edit_Glass_Sample.py`: glass catalog maintenance
 - `pages/20_SVG_Tiles.py`, `pages/21_SVG_Crop.py`: SVG workflow tools
+- `utilities/i18n_audit.py`: translation coverage checker for supported UI languages
 
 ## Project Structure
 
 ```text
 glass_model_and_mold_toolkit/
 ├── Home.py
+├── i18n.py
 ├── pages/
 ├── utilities/
 ├── data/
@@ -49,9 +54,47 @@ Notable runtime dependencies:
 - `trimesh`, `scipy`, `numpy` for model generation and mesh work
 - `plotly`, `matplotlib` for visualisation
 - `Pillow` for image processing and PDF rendering
+- `opencv-python-headless` for the mesh crop workflow
 - `streamlit-quill` for rich-text editing on glass sample pages
 - `lxml` and `vpype` for SVG processing
 - `manifold3d` for more reliable mesh boolean operations
+
+## Localization
+
+The app uses a lightweight key-based localization system instead of a full gettext-style catalog workflow.
+
+Current UI languages:
+
+- English
+- Spanish
+- Italian
+- German
+- French
+
+Localization responsibilities:
+
+- `i18n.py` stores supported languages, locale mappings, translation dictionaries, and formatting helpers.
+- Pages render user-facing copy through stable translation keys via `t("...")`.
+- Displayed dates and times are formatted according to the active language/locale.
+- Units such as `F/C` remain separate from language selection.
+- Stored database values remain canonical and are not rewritten for localization.
+
+To audit translation coverage for a language:
+
+```bash
+python3 utilities/i18n_audit.py fr
+```
+
+A completed language should report `Missing keys: 0`.
+
+To add another language:
+
+1. Add the language code to `SUPPORTED_LANGUAGES` in `i18n.py`.
+2. Add its locale to `LOCALES_BY_LANGUAGE`.
+3. Add selector display names such as `language_name.fr`.
+4. Add month names if needed for localized date formatting.
+5. Add the translation dictionary in `i18n.py`.
+6. Run the audit helper until the language reports `Missing keys: 0`.
 
 ## Local Setup
 
@@ -74,7 +117,7 @@ pip install -r requirements.txt
 streamlit run Home.py
 ```
 
-The app entry point is `Home.py`.
+The app entry point is `Home.py`. Run it from the repository root and keep the filename casing exact.
 
 ## Data and Assets
 
@@ -111,6 +154,8 @@ This app is suitable for deployment on Streamlit Community Cloud.
 - The app includes many image assets, so repository size may affect deployment and update performance.
 - SVG pages use `vpype`, which is included in `requirements.txt`.
 - Mesh slicing defaults to the `manifold` engine through `manifold3d`.
+- The mesh crop page also depends on `opencv-python-headless`.
+- UI localization is session-based and does not modify stored database content.
 - External mesh engines such as Blender or OpenSCAD are not bundled by this repo and should be treated as optional local-only engines.
 
 ## What the STL Files Are For
