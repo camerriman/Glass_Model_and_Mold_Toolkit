@@ -11,7 +11,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from i18n import join_list, render_app_sidebar, t, translate_family_name, translate_mode_name
+from i18n import (
+    join_list,
+    render_app_sidebar,
+    t,
+    translate_element_name,
+    translate_family_name,
+    translate_mode_name,
+)
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
@@ -37,6 +44,24 @@ FRIT_BEHAVIOUR = {
     "Coarse": {
         "factor": 1.0,
     },
+}
+
+ELEMENT_MAP = {
+    "Selenium": "se",
+    "Sulfur": "su",
+    "Copper": "cu",
+    "Lead": "pb",
+    "Silver": "ag",
+    "Gold": "au",
+}
+
+REACTION_RULES = {
+    "Selenium": ["Copper", "Lead", "Silver"],
+    "Sulfur": ["Copper", "Lead", "Silver"],
+    "Copper": ["Selenium", "Sulfur", "Silver"],
+    "Lead": ["Selenium", "Sulfur"],
+    "Silver": ["Selenium", "Sulfur", "Copper"],
+    "Gold": [],
 }
 
 st.set_page_config(page_title=t("frit.title", "Frit Mix Explorer"), layout="wide")
@@ -195,7 +220,13 @@ def load_catalog() -> pd.DataFrame:
                 c.cat_id AS glass_id,
                 c.color_name,
                 c.glass_family,
-                COALESCE(f.name, c.glass_family) AS family_name
+                COALESCE(f.name, c.glass_family) AS family_name,
+                c.se,
+                c.su,
+                c.cu,
+                c.pb,
+                c.ag,
+                c.au
             FROM glass_catalog c
             LEFT JOIN glass_families f
                 ON f.code = c.glass_family
@@ -262,6 +293,63 @@ def sample_labels(catalog_slice: pd.DataFrame) -> dict[str, str]:
         title = str(row.color_name or "").strip()
         labels[glass_id] = f"{glass_id} {title}".strip()
     return labels
+
+
+def element_labels(row: pd.Series) -> list[str]:
+    labels = []
+    for label, column in ELEMENT_MAP.items():
+        if safe_int(row.get(column), 0) == 1:
+            labels.append(label)
+    return labels
+
+
+def reactive_pairings(left_row: pd.Series, right_row: pd.Series) -> list[str]:
+    pairings: list[str] = []
+    left_elements = element_labels(left_row)
+    right_elements = element_labels(right_row)
+
+    for source_elements, target_elements in ((left_elements, right_elements), (right_elements, left_elements)):
+        for source in source_elements:
+            for reactive in REACTION_RULES.get(source, []):
+                if reactive in target_elements:
+                    label = f"{translate_element_name(source).lower()}/{translate_element_name(reactive).lower()}"
+                    if label not in pairings:
+                        pairings.append(label)
+    return pairings
+
+
+def component_reactive_details(components: list[dict[str, object]]) -> list[str]:
+    details: list[str] = []
+    for left_index, left_component in enumerate(components):
+        for right_component in components[left_index + 1 :]:
+            pairings = reactive_pairings(left_component["catalog_row"], right_component["catalog_row"])
+            if pairings:
+                details.append(
+                    t(
+                        "frit.summary.reactive.detail_pair",
+                        "{left} with {right}: {pairings}",
+                        left=left_component["slot"],
+                        right=right_component["slot"],
+                        pairings=join_phrases(pairings),
+                    )
+                )
+    return details
+
+
+def base_reactive_details(components: list[dict[str, object]], base_row: pd.Series) -> list[str]:
+    details: list[str] = []
+    for component in components:
+        pairings = reactive_pairings(component["catalog_row"], base_row)
+        if pairings:
+            details.append(
+                t(
+                    "frit.summary.reactive.detail_base",
+                    "{slot}: {pairings}",
+                    slot=component["slot"],
+                    pairings=join_phrases(pairings),
+                )
+            )
+    return details
 
 
 def channel_after_path(reference_channel: float, reference_thickness: float, path_mm: float) -> float:
@@ -463,6 +551,9 @@ def mix_summary_lines(
     depth_mm: float,
     frit_size: str,
     local_separation_label: str,
+    mix_reactive_notes: list[str],
+    base_label: str,
+    base_reactive_notes: list[str],
 ) -> list[str]:
     active_components = [component for component in components if float(component["grams"]) > 0]
     total_grams = sum(float(component["grams"]) for component in active_components)
@@ -547,6 +638,41 @@ def mix_summary_lines(
             )
         else:
             lines.append(t("frit.summary.mix.balanced", "No single frit is dominating outright, so the result should read as a more balanced field."))
+
+    if len(active_components) > 1:
+        if mix_reactive_notes:
+            lines.append(
+                t(
+                    "frit.summary.mix.reactive_yes",
+                    "Reactive potential across the active frits: {details}.",
+                    details=join_phrases(mix_reactive_notes),
+                )
+            )
+        else:
+            lines.append(
+                t(
+                    "frit.summary.mix.reactive_no",
+                    "Reactive potential across the active frits: no obvious reactive pairing appeared in the current mix.",
+                )
+            )
+
+    if base_reactive_notes:
+        lines.append(
+            t(
+                "frit.summary.base.reactive_yes",
+                "Reactive potential against {base_label}: {details}.",
+                base_label=base_label,
+                details=join_phrases(base_reactive_notes),
+            )
+        )
+    else:
+        lines.append(
+            t(
+                "frit.summary.base.reactive_no",
+                "Reactive potential against {base_label}: no obvious reactive pairing appeared between the active frits and the chosen base.",
+                base_label=base_label,
+            )
+        )
 
     lines.append(f"{local_separation_label}. {frit_behaviour_label(frit_size)}")
     lines.append(
@@ -671,6 +797,13 @@ if catalog.empty or measurements.empty:
     st.stop()
 
 family_options = ["All"] + families["name"].tolist()
+transparent_family_matches = families[families["code"].astype(str).str.strip() == "2"]
+if not transparent_family_matches.empty:
+    transparent_family_name = str(transparent_family_matches.iloc[0]["name"])
+elif "Transparent" in family_options:
+    transparent_family_name = "Transparent"
+else:
+    transparent_family_name = family_options[0]
 
 st.sidebar.header(t("frit.sidebar.mix_setup", "Mix Setup"))
 mode = st.sidebar.radio(
@@ -715,17 +848,24 @@ if base_row_r is None:
     st.stop()
 
 frit_setup = [
-    ("Frit 1", ["French Vanilla", "Almond", "Clear"], 2.0),
-    ("Frit 2", ["Tan Transparent", "Black", "Dark"], 1.0),
-    ("Frit 3", ["Silver Gray", "Silver Grey", "Clear"], 0.0),
+    ("Frit 1", transparent_family_name, "001122", ["Red Transparent"], 2.0),
+    ("Frit 2", transparent_family_name, "001426", ["Spring Green"], 2.0),
+    ("Frit 3", transparent_family_name, "001464", ["True Blue"], 2.0),
 ]
 
 
-def select_frit_component(slot_label: str, preferred_terms: list[str], default_grams: float) -> dict[str, object]:
+def select_frit_component(
+    slot_label: str,
+    default_family_name: str,
+    default_glass_id: str,
+    preferred_terms: list[str],
+    default_grams: float,
+) -> dict[str, object]:
+    family_default_index = family_options.index(default_family_name) if default_family_name in family_options else 0
     family_name = st.sidebar.selectbox(
         t("frit.fields.slot_family", "{slot} family", slot=slot_label),
         family_options,
-        index=0,
+        index=family_default_index,
         format_func=lambda value: translate_family_name(None, value),
     )
     candidates = filter_catalog_by_family(catalog, family_name)
@@ -740,8 +880,8 @@ def select_frit_component(slot_label: str, preferred_terms: list[str], default_g
         st.stop()
 
     labels = sample_labels(candidates)
-    default_id = default_sample_id(candidates, preferred_terms)
     glass_ids = candidates["glass_id"].tolist()
+    default_id = default_glass_id if default_glass_id in glass_ids else default_sample_id(candidates, preferred_terms)
     default_index = glass_ids.index(default_id)
     glass_id = st.sidebar.selectbox(
         slot_label,
@@ -784,10 +924,12 @@ def select_frit_component(slot_label: str, preferred_terms: list[str], default_g
 
 components = []
 st.sidebar.divider()
-for index, (slot_label, preferred_terms, default_grams) in enumerate(frit_setup):
+for index, (slot_label, default_family_name, default_glass_id, preferred_terms, default_grams) in enumerate(frit_setup):
     if index > 0:
         st.sidebar.divider()
-    components.append(select_frit_component(slot_label, preferred_terms, default_grams))
+    components.append(
+        select_frit_component(slot_label, default_family_name, default_glass_id, preferred_terms, default_grams)
+    )
 
 available_rows = [component["row"] for component in components if component["row"] is not None]
 reference_depth = max(
@@ -799,7 +941,7 @@ depth_mm = st.sidebar.slider(
     t("frit.fields.mix_depth", "Mix depth (mm)"),
     min_value=0.0,
     max_value=float(round(depth_max, 1)),
-    value=float(round(reference_depth, 1)),
+    value=3.0,
     step=0.1,
 )
 frit_options = list(FRIT_BEHAVIOUR.keys())
@@ -855,6 +997,8 @@ base_rgb = tuple(safe_int(base_row_r.get(field)) for field in ("r", "g", "b"))
 base_hsb = rgb_to_hsb(base_rgb)
 base_prefix = row_prefix(base_catalog_row)
 base_icon = first_existing_icon(base_id, base_prefix, "R")
+mix_reactive_notes = component_reactive_details(active_components)
+base_reactive_notes = base_reactive_details(active_components, base_catalog_row)
 
 layering_ready = all(component["row_t"] is not None for component in active_components)
 if layering_ready:
@@ -887,6 +1031,9 @@ summary_lines = mix_summary_lines(
     depth_mm,
     frit_size,
     local_separation_label,
+    mix_reactive_notes,
+    base_labels.get(base_id, base_id),
+    base_reactive_notes,
 )
 
 st.title(t("frit.title", "Frit Mix Explorer"))
@@ -903,6 +1050,13 @@ st.markdown(
     + "</div>",
     unsafe_allow_html=True,
 )
+if mix_reactive_notes or base_reactive_notes:
+    st.caption(
+        t(
+            "predictor.caption.reactive",
+            "Reactive potential indicates a possible chemistry interaction. The visible result still depends on firing conditions like temperature, soak, thickness, and kiln atmosphere.",
+        )
+    )
 
 badge_markup = "".join(
     [

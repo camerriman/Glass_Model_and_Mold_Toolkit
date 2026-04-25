@@ -2441,6 +2441,61 @@ TRANSLATIONS["en"].update({"language_name.de": "German", "language_name.fr": "Fr
 TRANSLATIONS["es"].update({"language_name.de": "Aleman", "language_name.fr": "Frances", "frit.fields.slot_family": "Familia de {slot}"})
 TRANSLATIONS["it"].update({"language_name.de": "Tedesco", "language_name.fr": "Francese"})
 TRANSLATIONS["de"].update({"language_name.fr": "Franzoesisch"})
+TRANSLATIONS["en"].update({"home.nav.kiln_forming_notes": "Kiln Glass Project Notes"})
+TRANSLATIONS["es"].update({"home.nav.kiln_forming_notes": "Kiln Glass Project Notes"})
+TRANSLATIONS["it"].update({"home.nav.kiln_forming_notes": "Kiln Glass Project Notes"})
+TRANSLATIONS["de"].update({"home.nav.kiln_forming_notes": "Kiln Glass Project Notes"})
+TRANSLATIONS["fr"].update({"home.nav.kiln_forming_notes": "Kiln Glass Project Notes"})
+TRANSLATIONS["en"].update(
+    {
+        "frit.summary.base.reactive_no": "Reactive potential against {base_label}: no obvious reactive pairing appeared between the active frits and the chosen base.",
+        "frit.summary.base.reactive_yes": "Reactive potential against {base_label}: {details}.",
+        "frit.summary.mix.reactive_no": "Reactive potential across the active frits: no obvious reactive pairing appeared in the current mix.",
+        "frit.summary.mix.reactive_yes": "Reactive potential across the active frits: {details}.",
+        "frit.summary.reactive.detail_base": "{slot}: {pairings}",
+        "frit.summary.reactive.detail_pair": "{left} with {right}: {pairings}",
+    }
+)
+TRANSLATIONS["es"].update(
+    {
+        "frit.summary.base.reactive_no": "Potencial reactivo frente a {base_label}: no aparecio una combinacion reactiva evidente entre las fritas activas y la base elegida.",
+        "frit.summary.base.reactive_yes": "Potencial reactivo frente a {base_label}: {details}.",
+        "frit.summary.mix.reactive_no": "Potencial reactivo entre las fritas activas: no aparecio una combinacion reactiva evidente en la mezcla actual.",
+        "frit.summary.mix.reactive_yes": "Potencial reactivo entre las fritas activas: {details}.",
+        "frit.summary.reactive.detail_base": "{slot}: {pairings}",
+        "frit.summary.reactive.detail_pair": "{left} con {right}: {pairings}",
+    }
+)
+TRANSLATIONS["it"].update(
+    {
+        "frit.summary.base.reactive_no": "Potenziale reattivo rispetto a {base_label}: non e emersa alcuna combinazione reattiva evidente tra le frit attive e la base scelta.",
+        "frit.summary.base.reactive_yes": "Potenziale reattivo rispetto a {base_label}: {details}.",
+        "frit.summary.mix.reactive_no": "Potenziale reattivo tra le frit attive: non e emersa alcuna combinazione reattiva evidente nella miscela attuale.",
+        "frit.summary.mix.reactive_yes": "Potenziale reattivo tra le frit attive: {details}.",
+        "frit.summary.reactive.detail_base": "{slot}: {pairings}",
+        "frit.summary.reactive.detail_pair": "{left} con {right}: {pairings}",
+    }
+)
+TRANSLATIONS["de"].update(
+    {
+        "frit.summary.base.reactive_no": "Reaktives Potenzial gegenueber {base_label}: Zwischen den aktiven Fritten und der gewaehlten Basis ist keine offensichtliche reaktive Paarung aufgetaucht.",
+        "frit.summary.base.reactive_yes": "Reaktives Potenzial gegenueber {base_label}: {details}.",
+        "frit.summary.mix.reactive_no": "Reaktives Potenzial zwischen den aktiven Fritten: In der aktuellen Mischung ist keine offensichtliche reaktive Paarung aufgetaucht.",
+        "frit.summary.mix.reactive_yes": "Reaktives Potenzial zwischen den aktiven Fritten: {details}.",
+        "frit.summary.reactive.detail_base": "{slot}: {pairings}",
+        "frit.summary.reactive.detail_pair": "{left} mit {right}: {pairings}",
+    }
+)
+TRANSLATIONS["fr"].update(
+    {
+        "frit.summary.base.reactive_no": "Potentiel reactif vis-a-vis de {base_label}: aucune combinaison reactive evidente n'est apparue entre les frittes actives et la base choisie.",
+        "frit.summary.base.reactive_yes": "Potentiel reactif vis-a-vis de {base_label}: {details}.",
+        "frit.summary.mix.reactive_no": "Potentiel reactif entre les frittes actives: aucune combinaison reactive evidente n'est apparue dans le melange actuel.",
+        "frit.summary.mix.reactive_yes": "Potentiel reactif entre les frittes actives: {details}.",
+        "frit.summary.reactive.detail_base": "{slot}: {pairings}",
+        "frit.summary.reactive.detail_pair": "{left} avec {right}: {pairings}",
+    }
+)
 
 MONTH_NAMES = {
     "en": {

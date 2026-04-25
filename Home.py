@@ -50,6 +50,11 @@ with col2:
 
     if st.button(t("home.nav.documentation", "Documentation"), width='stretch'):
         st.switch_page("pages/14_Documentation.py")
+    st.link_button(
+        t("home.nav.kiln_forming_notes", "Kiln Glass Project Notes"),
+        "https://kilnformingnotes.streamlit.app",
+        width="stretch",
+    )
 
 with col3:
     st.markdown(f"#### {t('home.sections.reference_sheets', 'Reference Sheets')}")

@@ -1,10 +1,12 @@
 import io
-import zipfile
 import re
+import zipfile
+
 import numpy as np
 import streamlit as st
-from PIL import Image
 import trimesh
+from PIL import Image
+
 from i18n import render_app_sidebar, t as tr
 
 # Optional helpers (may not exist in every trimesh build)
@@ -21,9 +23,10 @@ st.caption(
         "page.cameo.caption",
         "Grayscale values are translated into a sculpted digital relief and inverted to form a mold, "
         "allowing the cameo image to emerge correctly in the finished glass. "
-        "Controls adjust depth, backing thickness, and sampling resolution.",
+        "This page exports a slicer-ready solid model so hollowing, supports, drain holes, and final orientation can be handled in your slicer.",
     )
 )
+
 
 # ----------------------------
 # Helpers
@@ -51,10 +54,8 @@ def image_to_heightmap(img: Image.Image, max_dim: int, invert: bool) -> np.ndarr
 
 def _safe_unique_faces(mesh: trimesh.Trimesh):
     """Return a boolean mask / indices for unique faces across trimesh versions."""
-    # Newer: mesh.unique_faces() returns boolean mask
     if hasattr(mesh, "unique_faces") and callable(getattr(mesh, "unique_faces")):
         return mesh.unique_faces()
-    # Older: trimesh.grouping.unique_faces(faces) returns boolean mask
     try:
         return trimesh.grouping.unique_faces(mesh.faces)
     except Exception:
@@ -85,33 +86,26 @@ def build_mold_solid(
     ys = np.linspace(0.0, float(height_mm), rows, dtype=np.float32)
     X, Y = np.meshgrid(xs, ys)
 
-    Z_top = float(base_thickness) + thickness
-    Z_bot = np.zeros_like(Z_top)
+    z_top = float(base_thickness) + thickness
+    z_bot = np.zeros_like(z_top)
 
-    v_top = np.column_stack([X.ravel(), Y.ravel(), Z_top.ravel()])
-    v_bot = np.column_stack([X.ravel(), Y.ravel(), Z_bot.ravel()])
+    v_top = np.column_stack([X.ravel(), Y.ravel(), z_top.ravel()])
+    v_bot = np.column_stack([X.ravel(), Y.ravel(), z_bot.ravel()])
 
-    bot_offset = v_top.shape[0]  # index offset for bottom vertex layer
+    bot_offset = v_top.shape[0]
 
-    # ------------------------------------------------------------------
-    # Vectorized face generation — no Python loops over grid cells
-    # ------------------------------------------------------------------
+    r_idx, c_idx = np.mgrid[0 : rows - 1, 0 : cols - 1]
+    a = (r_idx * cols + c_idx).ravel()
+    b = (r_idx * cols + c_idx + 1).ravel()
+    d = ((r_idx + 1) * cols + c_idx).ravel()
+    e = ((r_idx + 1) * cols + c_idx + 1).ravel()
 
-    # Grid of top-left vertex indices for every quad in the (rows-1)x(cols-1) grid
-    r_idx, c_idx = np.mgrid[0 : rows - 1, 0 : cols - 1]  # shape (rows-1, cols-1)
-    a = (r_idx * cols + c_idx).ravel()           # top-left
-    b = (r_idx * cols + c_idx + 1).ravel()       # top-right
-    d = ((r_idx + 1) * cols + c_idx).ravel()     # bottom-left
-    e = ((r_idx + 1) * cols + c_idx + 1).ravel() # bottom-right
-
-    # Top surface (CCW when viewed from above)
     top_faces = np.column_stack([
         np.concatenate([a, b]),
         np.concatenate([d, d]),
         np.concatenate([b, e]),
     ])
 
-    # Bottom surface (flipped winding vs top)
     ba, bb, bd, be = a + bot_offset, b + bot_offset, d + bot_offset, e + bot_offset
     bot_faces = np.column_stack([
         np.concatenate([ba, bb]),
@@ -119,11 +113,6 @@ def build_mold_solid(
         np.concatenate([bd, bd]),
     ])
 
-    # ------------------------------------------------------------------
-    # Side walls — each edge is a 1-D strip of quads
-    # ------------------------------------------------------------------
-
-    # Helper: build two triangles per quad from four 1-D index arrays
     def wall_faces(t0, t1, b0, b1):
         return np.column_stack([
             np.concatenate([t0, t0]),
@@ -134,32 +123,35 @@ def build_mold_solid(
     ri = np.arange(rows - 1)
     ci = np.arange(cols - 1)
 
-    # Left edge (c=0)
     left = wall_faces(
-        ri * cols,           (ri + 1) * cols,
-        bot_offset + ri * cols, bot_offset + (ri + 1) * cols,
+        ri * cols,
+        (ri + 1) * cols,
+        bot_offset + ri * cols,
+        bot_offset + (ri + 1) * cols,
     )
 
-    # Right edge (c=cols-1)
     right = wall_faces(
-        ri * cols + (cols - 1),           (ri + 1) * cols + (cols - 1),
-        bot_offset + ri * cols + (cols - 1), bot_offset + (ri + 1) * cols + (cols - 1),
+        ri * cols + (cols - 1),
+        (ri + 1) * cols + (cols - 1),
+        bot_offset + ri * cols + (cols - 1),
+        bot_offset + (ri + 1) * cols + (cols - 1),
     )
-    # Flip winding for right wall (outward normal faces right)
     right = right[:, [0, 2, 1]]
 
-    # Front edge (r=0)
     front = wall_faces(
-        ci,           ci + 1,
-        bot_offset + ci, bot_offset + ci + 1,
+        ci,
+        ci + 1,
+        bot_offset + ci,
+        bot_offset + ci + 1,
     )
     front = front[:, [0, 2, 1]]
 
-    # Back edge (r=rows-1)
     base_r = (rows - 1) * cols
     back = wall_faces(
-        base_r + ci,           base_r + ci + 1,
-        bot_offset + base_r + ci, bot_offset + base_r + ci + 1,
+        base_r + ci,
+        base_r + ci + 1,
+        bot_offset + base_r + ci,
+        bot_offset + base_r + ci + 1,
     )
 
     faces_arr = np.concatenate(
@@ -168,29 +160,22 @@ def build_mold_solid(
 
     vertices = np.vstack([v_top, v_bot]).astype(np.float32)
 
-    # Mirror in STL space (X axis)
     vertices[:, 0] = float(width_mm) - vertices[:, 0]
-
-    # Reflection flips handedness -> flip triangle winding to keep outward normals
     faces_arr = faces_arr[:, [0, 2, 1]]
 
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces_arr, process=False)
 
-    # --- Normals / winding cleanup (robust across installs) ---
-    # 1) Try validate/process (may require networkx in some builds; keep it optional)
     try:
         mesh.process(validate=True)
     except Exception:
         pass
 
-    # 2) Try trimesh.repair.fix_normals (may require networkx; keep optional)
     if repair is not None:
         try:
             repair.fix_normals(mesh)
         except Exception:
             pass
 
-    # 3) If watertight but inside-out, flip
     if mesh.is_watertight:
         try:
             if mesh.volume < 0:
@@ -198,7 +183,6 @@ def build_mold_solid(
         except Exception:
             pass
 
-    # Cleanup duplicates/unreferenced vertices (guarded for version differences)
     try:
         mesh.remove_unreferenced_vertices()
     except Exception:
@@ -218,13 +202,13 @@ def build_mold_solid(
 # ----------------------------
 # UI
 # ----------------------------
-
-
 col1, col2 = st.columns([1, 1])
 
 with col1:
-
-    up = st.file_uploader(tr("page.cameo.fields.upload_image", "Upload image"), type=["png", "jpg", "jpeg", "tif", "tiff", "bmp"])
+    up = st.file_uploader(
+        tr("page.cameo.fields.upload_image", "Upload image"),
+        type=["png", "jpg", "jpeg", "tif", "tiff", "bmp"],
+    )
     with st.expander(tr("page.cameo.controls", "What do these controls do?"), expanded=False):
         st.markdown(
             tr(
@@ -237,13 +221,10 @@ with col1:
             ).strip()
         )
 
-
-
 with col2:
     st.subheader(tr("page.cameo.settings", "Settings"))
 
-    # Defaults (used for reset)
-    DEFAULTS = dict(
+    defaults = dict(
         width_mm=120.0,
         t_max=3.0,
         base_thickness=10.0,
@@ -251,35 +232,59 @@ with col2:
         max_dim=700,
     )
 
-    # Initialize session state once
-    for k, v in DEFAULTS.items():
-        st.session_state.setdefault(k, v)
+    for key, value in defaults.items():
+        st.session_state.setdefault(key, value)
 
-    # Reset button
     if st.button(tr("page.cameo.actions.reset", "Reset settings"), use_container_width=True):
-        for k, v in DEFAULTS.items():
-            st.session_state[k] = v
-        # Also clear any previously built mesh/stl
-        st.session_state.pop("mesh", None)
-        st.session_state.pop("height_mm", None)
-        st.session_state.pop("stl_bytes", None)
+        for key, value in defaults.items():
+            st.session_state[key] = value
+        for key in ("mesh", "height_mm", "stl_bytes", "zip_bytes", "report_text", "last_sig"):
+            st.session_state.pop(key, None)
         st.rerun()
 
-    width_mm = st.slider(tr("page.cameo.fields.target_width", "Target Mold Width (mm)"), 30.0, 250.0, step=1.0, key="width_mm")
-    t_max = st.slider(tr("page.cameo.fields.relief_max", "Artwork relief maximum (mm)"), 0.5, 60.0, step=0.1, key="t_max")
-    base_thickness = st.slider(tr("page.cameo.fields.base_backing", "Base Backing Thickness (mm)"), 0.0, 20.0, step=0.5, key="base_thickness")
+    width_mm = st.slider(
+        tr("page.cameo.fields.target_width", "Target Mold Width (mm)"),
+        30.0,
+        250.0,
+        step=1.0,
+        key="width_mm",
+    )
+    t_max = st.slider(
+        tr("page.cameo.fields.relief_max", "Artwork relief maximum (mm)"),
+        0.5,
+        60.0,
+        step=0.1,
+        key="t_max",
+    )
+    base_thickness = st.slider(
+        tr("page.cameo.fields.base_backing", "Base Backing Thickness (mm)"),
+        0.0,
+        20.0,
+        step=0.5,
+        key="base_thickness",
+    )
     invert = st.checkbox(tr("page.cameo.fields.invert_relief", "Invert Relief"), key="invert")
-    max_dim = st.slider(tr("page.cameo.fields.resolution", "Resolution"), 200, 1200, step=50, key="max_dim")
+    max_dim = st.slider(
+        tr("page.cameo.fields.resolution", "Resolution"),
+        200,
+        1200,
+        step=50,
+        key="max_dim",
+    )
 
     st.caption(tr("page.cameo.caption.resolution", "Higher = more detail + slower. 600-900 is a good sweet spot."))
 
 if up is None:
-    st.info(tr("page.cameo.messages.upload_first", "Upload an image to preview the mirrored heightmap. Mesh is generated only when you export."))
+    st.info(
+        tr(
+            "page.cameo.messages.upload_first",
+            "Upload an image to preview the mirrored heightmap. Mesh is generated only when you export.",
+        )
+    )
     st.stop()
 
 img = Image.open(up)
 
-# Always show the mirrored heightmap preview first (fast)
 max_dim_preview = min(int(max_dim), 350)
 height01_preview = image_to_heightmap(img, max_dim=max_dim_preview, invert=invert)
 rows_p, cols_p = height01_preview.shape
@@ -292,12 +297,10 @@ pcol1, pcol2 = st.columns([1, 1])
 
 with pcol1:
     st.subheader(tr("page.cameo.sections.input", "Input"))
-#    framed_image(img)
     st.image(img, width="stretch")
 
 with pcol2:
     st.subheader(tr("page.cameo.sections.preview", "Heightmap preview (mirrored)"))
-#    framed_image(hm_img)
     st.image(hm_img, width="stretch")
 
 
@@ -306,6 +309,12 @@ with pcol2:
 # ----------------------------
 st.divider()
 st.subheader(tr("page.cameo.sections.export", "Export"))
+st.caption(
+    tr(
+        "page.cameo.caption.slicer_ready",
+        "Exports a slicer-ready solid model. Hollowing, supports, drain holes, and print orientation are best handled in your slicer.",
+    )
+)
 
 current_sig = (
     getattr(up, "name", None),
@@ -318,7 +327,7 @@ current_sig = (
 )
 
 last_sig = st.session_state.get("last_sig")
-dirty = (last_sig != current_sig)
+dirty = last_sig != current_sig
 
 if dirty and st.session_state.get("stl_bytes") is not None:
     st.info(tr("page.cameo.messages.rebuild", "Settings changed - rebuild the mesh to update the export."))
@@ -326,7 +335,6 @@ if dirty and st.session_state.get("stl_bytes") is not None:
 build = st.button(tr("page.cameo.actions.build", "Build mesh and enable download"), type="primary")
 
 if build:
-    # Clear any stale outputs first
     st.session_state["mesh"] = None
     st.session_state["stl_bytes"] = None
     st.session_state["zip_bytes"] = None
@@ -353,12 +361,11 @@ if build:
             stl_bytes = bytes(stl_bytes)
         st.session_state["stl_bytes"] = stl_bytes
 
-
-        # Build settings report + ZIP bundle (folder contains STL + settings)
         base = re.sub(r"\s+", "_", up.name.rsplit(".", 1)[0].strip())
         base = re.sub(r"[^A-Za-z0-9_\-\.]+", "", base) or "mold"
         report = (
             f"Image: {up.name}\n"
+            f"Model structure: Slicer-ready solid model\n"
             f"Target width (mm): {width_mm:g}\n"
             f"Relief depth max (mm): {t_max:g}\n"
             f"Base backing thickness (mm): {base_thickness:g}\n"
@@ -377,21 +384,16 @@ if build:
             z.writestr(folder, "")
             z.writestr(f"{folder}{base}_mold.stl", stl_bytes)
             z.writestr(f"{folder}{base}_settings.txt", report.encode("utf-8"))
-            # Include the source image for repeatability (keep original filename)
-            image_bytes = up.getvalue()
-            original_name = up.name
-            z.writestr(f"{folder}{original_name}", image_bytes)
+            z.writestr(f"{folder}{up.name}", up.getvalue())
         zip_buf.seek(0)
         st.session_state["zip_bytes"] = zip_buf.getvalue()
 
 mesh = st.session_state.get("mesh")
 height_mm_built = st.session_state.get("height_mm")
-stl_bytes = st.session_state.get("stl_bytes")
 zip_bytes = st.session_state.get("zip_bytes")
-report_text = st.session_state.get("report_text")
 
-# Stats (only when we have a built mesh that matches current settings)
 if (mesh is not None) and (zip_bytes is not None) and (st.session_state.get("last_sig") == current_sig):
+    st.write(f"**{tr('page.cameo.labels.structure', 'Structure')}:** {tr('page.cameo.labels.solid_slicer_ready', 'Slicer-ready solid model')}")
     st.write(f"**{tr('page.cameo.labels.output_size', 'Output size')}:** {width_mm:.1f} mm x {height_mm_built:.1f} mm")
     st.write(f"**{tr('page.cameo.labels.watertight', 'Watertight')}:** {'✅' if mesh.is_watertight else '⚠️'}")
 
@@ -401,7 +403,6 @@ if (mesh is not None) and (zip_bytes is not None) and (st.session_state.get("las
 else:
     st.write(f"**{tr('page.cameo.labels.output_size', 'Output size')}:** {width_mm:.1f} mm x {height_mm_est:.1f} mm")
 
-# Download (disabled until built + up-to-date)
 name = up.name.rsplit(".", 1)[0]
 can_download = (zip_bytes is not None) and (st.session_state.get("last_sig") == current_sig)
 
