@@ -380,11 +380,11 @@ def weighted_rgb(rgb_values: list[tuple[int, int, int]], weights: list[float]) -
     return tuple(channels)
 
 
-def mix_fraction_from_grams(primary_grams: float, modifier_grams: float) -> float:
-    total = max(float(primary_grams) + float(modifier_grams), 0.0)
+def mix_fraction_from_amounts(primary_amount: float, modifier_amount: float) -> float:
+    total = max(float(primary_amount) + float(modifier_amount), 0.0)
     if total <= 0:
         return 0.0
-    return float(np.clip(float(modifier_grams) / total, 0.0, 1.0))
+    return float(np.clip(float(modifier_amount) / total, 0.0, 1.0))
 
 
 def weighted_brightness(brightness_values: list[float], weights: list[float]) -> float:
@@ -555,13 +555,13 @@ def mix_summary_lines(
     base_label: str,
     base_reactive_notes: list[str],
 ) -> list[str]:
-    active_components = [component for component in components if float(component["grams"]) > 0]
-    total_grams = sum(float(component["grams"]) for component in active_components)
+    active_components = [component for component in components if float(component["mm"]) > 0]
+    total_mm = sum(float(component["mm"]) for component in active_components)
     component_phrases = [
-        f"{float(component['grams']):.2f} g of {component['label']}" for component in active_components
+        f"{float(component['mm']):.1f} mm of {component['label']}" for component in active_components
     ]
     weighted_terms = [
-        f"{component['hsb'][2]} × {float(component['grams']):.2f}" for component in active_components
+        f"{component['hsb'][2]} × {float(component['mm']):.1f}" for component in active_components
     ]
 
     lines = [
@@ -575,9 +575,9 @@ def mix_summary_lines(
     lines.append(
         t(
             "frit.summary.mix.weighted_b",
-            "Weighted B calculation: ({terms}) / {total:.2f} = {weighted_b:.1f}.",
+            "Weighted B calculation: ({terms}) / {total:.1f} = {weighted_b:.1f}.",
             terms=" + ".join(weighted_terms),
-            total=total_grams,
+            total=total_mm,
             weighted_b=weighted_b,
         )
     )
@@ -618,8 +618,8 @@ def mix_summary_lines(
             )
         )
     else:
-        dominant_component = max(active_components, key=lambda component: float(component["grams"]))
-        dominant_share_pct = int(round((float(dominant_component["grams"]) / total_grams) * 100.0))
+        dominant_component = max(active_components, key=lambda component: float(component["mm"]))
+        dominant_share_pct = int(round((float(dominant_component["mm"]) / total_mm) * 100.0))
         if dominant_share_pct >= 60:
             lines.append(
                 t(
@@ -705,7 +705,7 @@ def brightness_depth_figure(
             rgb = modeled_rgb(component["row"], float(depth))
             component_brightness[str(component["slot"])].append(rgb_to_hsb(rgb)[2])
             component_rgbs.append(rgb)
-            component_weights.append(float(component["grams"]))
+            component_weights.append(float(component["mm"]))
         mixed_rgb = weighted_rgb(component_rgbs, component_weights)
         mixed_brightness.append(rgb_to_hsb(mixed_rgb)[2])
 
@@ -757,7 +757,7 @@ def mixed_rgb_depth_figure(
 
     for depth in depth_values:
         component_rgbs = [modeled_rgb(component["row"], float(depth)) for component in components]
-        component_weights = [float(component["grams"]) for component in components]
+        component_weights = [float(component["mm"]) for component in components]
         mixed_rgb = weighted_rgb(component_rgbs, component_weights)
         channels["R"].append(mixed_rgb[0])
         channels["G"].append(mixed_rgb[1])
@@ -859,7 +859,7 @@ def select_frit_component(
     default_family_name: str,
     default_glass_id: str,
     preferred_terms: list[str],
-    default_grams: float,
+    default_mm: float,
 ) -> dict[str, object]:
     family_default_index = family_options.index(default_family_name) if default_family_name in family_options else 0
     family_name = st.sidebar.selectbox(
@@ -889,17 +889,18 @@ def select_frit_component(
         index=default_index,
         format_func=lambda candidate_id: labels.get(candidate_id, candidate_id),
     )
-    grams = st.sidebar.number_input(
-        t("frit.fields.grams", "{slot} grams", slot=slot_label),
+    mm = st.sidebar.number_input(
+        t("frit.fields.mm", "{slot} height (mm)", slot=slot_label),
         min_value=0.0,
-        value=default_grams,
+        max_value=6.0,
+        value=float(np.clip(default_mm, 0.0, 6.0)),
         step=0.1,
-        format="%.2f",
+        format="%.1f",
     )
 
     catalog_row = candidates[candidates["glass_id"] == glass_id].iloc[0]
     measurement = measurement_row(measurements, glass_id, mode)
-    if measurement is None and grams > 0:
+    if measurement is None and mm > 0:
         st.error(
             t(
                 "frit.messages.slot_missing_mode",
@@ -914,7 +915,7 @@ def select_frit_component(
         "slot": slot_label,
         "glass_id": glass_id,
         "label": labels.get(glass_id, glass_id),
-        "grams": grams,
+        "mm": mm,
         "catalog_row": catalog_row,
         "row": measurement,
         "row_t": measurement_row(measurements, glass_id, "T"),
@@ -924,26 +925,13 @@ def select_frit_component(
 
 components = []
 st.sidebar.divider()
-for index, (slot_label, default_family_name, default_glass_id, preferred_terms, default_grams) in enumerate(frit_setup):
+for index, (slot_label, default_family_name, default_glass_id, preferred_terms, default_mm) in enumerate(frit_setup):
     if index > 0:
         st.sidebar.divider()
     components.append(
-        select_frit_component(slot_label, default_family_name, default_glass_id, preferred_terms, default_grams)
+        select_frit_component(slot_label, default_family_name, default_glass_id, preferred_terms, default_mm)
     )
 
-available_rows = [component["row"] for component in components if component["row"] is not None]
-reference_depth = max(
-    0.5,
-    *[safe_float(row.get("thickness_mm"), 2.0) for row in available_rows],
-)
-depth_max = max(8.0, reference_depth * 3.0)
-depth_mm = st.sidebar.slider(
-    t("frit.fields.mix_depth", "Mix depth (mm)"),
-    min_value=0.0,
-    max_value=float(round(depth_max, 1)),
-    value=3.0,
-    step=0.1,
-)
 frit_options = list(FRIT_BEHAVIOUR.keys())
 default_frit_index = frit_options.index("Powdered")
 frit_size = st.sidebar.selectbox(
@@ -953,10 +941,16 @@ frit_size = st.sidebar.selectbox(
     format_func=frit_size_label,
 )
 
+active_components = [component for component in components if float(component["mm"]) > 0]
+total_mm = sum(float(component["mm"]) for component in active_components)
+if total_mm <= 0:
+    st.error(t("frit.messages.enter_grams", "Enter at least some frit height so the mix can be estimated."))
+    st.stop()
+
 for component in components:
     row = component["row"]
     if row is not None:
-        component["rgb"] = modeled_rgb(row, depth_mm)
+        component["rgb"] = modeled_rgb(row, total_mm)
         component["hsb"] = rgb_to_hsb(component["rgb"])
     else:
         component["rgb"] = (0, 0, 0)
@@ -964,20 +958,14 @@ for component in components:
     component["prefix"] = row_prefix(component["catalog_row"])
     component["icon"] = first_existing_icon(component["glass_id"], component["prefix"], mode)
 
-active_components = [component for component in components if float(component["grams"]) > 0]
-total_grams = sum(float(component["grams"]) for component in active_components)
-if total_grams <= 0:
-    st.error(t("frit.messages.enter_grams", "Enter at least some frit by weight so the mix can be estimated."))
-    st.stop()
-
 mixed_rgb = weighted_rgb(
     [component["rgb"] for component in active_components],
-    [float(component["grams"]) for component in active_components],
+    [float(component["mm"]) for component in active_components],
 )
 mixed_hsb = rgb_to_hsb(mixed_rgb)
 weighted_b = weighted_brightness(
     [component["hsb"][2] for component in active_components],
-    [float(component["grams"]) for component in active_components],
+    [float(component["mm"]) for component in active_components],
 )
 
 pair_scores = []
@@ -985,7 +973,7 @@ pair_weights = []
 for left_index, left_component in enumerate(active_components):
     for right_component in active_components[left_index + 1 :]:
         pair_scores.append(colour_distance(left_component["rgb"], right_component["rgb"]))
-        pair_weights.append(float(left_component["grams"]) * float(right_component["grams"]))
+        pair_weights.append(float(left_component["mm"]) * float(right_component["mm"]))
 if pair_scores and sum(pair_weights) > 0:
     raw_distance = float(np.average(pair_scores, weights=pair_weights))
 else:
@@ -1002,23 +990,27 @@ base_reactive_notes = base_reactive_details(active_components, base_catalog_row)
 
 layering_ready = all(component["row_t"] is not None for component in active_components)
 if layering_ready:
-    mixed_filter_single_rgb = weighted_rgb(
-        [modeled_rgb(component["row_t"], depth_mm) for component in active_components],
-        [float(component["grams"]) for component in active_components],
-    )
-    mixed_filter_double_rgb = weighted_rgb(
-        [modeled_rgb(component["row_t"], depth_mm * 2.0) for component in active_components],
-        [float(component["grams"]) for component in active_components],
-    )
+    # One-way depth = sum of all frit heights entered by the user
+    frit_total_depth = total_mm
+
+    def _mixed_filter(path: float) -> tuple:
+        return weighted_rgb(
+            [modeled_rgb(component["row_t"], path) for component in active_components],
+            [float(component["mm"]) for component in active_components],
+        )
+
+    mixed_filter_single_rgb = _mixed_filter(frit_total_depth)
+    mixed_filter_double_rgb = _mixed_filter(frit_total_depth * 2.0)
     mixed_filter_single_hsb = rgb_to_hsb(mixed_filter_single_rgb)
     layered_mix_rgb = layered_result_from_filter(base_rgb, mixed_filter_double_rgb)
     layered_mix_hsb = rgb_to_hsb(layered_mix_rgb)
+
     layered_lines = layered_mix_summary_lines(
         base_labels.get(base_id, base_id),
         base_hsb,
         mixed_filter_single_hsb,
         layered_mix_hsb,
-        depth_mm,
+        frit_total_depth,
     )
 else:
     missing_layer_ids = [str(component["glass_id"]) for component in active_components if component["row_t"] is None]
@@ -1028,7 +1020,7 @@ summary_lines = mix_summary_lines(
     active_components,
     mixed_hsb,
     weighted_b,
-    depth_mm,
+    total_mm,
     frit_size,
     local_separation_label,
     mix_reactive_notes,
@@ -1061,18 +1053,114 @@ if mix_reactive_notes or base_reactive_notes:
 badge_markup = "".join(
     [
         f'<span class="mix-badge">{t("color_wheel.fields.mode", "Mode")}: {html.escape(translate_mode_name(mode))}</span>',
-        f'<span class="mix-badge">{t("frit.figure.depth_axis", "Depth (mm)").replace(" (mm)", "")}: {depth_mm:.2f} mm</span>',
         *[
-            f'<span class="mix-badge">{html.escape(str(component["slot"]))}: {float(component["grams"]):.2f} g</span>'
+            f'<span class="mix-badge">{html.escape(str(component["slot"]))}: {float(component["mm"]):.1f} mm</span>'
             for component in components
         ],
-        f'<span class="mix-badge">{t("worksheet.labels.total", "Total")}: {total_grams:.2f} g</span>',
+        f'<span class="mix-badge">{t("worksheet.labels.total", "Total")}: {total_mm:.1f} mm</span>',
         f'<span class="mix-badge">Weighted B: {weighted_b:.1f}</span>',
         f'<span class="mix-badge">{t("frit.fields.frit_size", "Frit size")}: {html.escape(frit_size_label(frit_size))}</span>',
         f'<span class="mix-badge">{html.escape(local_separation_label)}</span>',
     ]
 )
 st.markdown(badge_markup, unsafe_allow_html=True)
+
+# ── Weight estimate (1 cm² area, glass density 2.5 g/cm³) ──────────────────
+GLASS_DENSITY = 2.5          # g/cm³
+AREA_CM2      = 1.0          # 1 cm × 1 cm
+
+def mm_to_weight(mm: float) -> float:
+    """Weight in grams for a 1 cm² column of glass at the given depth in mm."""
+    return (mm / 10.0) * AREA_CM2 * GLASS_DENSITY
+
+weight_rows = "".join(
+    f"<tr>"
+    f"<td style='padding:4px 12px 4px 0;'><strong>{html.escape(str(component['slot']))}</strong> — {html.escape(component['label'])}</td>"
+    f"<td style='padding:4px 0;text-align:right;'>{float(component['mm']):.1f} mm</td>"
+    f"<td style='padding:4px 0 4px 16px;text-align:right;'>{mm_to_weight(float(component['mm'])):.3f} g</td>"
+    f"</tr>"
+    for component in components
+)
+total_weight = mm_to_weight(total_mm)
+weight_html = f"""
+<div style='margin:0.75rem 0 1.25rem 0;padding:0.75rem 1rem;border:1px solid #e0e0e0;border-radius:8px;display:inline-block;min-width:360px;'>
+  <div style='font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:#666;margin-bottom:0.5rem;'>
+    {html.escape(t("frit.weight.title", "MIX WEIGHT ESTIMATE — 1 cm² area · 2.5 g/cm³"))}
+  </div>
+  <table style='border-collapse:collapse;font-size:0.9rem;'>
+    {weight_rows}
+    <tr style='border-top:1px solid #ccc;'>
+      <td style='padding:6px 12px 2px 0;'><strong>{html.escape(t("worksheet.labels.total", "Total"))}</strong></td>
+      <td style='padding:6px 0 2px 0;text-align:right;'><strong>{total_mm:.1f} mm</strong></td>
+      <td style='padding:6px 0 2px 16px;text-align:right;'><strong>{total_weight:.3f} g</strong></td>
+    </tr>
+  </table>
+  <div style='font-size:0.75rem;color:#888;margin-top:0.4rem;'>
+    {html.escape(t("frit.weight.note", "Formula: (height mm ÷ 10) × 1 cm² × 2.5 g/cm³"))}
+  </div>
+</div>
+"""
+st.markdown(weight_html, unsafe_allow_html=True)
+
+# ── Mold volume calculator ───────────────────────────────────────────────────
+st.markdown(f"#### {t('frit.weight.mold_title', 'Mold volume calculator')}")
+st.caption(t("frit.weight.mold_caption", "Enter the void volume of your mold to get the gram weight of each frit needed to fill it."))
+
+vol_col1, vol_col2 = st.columns([1, 3], gap="medium")
+with vol_col1:
+    vol_unit = st.radio(
+        t("frit.weight.vol_unit", "Volume unit"),
+        options=["cm³", "mm³"],
+        horizontal=True,
+    )
+    mold_volume_raw = st.number_input(
+        t("frit.weight.mold_volume", "Mold void volume"),
+        min_value=0.0,
+        value=9.0 if vol_unit == "cm³" else 9000.0,
+        step=0.1 if vol_unit == "cm³" else 1.0,
+        format="%.2f" if vol_unit == "cm³" else "%.0f",
+    )
+    mold_volume_cm3 = mold_volume_raw if vol_unit == "cm³" else mold_volume_raw / 1000.0
+
+with vol_col2:
+    total_mold_weight = mold_volume_cm3 * GLASS_DENSITY
+    mold_rows = "".join(
+        f"<tr>"
+        f"<td style='padding:4px 12px 4px 0;'><strong>{html.escape(str(component['slot']))}</strong> — {html.escape(component['label'])}</td>"
+        f"<td style='padding:4px 8px;text-align:right;'>{float(component['mm']):.1f} mm</td>"
+        f"<td style='padding:4px 8px;text-align:right;'>{(float(component['mm']) / total_mm * 100):.1f}%</td>"
+        f"<td style='padding:4px 0 4px 8px;text-align:right;'><strong>{(float(component['mm']) / total_mm * total_mold_weight):.3f} g</strong></td>"
+        f"</tr>"
+        for component in active_components
+    )
+    mold_html = f"""
+<div style='margin:0.25rem 0 1rem 0;padding:0.75rem 1rem;border:1px solid #e0e0e0;border-radius:8px;display:inline-block;min-width:420px;'>
+  <div style='font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:#666;margin-bottom:0.5rem;'>
+    {html.escape(t("frit.weight.mold_result_title", "FRIT WEIGHTS FOR {vol:.2f} {unit} VOID", vol=mold_volume_raw, unit=vol_unit))}
+  </div>
+  <table style='border-collapse:collapse;font-size:0.9rem;width:100%;'>
+    <tr style='font-size:0.75rem;color:#888;'>
+      <td style='padding:2px 12px 6px 0;'>{html.escape(t("frit.weight.col_frit", "Frit"))}</td>
+      <td style='padding:2px 8px 6px 8px;text-align:right;'>{html.escape(t("frit.weight.col_height", "Height"))}</td>
+      <td style='padding:2px 8px 6px 8px;text-align:right;'>{html.escape(t("frit.weight.col_share", "Share"))}</td>
+      <td style='padding:2px 0 6px 8px;text-align:right;'>{html.escape(t("frit.weight.col_weight", "Weight"))}</td>
+    </tr>
+    {mold_rows}
+    <tr style='border-top:1px solid #ccc;'>
+      <td style='padding:6px 12px 2px 0;'><strong>{html.escape(t("worksheet.labels.total", "Total"))}</strong></td>
+      <td style='padding:6px 8px 2px 8px;text-align:right;'><strong>{total_mm:.1f} mm</strong></td>
+      <td style='padding:6px 8px 2px 8px;text-align:right;'><strong>100%</strong></td>
+      <td style='padding:6px 0 2px 8px;text-align:right;'><strong>{total_mold_weight:.3f} g</strong></td>
+    </tr>
+  </table>
+  <div style='font-size:0.75rem;color:#888;margin-top:0.5rem;'>
+    {html.escape(t("frit.weight.mold_note", "Formula: volume ({vol:.4f} cm³) × 2.5 g/cm³ = {total:.3f} g total · each frit scaled by its mm share", vol=mold_volume_cm3, total=total_mold_weight))}
+  </div>
+</div>
+"""
+    st.markdown(mold_html, unsafe_allow_html=True)
+
+st.divider()
 
 card_cols = st.columns(4, gap="medium")
 for column, component in zip(card_cols[:3], components):
@@ -1086,18 +1174,32 @@ for column, component in zip(card_cols[:3], components):
 
         contribution_note = t("frit.cards.note_default", "Modeled from the selected measurement mode over the chosen depth.")
         if component["slot"] == "Frit 2":
-            contribution_note = t("frit.cards.note_frit2", "Useful as a second colour body or as a nudge, depending on the selected grams.")
+            contribution_note = t("frit.cards.note_frit2", "Useful as a second colour body or as a nudge, depending on the selected height in mm.")
         if component["slot"] == "Frit 3":
             contribution_note = t("frit.cards.note_frit3", "Optional third frit for nudging the turn-to-black point or helping a difficult mix fit.")
-        if float(component["grams"]) <= 0:
-            contribution_note = t("frit.cards.note_zero", "Currently parked at 0.00 g, so it is ready for use without changing the current mix.")
+        if float(component["mm"]) <= 0:
+            contribution_note = t("frit.cards.note_zero", "Currently parked at 0.0 mm, so it is ready for use without changing the current mix.")
 
+        mm_val = float(component["mm"])
+        if mm_val <= 0:
+            display_rgb = (255, 255, 255)
+            display_hsb = (0, 0, 100)
+        elif mm_val < 2.0:
+            t_interp = mm_val / 2.0
+            display_rgb = tuple(
+                int(round(255 + (component["rgb"][i] - 255) * t_interp))
+                for i in range(3)
+            )
+            display_hsb = rgb_to_hsb(display_rgb)
+        else:
+            display_rgb = component["rgb"]
+            display_hsb = component["hsb"]
         st.markdown(
             swatch_markup(
                 t("frit.cards.slot_title", "{slot} contribution", slot=component["slot"]),
-                t("frit.cards.slot_subtitle", "{grams:.2f} g in the mix", grams=float(component["grams"])),
-                component["rgb"],
-                component["hsb"],
+                t("frit.cards.slot_subtitle", "{mm:.1f} mm height in the mix", mm=mm_val),
+                display_rgb,
+                display_hsb,
                 contribution_note,
             ),
             unsafe_allow_html=True,
@@ -1109,7 +1211,7 @@ with card_cols[3]:
     st.markdown(
         swatch_markup(
             t("frit.cards.mix_title", "Predicted mixed result"),
-            t("frit.cards.mix_subtitle", "Weighted visual read from {total:.2f} g total", total=total_grams),
+            t("frit.cards.mix_subtitle", "Weighted visual read from {total:.1f} mm total height", total=total_mm),
             mixed_rgb,
             mixed_hsb,
             t("frit.cards.mix_note", "This is not a full melt blend. It is a first-pass estimate of how the mixed frit field may read. Weighted B = {weighted_b:.1f}.", weighted_b=weighted_b),
@@ -1122,7 +1224,7 @@ if layering_ready:
     st.caption(
         t(
             "frit.cards.layered_caption",
-            "This section uses the selected frit mix as a transmitted filter over the chosen light base, with a round-trip path through the frit field.",
+            "This section uses the selected frit mix as a transmitted filter over the chosen light base, with a round-trip path through the frit field. The 3 mm and 6 mm columns show fixed-depth reference previews.",
         )
     )
     st.markdown(
@@ -1132,7 +1234,7 @@ if layering_ready:
         unsafe_allow_html=True,
     )
 
-    layered_cols = st.columns(3, gap="large")
+    layered_cols = st.columns(2, gap="medium")
     with layered_cols[0]:
         st.markdown(f"### {base_labels.get(base_id, base_id)}")
         st.caption(t("frit.cards.base_caption", "Light base used as the reflected return source."))
@@ -1152,32 +1254,19 @@ if layering_ready:
         )
 
     with layered_cols[1]:
-        st.markdown(f"### {t('frit.sections.mixed_field', 'Mixed frit field')}")
-        st.caption(t("frit.cards.filter_caption", "The selected frit mix treated as the top filter."))
+        st.markdown(f"### {t('frit.sections.predicted_layered', 'Predicted layered read')}")
+        st.caption(t("frit.cards.layered_result_caption", f"Round-trip at your mix total: {frit_total_depth:.1f} mm one-way."))
         st.markdown(
             swatch_markup(
-                t("frit.cards.filter_title", "Mixed frit filter"),
-                t("frit.cards.filter_subtitle", "One-way transmission through {depth:.2f} mm", depth=depth_mm),
-                mixed_filter_single_rgb,
-                mixed_filter_single_hsb,
-                t("frit.cards.filter_note", "This is the first-pass optical filter read of the mixed frit field before the reflected return from the base."),
+                t("predictor.cards.result_title", "Predicted reflected result"),
+                t("frit.cards.layered_result_subtitle", "Round trip through {depth:.1f} mm × 2 = {trip:.1f} mm", depth=frit_total_depth, trip=frit_total_depth * 2.0),
+                layered_mix_rgb,
+                layered_mix_hsb,
+                t("frit.cards.layered_result_note", "Result = base filtered through the frit field down and back at your current mix height."),
             ),
             unsafe_allow_html=True,
         )
 
-    with layered_cols[2]:
-        st.markdown(f"### {t('frit.sections.predicted_layered', 'Predicted layered read')}")
-        st.caption(t("frit.cards.layered_result_caption", "Round-trip prediction over the chosen base."))
-        st.markdown(
-            swatch_markup(
-                t("predictor.cards.result_title", "Predicted reflected result"),
-                t("frit.cards.layered_result_subtitle", "Round trip through {depth:.2f} mm of frit depth", depth=depth_mm * 2.0),
-                layered_mix_rgb,
-                layered_mix_hsb,
-                t("frit.cards.layered_result_note", "This is the first-pass estimate of what comes back from the base once the frit field filters the light down and back."),
-            ),
-            unsafe_allow_html=True,
-        )
 else:
     st.info(
         t(
@@ -1190,12 +1279,12 @@ else:
 chart_left, chart_right = st.columns(2, gap="large")
 with chart_left:
     st.plotly_chart(
-        brightness_depth_figure(active_components, depth_mm),
+        brightness_depth_figure(active_components, total_mm),
         config={"displaylogo": False},
     )
 with chart_right:
     st.plotly_chart(
-        mixed_rgb_depth_figure(active_components, depth_mm),
+        mixed_rgb_depth_figure(active_components, total_mm),
         config={"displaylogo": False},
     )
 
