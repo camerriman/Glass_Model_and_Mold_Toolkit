@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 
 from i18n import render_app_sidebar, t, translate_element_name, translate_family_name
 
@@ -98,7 +97,7 @@ st.markdown("""
         margin: 0 !important;
     }
 
-    /* Expand iframes (components.html tables) to full content height */
+    /* Expand iframe tables to full content height */
     iframe {
         width: 100% !important;
         min-height: 400px !important;
@@ -174,6 +173,20 @@ def safe_float(x, default=0.0):
         return float(s)
     except Exception:
         return default
+
+
+def render_html_block(markup: str, *, max_height: int | None = None) -> None:
+    if max_height is None:
+        st.html(markup)
+        return
+
+    st.html(
+        f"""
+        <div style="max-height:{max_height}px;overflow:auto;">
+          {markup}
+        </div>
+        """
+    )
 
 
 def note_markup(raw_text: str | None) -> str:
@@ -519,61 +532,11 @@ def measurement_table(meas: dict):
       </tbody>
     </table>
     """
-    components.html(table_html, height=130)
+    render_html_block(table_html)
 
-# Reflected row
-r_col1, r_col2, r_col3 = st.columns([0.4, 0.2, 0.4])
-with r_col1:
-    st.markdown(f"#### {t('detail.sections.reflected_light', 'Reflected Light')}")
-    if meas_r:
-        measurement_table(meas_r)
-    else:
-        st.write(t("detail.messages.no_reflected_data", "No reflected measurement data."))
-with r_col2:
-    fp = reflected_full_image
-    if fp:
-        st.image(str(fp), width=300)
-    elif MISSING_FULL.exists():
-        st.image(str(MISSING_FULL), width=300)
-
-with r_col3:
-    st.markdown(t("detail.messages.thickness_ref", "**Thickness (ref):** {thickness} mm", thickness=thickness))
-
-st.divider()
-
-# Transmitted row
-t_col1, t_col2, _ = st.columns([0.4, 0.2, 0.4])
-with t_col1:
-    st.markdown(f"#### {t('detail.sections.transmitted_light', 'Transmitted Light')}")
-    if meas_t:
-        measurement_table(meas_t)
-    else:
-        st.write(t("detail.messages.no_transmitted_data", "No transmitted measurement data."))
-with t_col2:
-    fp = transmitted_full_image
-    if fp:
-        st.image(str(fp), width=300)
-    elif MISSING_FULL.exists():
-        st.image(str(MISSING_FULL), width=300)
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Beer-Lambert curves
-# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Beer-Lambert curves + data tables
 # ---------------------------------------------------------------------------
-st.markdown(f"### {t('detail.sections.optical_curves', 'Optical Response Curves')}")
-st.caption(
-    t(
-        "detail.caption.optical_curves",
-        "Beer-Lambert extrapolation from reference measurement at {thickness} mm · Range: 0 - {max_thickness} mm",
-        thickness=thickness,
-        max_thickness=f"{max_t:.1f}",
-    )
-)
-
 def color_shift_table_html(meas: dict, thickness: float, max_t: float, title: str) -> str:
     """Build an HTML table of RGB values at 1mm increments with a color swatch column."""
     steps = int(max_t) + 1
@@ -693,35 +656,99 @@ def bs_curve_figure(meas: dict, thickness: float, max_t: float, title: str) -> g
 table_rows = int(max_t) + 1
 table_height = 60 + (table_rows * 26)
 
-# --- Reflected curves + tables ---
-if meas_r:
-    st.markdown(f"#### {t('detail.sections.reflected', 'Reflected')}")
-    rc1, rc2 = st.columns(2)
-    with rc1:
-        st.plotly_chart(rgb_curve_figure(meas_r, thickness, max_t, t("detail.figure.color_shift.reflected", "Reflected Color Shift")),
-                        width='stretch')
-        components.html(color_shift_table_html(meas_r, thickness, max_t, t("detail.figure.color_shift.reflected", "Reflected Color Shift")),
-                        height=table_height, scrolling=False)
-    with rc2:
-        st.plotly_chart(bs_curve_figure(meas_r, thickness, max_t, t("detail.figure.bs.reflected", "Reflected Brightness & Saturation")),
-                        width='stretch')
-        components.html(bs_table_html(meas_r, thickness, max_t, t("detail.figure.bs.reflected", "Reflected Brightness & Saturation")),
-                        height=table_height, scrolling=False)
+def render_light_overview(
+    title: str,
+    missing_message: str,
+    measurement: dict | None,
+    image_path: Path | None,
+    *,
+    show_thickness: bool,
+) -> None:
+    table_col, image_col, note_col = st.columns([0.4, 0.2, 0.4])
+    with table_col:
+        st.markdown(f"#### {title}")
+        if measurement:
+            measurement_table(measurement)
+        else:
+            st.write(missing_message)
+    with image_col:
+        if image_path:
+            st.image(str(image_path), width=300)
+        elif MISSING_FULL.exists():
+            st.image(str(MISSING_FULL), width=300)
+    with note_col:
+        if show_thickness:
+            st.markdown(t("detail.messages.thickness_ref", "**Thickness (ref):** {thickness} mm", thickness=thickness))
 
-# --- Transmitted curves + tables ---
+
+def render_optical_response_caption() -> None:
+    st.markdown(f"### {t('detail.sections.optical_curves', 'Optical Response Curves')}")
+    st.caption(
+        t(
+            "detail.caption.optical_curves",
+            "Beer-Lambert extrapolation from reference measurement at {thickness} mm · Range: 0 - {max_thickness} mm",
+            thickness=thickness,
+            max_thickness=f"{max_t:.1f}",
+        )
+    )
+
+
+def render_curve_tables(
+    section_title: str,
+    measurement: dict,
+    color_shift_title: str,
+    brightness_title: str,
+) -> None:
+    st.markdown(f"#### {section_title}")
+    chart_col, bs_col = st.columns(2)
+    with chart_col:
+        st.plotly_chart(
+            rgb_curve_figure(measurement, thickness, max_t, color_shift_title),
+            width="stretch",
+        )
+        render_html_block(color_shift_table_html(measurement, thickness, max_t, color_shift_title))
+    with bs_col:
+        st.plotly_chart(
+            bs_curve_figure(measurement, thickness, max_t, brightness_title),
+            width="stretch",
+        )
+        render_html_block(bs_table_html(measurement, thickness, max_t, brightness_title))
+
+
+render_light_overview(
+    t("detail.sections.reflected_light", "Reflected Light"),
+    t("detail.messages.no_reflected_data", "No reflected measurement data."),
+    meas_r,
+    reflected_full_image,
+    show_thickness=True,
+)
+
+if meas_r:
+    render_optical_response_caption()
+    render_curve_tables(
+        t("detail.sections.reflected", "Reflected"),
+        meas_r,
+        t("detail.figure.color_shift.reflected", "Reflected Color Shift"),
+        t("detail.figure.bs.reflected", "Reflected Brightness & Saturation"),
+    )
+
+st.divider()
+
+render_light_overview(
+    t("detail.sections.transmitted_light", "Transmitted Light"),
+    t("detail.messages.no_transmitted_data", "No transmitted measurement data."),
+    meas_t,
+    transmitted_full_image,
+    show_thickness=False,
+)
+
 if meas_t:
-    st.markdown(f"#### {t('detail.sections.transmitted', 'Transmitted')}")
-    tc1, tc2 = st.columns(2)
-    with tc1:
-        st.plotly_chart(rgb_curve_figure(meas_t, thickness, max_t, t("detail.figure.color_shift.transmitted", "Transmitted Color Shift")),
-                        width='stretch')
-        components.html(color_shift_table_html(meas_t, thickness, max_t, t("detail.figure.color_shift.transmitted", "Transmitted Color Shift")),
-                        height=table_height, scrolling=False)
-    with tc2:
-        st.plotly_chart(bs_curve_figure(meas_t, thickness, max_t, t("detail.figure.bs.transmitted", "Transmitted Brightness & Saturation")),
-                        width='stretch')
-        components.html(bs_table_html(meas_t, thickness, max_t, t("detail.figure.bs.transmitted", "Transmitted Brightness & Saturation")),
-                        height=table_height, scrolling=False)
+    render_curve_tables(
+        t("detail.sections.transmitted", "Transmitted"),
+        meas_t,
+        t("detail.figure.color_shift.transmitted", "Transmitted Color Shift"),
+        t("detail.figure.bs.transmitted", "Transmitted Brightness & Saturation"),
+    )
 
 st.divider()
 
@@ -737,16 +764,10 @@ with notes_col1:
     if cold:
         st.markdown(f"### {t('shared.sections.cold_characteristics', 'Cold Characteristics')}")
         cold_height = min(max(100, len(cold) // 2), 1000)
-        components.html(
-            note_markup(cold),
-            height=cold_height, scrolling=True,
-        )
+        render_html_block(note_markup(cold), max_height=cold_height)
 
 with notes_col2:
     if work:
         st.markdown(f"### {t('shared.sections.working_notes', 'Working Notes')}")
         work_height = min(max(100, len(work) // 2), 1000)
-        components.html(
-            note_markup(work),
-            height=work_height, scrolling=True,
-        )
+        render_html_block(note_markup(work), max_height=work_height)

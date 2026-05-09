@@ -764,7 +764,7 @@ with left:
                                  type=["png", "jpg", "jpeg", "tif", "tiff"],
                                  key=f"vessel_upload_{st.session_state['vessel_upload_nonce']}")
     if uploaded:
-        st.image(uploaded, caption=tr("page.vessel.caption.heightmap_preview", "Heightmap preview"), use_container_width="always")
+        st.image(uploaded, caption=tr("page.vessel.caption.heightmap_preview", "Heightmap preview"), width="content")
         uploaded_bytes = uploaded.getvalue()
     else:
         uploaded_bytes = None

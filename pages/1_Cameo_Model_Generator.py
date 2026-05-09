@@ -297,11 +297,11 @@ pcol1, pcol2 = st.columns([1, 1])
 
 with pcol1:
     st.subheader(tr("page.cameo.sections.input", "Input"))
-    st.image(img, width="stretch")
+    st.image(img, width="content")
 
 with pcol2:
     st.subheader(tr("page.cameo.sections.preview", "Heightmap preview (mirrored)"))
-    st.image(hm_img, width="stretch")
+    st.image(hm_img, width="content")
 
 
 # ----------------------------

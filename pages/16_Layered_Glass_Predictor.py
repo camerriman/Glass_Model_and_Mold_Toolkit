@@ -77,6 +77,7 @@ st.markdown(
     .layer-swatch__metrics {
         font-size: 0.86rem;
         line-height: 1.45;
+        color: #1f2330;
     }
     .layer-summary {
         background: #f6f8fb;
@@ -321,12 +322,6 @@ def rgb_css(rgb: tuple[int, int, int]) -> str:
     return f"rgb({rgb[0]}, {rgb[1]}, {rgb[2]})"
 
 
-def swatch_text_colour(rgb: tuple[int, int, int]) -> str:
-    red, green, blue = [channel / 255.0 for channel in rgb]
-    luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-    return "#1f2330" if luminance > 0.58 else "#f7f7f7"
-
-
 def swatch_markup(
     title: str,
     subtitle: str,
@@ -339,7 +334,7 @@ def swatch_markup(
       <div class="layer-swatch__title">{html.escape(title)}</div>
       <div class="layer-swatch__subtitle">{html.escape(subtitle)}</div>
       <div class="layer-swatch__chip" style="background:{rgb_css(rgb)};"></div>
-      <div class="layer-swatch__metrics" style="color:{swatch_text_colour(rgb)};">
+      <div class="layer-swatch__metrics">
         <strong>RGB:</strong> {rgb[0]}, {rgb[1]}, {rgb[2]}<br>
         <strong>HSB:</strong> {hsb[0]}, {hsb[1]}, {hsb[2]}
       </div>

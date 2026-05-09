@@ -1009,13 +1009,137 @@ def render_measurement_card(data: pd.DataFrame, glass_id: str, prefix: str, mode
     )
 
 
+def glass_display_label(glass_id: str, color_name: str, family_name: str) -> str:
+    parts = [str(glass_id).strip()]
+    title = str(color_name or "").strip()
+    family = str(family_name or "").strip()
+    if title:
+        parts.append(title)
+    if family and family.lower() not in title.lower():
+        parts.append(family)
+    return " ".join(parts)
+
+
+def harmony_overlay_rows(harmony_overlay: list[dict]) -> list[str]:
+    rows = []
+    for item in harmony_overlay:
+        if item.get("glass_id"):
+            label = glass_display_label(
+                str(item.get("glass_id") or ""),
+                str(item.get("color_name") or ""),
+                str(item.get("family_name") or ""),
+            )
+            rows.append(
+                (
+                    f"<strong>{html.escape(item['label'])}</strong>: "
+                    f"{t('color_wheel.figure.target_hue', 'Target hue').lower()} {safe_int(item['target_hue'])} deg -> "
+                    f"{html.escape(label)} (ΔH {item['hue_delta']:.1f})"
+                )
+            )
+        else:
+            rows.append(
+                f"<strong>{html.escape(item['label'])}</strong>: "
+                f"{t('color_wheel.figure.target_hue', 'Target hue').lower()} {safe_int(item['target_hue'])} deg"
+            )
+    return rows
+
+
+def render_harmony_match_card(data: pd.DataFrame, item: dict, current_mode: str) -> None:
+    glass_id = str(item.get("glass_id") or "")
+    if not glass_id:
+        return
+
+    rows = data[data["glass_id"].astype(str) == glass_id]
+    if rows.empty:
+        return
+
+    base_row = rows.iloc[0]
+    family_name = str(base_row.get("family_name") or base_row.get("glass_family") or "")
+    prefix = family_prefix(str(base_row.get("glass_family") or ""), family_name)
+    title = str(base_row.get("color_name") or item.get("color_name") or "").strip()
+    display_title = glass_display_label(
+        glass_id,
+        title,
+        translate_family_name(str(base_row.get("glass_family") or ""), family_name),
+    )
+
+    st.markdown(f"#### {display_title}")
+    if current_detail_target():
+        if st.button(
+            t("library.detail.open_datasheet", "Open full datasheet"),
+            key=f"open_harmony_match_{item.get('short', 'target')}_{glass_id}",
+            width="content",
+        ):
+            st.session_state["detail_glass_id"] = glass_id
+            st.session_state["detail_return_page"] = "pages/7_Glass_Color_Wheel.py"
+            st.session_state["detail_return_label_key"] = "color_wheel.title"
+            if not switch_to_page(DETAIL_PAGE):
+                st.warning(t("color_wheel.messages.open_datasheet_failed", "Could not navigate to the full datasheet page."))
+
+    image_cols = st.columns(2, gap="medium")
+    for column, mode_value in zip(image_cols, ("R", "T")):
+        with column:
+            st.markdown(f"**{mode_label(mode_value)}**")
+            preview = icon_path(glass_id, prefix, mode_value)
+            if preview.exists():
+                st.image(str(preview), width="content")
+            elif MISSING_ICON.exists():
+                st.image(str(MISSING_ICON), width="content")
+
+            measurement = measurement_row(data, glass_id, mode_value)
+            if measurement is not None:
+                st.markdown(
+                    "\n".join(
+                        [
+                            f"**RGB:** ({safe_int(measurement.get('r'))}, {safe_int(measurement.get('g'))}, {safe_int(measurement.get('b'))})  ",
+                            f"**HSB:** ({safe_int(measurement.get('h'))}, {safe_int(measurement.get('s'))}, {safe_int(measurement.get('v'))})  ",
+                            f"**{t('editor.fields.thickness', 'Thickness (mm)').replace(' (mm)', '')}:** {measurement.get('thickness_mm') or '-'} mm",
+                        ]
+                    )
+                )
+
+
+def render_harmony_overlay_block(
+    data: pd.DataFrame,
+    current_mode: str,
+    harmony_scheme: str,
+    harmony_overlay: list[dict],
+) -> None:
+    if harmony_scheme == "None":
+        return
+
+    st.markdown(f"## {t('color_wheel.labels.harmony_overlay', 'Harmony Overlay')}")
+    if not harmony_overlay:
+        st.info(t("color_wheel.messages.no_harmony", "No harmony targets are available for the current selection."))
+        return
+
+    rows = harmony_overlay_rows(harmony_overlay)
+    st.markdown(
+        (
+            '<div style="font-family:sans-serif;font-size:13px;line-height:1.7;'
+            'margin:6px 0 20px 0;padding:10px 12px;border:1px solid #ddd;'
+            'border-radius:8px;background:#fafafa;">'
+            + "<br>".join(rows)
+            + "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+    matched_items = [item for item in harmony_overlay if item.get("glass_id")]
+    if not matched_items:
+        return
+
+    match_columns = st.columns(min(len(matched_items), 2), gap="large")
+    for index, item in enumerate(matched_items):
+        with match_columns[index % len(match_columns)]:
+            render_harmony_match_card(data, item, current_mode)
+
+
 def render_selected_sample(
     data: pd.DataFrame,
     selected_glass_id: str,
     current_mode: str,
     view_mode: str,
-    harmony_scheme: str,
-    harmony_overlay: list[dict],
 ) -> None:
     current = data[data["glass_id"].astype(str) == str(selected_glass_id)]
     if current.empty:
@@ -1063,38 +1187,6 @@ def render_selected_sample(
             """,
             unsafe_allow_html=True,
         )
-
-    if harmony_scheme != "None":
-        st.markdown(f"### {t('color_wheel.labels.harmony_overlay', 'Harmony Overlay')}")
-        if harmony_overlay:
-            rows = []
-            for item in harmony_overlay:
-                if item.get("glass_id"):
-                    rows.append(
-                        (
-                            f"<strong>{html.escape(item['label'])}</strong>: "
-                            f"{t('color_wheel.figure.target_hue', 'Target hue').lower()} {safe_int(item['target_hue'])} deg -> "
-                            f"{html.escape(item['glass_id'])} {html.escape(item['color_name'])} "
-                            f"(ΔH {item['hue_delta']:.1f})"
-                        )
-                    )
-                else:
-                    rows.append(
-                        f"<strong>{html.escape(item['label'])}</strong>: "
-                        f"{t('color_wheel.figure.target_hue', 'Target hue').lower()} {safe_int(item['target_hue'])} deg"
-                    )
-            st.markdown(
-                (
-                    '<div style="font-family:sans-serif;font-size:13px;line-height:1.7;'
-                    'margin:6px 0 14px 0;padding:10px 12px;border:1px solid #ddd;'
-                    'border-radius:8px;background:#fafafa;">'
-                    + "<br>".join(rows)
-                    + "</div>"
-                ),
-                unsafe_allow_html=True,
-            )
-        else:
-            st.info(t("color_wheel.messages.no_harmony", "No harmony targets are available for the current selection."))
 
     if current_detail_target():
         if st.button(
@@ -1259,6 +1351,12 @@ with chart_col:
             "modeBarButtonsToRemove": ["lasso2d", "select2d"],
         },
     )
+    render_harmony_overlay_block(
+        wheel_data,
+        mode,
+        harmony_scheme,
+        harmony_overlay,
+    )
 
 with detail_col:
     render_selected_sample(
@@ -1266,6 +1364,4 @@ with detail_col:
         str(selected_glass_id),
         mode,
         view_mode,
-        harmony_scheme,
-        harmony_overlay,
     )

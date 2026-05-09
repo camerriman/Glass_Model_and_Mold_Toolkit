@@ -427,15 +427,15 @@ with right2:
         with p1:
             st.text(t("editor.images.icons", "Icons"))
             st.caption(t("editor.images.icon_t_short", "Icon (T)"))
-            st.image(str(icon_preview_T), width="stretch")
+            st.image(str(icon_preview_T), width="content")
             st.caption(t("editor.images.icon_r_short", "Icon (R)"))
-            st.image(str(icon_preview_R), width="stretch")
+            st.image(str(icon_preview_R), width="content")
         with p2:
             st.text(t("editor.images.full_t_short", "Full (T)"))
-            st.image(str(full_preview_T), width="stretch")
+            st.image(str(full_preview_T), width="content")
         with p3:
             st.text(t("editor.images.full_r_short", "Full (R)"))
-            st.image(str(full_preview_R), width="stretch")
+            st.image(str(full_preview_R), width="content")
     else:
         st.info(t("editor.images.enter_cat_id", "Enter a cat_id to see destination filenames and previews."))
 

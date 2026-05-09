@@ -2762,7 +2762,52 @@ def render_app_sidebar(*, nav_expanded: bool = False) -> str:
     st.markdown(
         """
         <style>
+        :root {
+            --toolkit-content-max-width: 1180px;
+        }
+
         [data-testid="stSidebarNav"] { display: none; }
+
+        [data-testid="stMainBlockContainer"],
+        [data-testid="stAppViewContainer"] .main .block-container,
+        div.block-container {
+            max-width: var(--toolkit-content-max-width) !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            padding-left: clamp(1rem, 2vw, 2.5rem) !important;
+            padding-right: clamp(1rem, 2vw, 2.5rem) !important;
+        }
+
+        [data-testid="stImage"],
+        [data-testid="stImage"] > div {
+            width: fit-content !important;
+            max-width: 100% !important;
+        }
+
+        [data-testid="stImage"] img,
+        [data-testid="stImage"] svg,
+        [data-testid="stImage"] canvas,
+        img,
+        svg,
+        canvas,
+        video {
+            max-width: 100% !important;
+            height: auto !important;
+            object-fit: contain !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            align-items: flex-start;
+        }
+
+        @media (max-width: 960px) {
+            [data-testid="stMainBlockContainer"],
+            [data-testid="stAppViewContainer"] .main .block-container,
+            div.block-container {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,

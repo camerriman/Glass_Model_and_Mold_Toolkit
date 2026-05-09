@@ -271,8 +271,13 @@ def build_zip(norm_root, canvas_w, canvas_h, rows, cols,
 
 def svg_to_b64_img(svg_bytes):
     b64 = base64.b64encode(svg_bytes).decode()
-    return (f'<img src="data:image/svg+xml;base64,{b64}" '
-            f'style="width:100%;border:1px solid #444;border-radius:6px;">')
+    return (
+        f'<div style="max-width:100%;overflow:auto;'
+        f'border:1px solid #444;border-radius:6px;background:#fff;">'
+        f'<img src="data:image/svg+xml;base64,{b64}" '
+        f'style="display:block;width:auto;height:auto;max-width:100%;">'
+        f'</div>'
+    )
 
 # ═══════════════════════════════════════════════════════════════
 # UI
