@@ -6,12 +6,16 @@ Mold Calculator & Record Keeper
 - Saves / loads records via local SQLite database
 """
 
+import html
 import re
 import sqlite3
+import io
 from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
+from PIL import Image, ImageDraw, ImageFont
 from i18n import format_date, format_datetime, render_app_sidebar, t
 
 # ─────────────────────────────────────────
@@ -25,6 +29,23 @@ st.caption(
         "worksheet.caption",
         "Pre-fill from a settings.txt or enter values manually. Select the mold type tab to see its calculations.",
     )
+)
+st.markdown(
+    """
+    <style>
+    [data-testid="stMetric"] [data-testid="stMetricValue"] {
+        font-size: clamp(1.25rem, 1.9vw, 1.75rem);
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+    [data-testid="stMetric"] [data-testid="stMetricLabel"] {
+        font-size: 0.86rem;
+        line-height: 1.2;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -288,7 +309,8 @@ def _reset_state():
 def mold_type_label(value: str) -> str:
     labels = {
         "Alginate + Investment": t("worksheet.mold.alginate_investment", "Alginate + Investment"),
-        "Silicone": t("worksheet.mold.silicone", "Silicone"),
+        "Silicone": t("worksheet.mold.silicone_investment", "Silicone + Investment"),
+        "Silicone + Investment": t("worksheet.mold.silicone_investment", "Silicone + Investment"),
     }
     return labels.get(value, value)
 
@@ -316,12 +338,291 @@ def card(title: str, rows: list,
         unsafe_allow_html=True,
     )
 
-# ─────────────────────────────────────────
-# TOP ROW: Import | Saved Records
-# ─────────────────────────────────────────
-top_left, top_right = st.columns([1, 1], gap="large")
 
-with top_left:
+def build_print_export(title: str, job_date, sections: list[tuple[str, list[tuple[str, str]]]]) -> str:
+    """Create a compact browser-printable HTML worksheet."""
+    safe_title = html.escape(title.strip() or t("worksheet.title", "Mold Worksheet"))
+    if hasattr(job_date, "isoformat"):
+        safe_date = html.escape(format_date(job_date.isoformat()))
+    else:
+        safe_date = html.escape(format_date(str(job_date)))
+    section_html = []
+    for section_title, rows in sections:
+        body = "".join(
+            "<tr>"
+            f"<td>{html.escape(label)}</td>"
+            f"<td>{html.escape(value)}</td>"
+            "</tr>"
+            for label, value in rows
+        )
+        section_html.append(
+            "<section>"
+            f"<h2>{html.escape(section_title)}</h2>"
+            f"<table>{body}</table>"
+            "</section>"
+        )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{safe_title} - Mold Worksheet</title>
+<style>
+  @page {{
+    size: letter portrait;
+    margin: 0.42in;
+  }}
+  body {{
+    color: #1f2937;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    line-height: 1.2;
+    margin: 18px;
+  }}
+  header {{
+    border-bottom: 2px solid #111827;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+  }}
+  h1 {{
+    font-size: 22px;
+    line-height: 1.05;
+    margin: 0 0 3px;
+  }}
+  .date {{
+    color: #4b5563;
+    font-size: 11px;
+  }}
+  main {{
+    display: grid;
+    gap: 10px 16px;
+    grid-template-columns: 1fr 1fr;
+  }}
+  section {{
+    break-inside: avoid;
+    margin: 0;
+  }}
+  h2 {{
+    border-bottom: 1px solid #d1d5db;
+    font-size: 11px;
+    letter-spacing: .04em;
+    line-height: 1.15;
+    margin: 0 0 4px;
+    padding-bottom: 3px;
+    text-transform: uppercase;
+  }}
+  table {{
+    border-collapse: collapse;
+    width: 100%;
+  }}
+  td {{
+    border-bottom: 1px solid #e5e7eb;
+    padding: 4px 0;
+    vertical-align: top;
+  }}
+  td:last-child {{
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+  }}
+  .actions {{
+    margin-bottom: 12px;
+  }}
+  button {{
+    background: #111827;
+    border: 0;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    font: inherit;
+    padding: 8px 14px;
+  }}
+  @media print {{
+    body {{
+      font-size: 10.5px;
+      margin: 0;
+    }}
+    .actions {{ display: none; }}
+    header {{
+      margin-bottom: 9px;
+      padding-bottom: 6px;
+    }}
+    h1 {{ font-size: 18px; }}
+    h2 {{ font-size: 9.5px; }}
+    td {{ padding: 2.8px 0; }}
+  }}
+</style>
+</head>
+<body>
+<div class="actions"><button onclick="window.print()">Print</button></div>
+<header>
+  <h1>{safe_title}</h1>
+  <div class="date">{safe_date}</div>
+</header>
+<main>
+{''.join(section_html)}
+</main>
+</body>
+</html>
+"""
+
+
+def build_batch_sheet_pdf(title: str, job_date, sections: list[tuple[str, list[tuple[str, str]]]]) -> bytes:
+    page_w, page_h = 1700, 2200
+    margin = 86
+    gap = 34
+    white = (255, 255, 255)
+    black = (24, 31, 42)
+    muted = (86, 95, 109)
+    grid = (218, 224, 232)
+    header_bg = (244, 247, 251)
+
+    page = Image.new("RGB", (page_w, page_h), white)
+    draw = ImageDraw.Draw(page)
+    title_font = _batch_sheet_font(42, bold=True)
+    meta_font = _batch_sheet_font(22)
+    section_font = _batch_sheet_font(21, bold=True)
+    body_font = _batch_sheet_font(20)
+    value_font = _batch_sheet_font(20, bold=True)
+
+    safe_title = title.strip() or t("worksheet.title", "Mold Worksheet")
+    if hasattr(job_date, "isoformat"):
+        date_text = format_date(job_date.isoformat())
+    else:
+        date_text = format_date(str(job_date))
+
+    y = margin
+    draw.text((margin, y), safe_title, fill=black, font=title_font)
+    y += _font_height(draw, safe_title, title_font) + 8
+    draw.text((margin, y), date_text, fill=muted, font=meta_font)
+    y += _font_height(draw, date_text, meta_font) + 22
+    draw.line((margin, y, page_w - margin, y), fill=black, width=3)
+    y += 26
+
+    col_w = (page_w - (margin * 2) - gap) // 2
+    row_h = 38
+    header_h = 42
+    section_gap = 26
+    columns = [margin, margin + col_w + gap]
+    col_y = [y, y]
+
+    for idx, (section_title, rows) in enumerate(sections):
+        col = idx % 2
+        x = columns[col]
+        needed = header_h + (len(rows) * row_h) + section_gap
+        if col_y[col] + needed > page_h - margin:
+            col = 1 if col == 0 else 0
+            x = columns[col]
+        y0 = col_y[col]
+
+        draw.rounded_rectangle(
+            (x, y0, x + col_w, y0 + header_h),
+            radius=8,
+            fill=header_bg,
+            outline=grid,
+            width=1,
+        )
+        draw.text((x + 14, y0 + 10), section_title.upper(), fill=black, font=section_font)
+        y_row = y0 + header_h
+        for label, value in rows:
+            draw.rectangle((x, y_row, x + col_w, y_row + row_h), outline=grid, width=1)
+            draw.text((x + 14, y_row + 9), label, fill=black, font=body_font)
+            value_w = _font_width(draw, value, value_font)
+            draw.text((x + col_w - value_w - 14, y_row + 9), value, fill=black, font=value_font)
+            y_row += row_h
+        col_y[col] = y_row + section_gap
+
+    buffer = io.BytesIO()
+    page.save(buffer, format="PDF", resolution=200.0)
+    return buffer.getvalue()
+
+
+def _batch_sheet_font(size: int, bold: bool = False) -> ImageFont.ImageFont:
+    font_root = Path("/System/Library/Fonts/Supplemental")
+    candidates = [
+        font_root / ("Arial Bold.ttf" if bold else "Arial.ttf"),
+        "Arial Bold.ttf" if bold else "Arial.ttf",
+        font_root / "Helvetica.ttc",
+    ]
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(str(candidate), size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _font_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> int:
+    left, _, right, _ = draw.textbbox((0, 0), text, font=font)
+    return right - left
+
+
+def _font_height(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> int:
+    _, top, _, bottom = draw.textbbox((0, 0), text, font=font)
+    return bottom - top
+
+
+def render_batch_sheet_actions(report_title: str, job_date, sections: list[tuple[str, list[tuple[str, str]]]]):
+    export_html = build_print_export(report_title, job_date, sections)
+    pdf_bytes = build_batch_sheet_pdf(report_title, job_date, sections)
+    safe_filename = re.sub(r"[^A-Za-z0-9_-]+", "_", report_title).strip("_") or "mold_worksheet"
+    print_payload = html.escape(export_html, quote=True)
+    components.html(
+        f"""
+        <button
+            type="button"
+            style="
+                width: 100%;
+                border: 0;
+                border-radius: 0.5rem;
+                background: #111827;
+                color: white;
+                cursor: pointer;
+                font: 600 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                padding: 0.72rem 1rem;
+            "
+            onclick="
+                const oldFrame = document.getElementById('batch-sheet-print-frame');
+                if (oldFrame) oldFrame.remove();
+                const frame = document.createElement('iframe');
+                frame.id = 'batch-sheet-print-frame';
+                frame.style.position = 'fixed';
+                frame.style.right = '0';
+                frame.style.bottom = '0';
+                frame.style.width = '0';
+                frame.style.height = '0';
+                frame.style.border = '0';
+                frame.srcdoc = this.dataset.sheet;
+                frame.onload = () => {{
+                    frame.contentWindow.focus();
+                    frame.contentWindow.print();
+                }};
+                document.body.appendChild(frame);
+            "
+            data-sheet="{print_payload}"
+        >
+            Print Batch Sheet
+        </button>
+        """,
+        height=58,
+    )
+    st.download_button(
+        t("worksheet.actions.download_batch_sheet", "Download Batch Sheet PDF"),
+        data=pdf_bytes,
+        file_name=f"{safe_filename}_batch_sheet.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )
+
+# ─────────────────────────────────────────
+# Worksheet controls
+# ─────────────────────────────────────────
+loaded_id = st.session_state.get("ws_loaded_id")
+save_label = t("worksheet.actions.update", "Update") if loaded_id else t("worksheet.actions.save", "Save")
+save_clicked = False
+
+tool_left, tool_right = st.columns([1, 1], gap="large")
+
+with tool_left:
     with st.expander(t("worksheet.import.title", "Import from settings.txt"), expanded=False):
         uploaded = st.file_uploader(
             t("worksheet.import.upload", "Drop a settings.txt here"),
@@ -368,99 +669,126 @@ with top_left:
             else:
                 st.warning(t("worksheet.import.empty", "Nothing to parse."))
 
-with top_right:
-    st.subheader(t("worksheet.records.title", "Saved Records"))
-    records = list_records()
-    if not records:
-        st.info(t("worksheet.records.empty", "No saved records yet."))
-    else:
-        for row in records:
-            mold_label = f"  ·  {mold_type_label(row['mold_type'])}" if row["mold_type"] else ""
-            job_date_text = format_date(row["job_date"]) if row["job_date"] else t("worksheet.records.no_date", "no date")
-            rc1, rc2, rc3 = st.columns([4, 1, 1])
-            with rc1:
-                st.markdown(f"**{row['title']}**{mold_label}  —  {job_date_text}")
-                st.caption(
-                    t(
-                        "worksheet.records.saved_at",
-                        "Saved {value}",
-                        value=format_datetime(row["created_at"]),
+with tool_right:
+    with st.expander(t("worksheet.records.title", "Saved Records"), expanded=False):
+        records = list_records()
+        if not records:
+            st.info(t("worksheet.records.empty", "No saved records yet."))
+        else:
+            for row in records:
+                mold_label = f"  ·  {mold_type_label(row['mold_type'])}" if row["mold_type"] else ""
+                job_date_text = format_date(row["job_date"]) if row["job_date"] else t("worksheet.records.no_date", "no date")
+                rc1, rc2, rc3 = st.columns([4, 1, 1])
+                with rc1:
+                    st.markdown(f"**{row['title']}**{mold_label}  —  {job_date_text}")
+                    st.caption(
+                        t(
+                            "worksheet.records.saved_at",
+                            "Saved {value}",
+                            value=format_datetime(row["created_at"]),
+                        )
                     )
-                )
-            with rc2:
-                if st.button(t("worksheet.actions.load", "Load"), key=f"load_{row['id']}"):
-                    _load_into_state(load_record(row["id"]))
-                    st.rerun()
-            with rc3:
-                if st.button("🗑️", key=f"del_{row['id']}", help=t("worksheet.actions.delete_help", "Delete")):
-                    delete_record(row["id"])
-                    if st.session_state["ws_loaded_id"] == row["id"]:
-                        _reset_state()
-                    st.rerun()
+                with rc2:
+                    if st.button(t("worksheet.actions.load", "Load"), key=f"load_{row['id']}"):
+                        _load_into_state(load_record(row["id"]))
+                        st.rerun()
+                with rc3:
+                    if st.button(t("worksheet.actions.delete_help", "Delete"), key=f"del_{row['id']}"):
+                        delete_record(row["id"])
+                        if st.session_state["ws_loaded_id"] == row["id"]:
+                            _reset_state()
+                        st.rerun()
 
-    st.divider()
-    bc1, bc2, bc3 = st.columns(3)
-    with bc1:
-        if st.button(t("worksheet.actions.new", "+ New"), use_container_width=True):
-            _reset_state()
-            st.rerun()
-    with bc2:
-        if st.button(t("worksheet.actions.reset", "Reset"), use_container_width=True):
-            _reset_state()
-            st.rerun()
-    with bc3:
-        loaded_id    = st.session_state.get("ws_loaded_id")
-        save_label   = t("worksheet.actions.update", "Update") if loaded_id else t("worksheet.actions.save", "Save")
-        save_clicked = st.button(save_label, use_container_width=True, type="primary")
+        st.divider()
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            if st.button(t("worksheet.actions.new", "+ New"), use_container_width=True):
+                _reset_state()
+                st.rerun()
+        with bc2:
+            if st.button(t("worksheet.actions.reset", "Reset"), use_container_width=True):
+                _reset_state()
+                st.rerun()
 
 st.divider()
 
 # ─────────────────────────────────────────
-# FULL-WIDTH WORKSHEET
+# Active worksheet
 # ─────────────────────────────────────────
+input_col, output_col = st.columns([0.42, 0.58], gap="large")
 
-# ── Title / date ──
-hc1, hc2 = st.columns([3, 1])
-with hc1:
-    st.text_input(t("worksheet.fields.title", "Title"), key="ws_title", placeholder=t("worksheet.fields.title_placeholder", "e.g. Astrid #1"))
-with hc2:
+with input_col:
+    st.subheader(t("worksheet.sections.print_dimensions", "3D Print Dimensions"))
+    st.text_input(
+        t("worksheet.fields.title", "Title"),
+        key="ws_title",
+        placeholder=t("worksheet.fields.title_placeholder", "e.g. Astrid #1"),
+    )
     st.date_input(t("worksheet.fields.date", "Date"), key="ws_job_date")
 
-st.divider()
+    dim_a, dim_b = st.columns(2)
+    with dim_a:
+        st.number_input(t("worksheet.fields.width", "Width X (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_width_mm")
+        st.number_input(t("worksheet.fields.base", "Base (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_base_mm")
+    with dim_b:
+        st.number_input(t("worksheet.fields.depth", "Depth Y (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_depth_mm")
+        st.number_input(t("worksheet.fields.relief", "Relief (mm)"), min_value=0.0, step=0.1, format="%.1f", key="ws_height_mm")
 
-# ── 3D Print Dimensions (inputs) ──
-st.subheader(t("worksheet.sections.print_dimensions", "3D Print Dimensions"))
-dc1, dc2, dc3, dc4, dc5 = st.columns(5)
-with dc1:
-    st.number_input(t("worksheet.fields.width", "Width X (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_width_mm")
-with dc2:
-    st.number_input(t("worksheet.fields.depth", "Depth Y (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_depth_mm")
-with dc3:
-    st.number_input(t("worksheet.fields.base", "Base (mm)"), min_value=0.0, step=0.5, format="%.1f", key="ws_base_mm")
-with dc4:
-    st.number_input(t("worksheet.fields.relief", "Relief (mm)"), min_value=0.0, step=0.1, format="%.1f", key="ws_height_mm")
-with dc5:
-    st.number_input(t("worksheet.fields.stl_volume", "STL Volume (cm3)"), min_value=0.0, step=1.0, format="%.1f", key="ws_stl_volume")
+    st.number_input(t("worksheet.fields.stl_volume", "STL Volume (cm³)"), min_value=0.0, step=1.0, format="%.1f", key="ws_stl_volume")
 
-st.divider()
+    st.divider()
+    st.subheader(t("worksheet.sections.mold_geometry", "Mold Geometry"))
+    st.caption(t("worksheet.geometry.caption", "Gap width between the print and the containment box walls."))
+    st.number_input(t("worksheet.fields.gap_width", "Gap Width (mm)"), min_value=0.0, max_value=30.0, step=1.0, format="%.0f", key="ws_wall_mm")
 
-# ── Mold Geometry (inputs) ──
-st.subheader(t("worksheet.sections.mold_geometry", "Mold Geometry"))
-st.caption(t("worksheet.geometry.caption", "Gap width between the print and the containment box walls."))
-st.number_input(t("worksheet.fields.gap_width", "Gap Width (mm)"), min_value=0.0, max_value=30.0, step=1.0, format="%.0f", key="ws_wall_mm")
+    st.divider()
+    st.subheader(t("worksheet.sections.mold_type", "Mold Type"))
+    if st.session_state["ws_mold_type"] == "Silicone":
+        st.session_state["ws_mold_type"] = "Silicone + Investment"
+    st.radio(
+        t("worksheet.fields.workflow", "Mold workflow"),
+        ["Alginate + Investment", "Silicone + Investment"],
+        horizontal=True,
+        format_func=mold_type_label,
+        key="ws_mold_type",
+    )
 
-st.divider()
+    mold_type = st.session_state["ws_mold_type"]
+    if mold_type == "Alginate + Investment":
+        st.markdown(f"#### {t('worksheet.alginate.title', 'Alginate')}")
+        alg_a, alg_b = st.columns(2)
+        with alg_a:
+            st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
+                            key="ws_alg_adjust_zi")
+        with alg_b:
+            st.number_input(t("worksheet.fields.alginate_ratio", "Mix Ratio (water : 1 alginate)"), min_value=1.0, max_value=20.0,
+                            step=0.5, format="%.1f", key="ws_alg_mix_ratio",
+                            help=t("worksheet.fields.alginate_ratio_help", "e.g. 5.5 = 5.5 parts water to 1 part alginate"))
 
-# ── Mold type selector ──
-st.subheader(t("worksheet.sections.mold_type", "Mold Type"))
-st.selectbox(
-    t("worksheet.fields.workflow", "Mold workflow"),
-    ["Alginate + Investment", "Silicone"],
-    format_func=mold_type_label,
-    key="ws_mold_type",
-)
+        st.markdown(f"#### {t('worksheet.investment.title', 'Investment')}")
+        st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
+                        key="ws_inv_adjust_zi")
+    else:
+        st.markdown(f"#### {t('worksheet.silicone.title', 'Silicone')}")
+        si_a, si_b = st.columns(2)
+        with si_a:
+            st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
+                            key="ws_si_adjust_zi")
+        with si_b:
+            st.number_input(t("worksheet.fields.silicone_ratio", "Mix Ratio (x : 1)"), min_value=1.0, max_value=20.0,
+                            step=0.5, format="%.1f", key="ws_si_mix_ratio")
+        st.markdown(f"#### {t('worksheet.investment.title', 'Investment')}")
+        st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
+                        key="ws_inv_adjust_zi")
 
-st.divider()
+    st.divider()
+    st.text_area(
+        t("worksheet.sections.notes", "Notes"),
+        key="ws_notes",
+        height=100,
+        placeholder=t("worksheet.fields.notes_placeholder", "Any observations, adjustments, or special instructions..."),
+    )
+    save_clicked = st.button(save_label, use_container_width=True, type="primary")
 
 # ─── All inputs are now rendered — read session state and calculate ───
 w   = st.session_state["ws_width_mm"]
@@ -475,91 +803,191 @@ g = calc_geometry(w, d,
                   p["max_z"],
                   stl)
 
-# ── 3D Print results ──
-card(t("worksheet.cards.print_calculations", "3D PRINT CALCULATIONS"), [
-    (t("worksheet.labels.base_volume", "Base Volume"), f"{p['base_volume']} cm3"),
-    (t("worksheet.labels.max_z_height", "Max Z Height"), f"{p['max_z']} mm"),
-    (t("worksheet.labels.art_space_volume", "Art Space Volume"), f"{p['art_space_vol']} cm3"),
-    (t("worksheet.labels.actual_art_volume", "Actual Art Volume"), f"{p['actual_art_vol']} cm3"),
-    (t("worksheet.labels.volume_to_max_z", "Volume to Max Z"), f"{p['vol_to_max_z']} cm3"),
-], bg="#f0f2f6", border="#888", label_color="#444", value_color="#111")
+with output_col:
+    st.subheader(t("worksheet.labels.total", "Summary"))
+    metric_cols = st.columns(3)
+    metric_cols[0].metric(t("worksheet.labels.mold_volume", "Mold Volume"), f"{g['mold_vol']} cm³")
+    metric_cols[1].metric(t("worksheet.labels.max_z_height", "Max Z Height"), f"{p['max_z']} mm")
+    metric_cols[2].metric(t("worksheet.labels.box_wd", "Box W x D"), f"{g['box_w']:.0f}x{g['box_d']:.0f} mm")
 
-# ── Mold geometry results ──
-card(t("worksheet.cards.mold_box", "MOLD BOX"), [
-    (t("worksheet.labels.box_wd", "Box W x D"), f"{g['box_w']:.0f} x {g['box_d']:.0f} mm"),
-    (t("worksheet.labels.box_volume", "Box Volume"), f"{g['box_volume']} cm3"),
-    (t("worksheet.labels.model_volume", "Model Volume"), f"{g['model_volume']} cm3"),
-    (t("worksheet.labels.mold_volume", "Mold Volume"), f"{g['mold_vol']} cm3"),
-], bg="#f0f2f6", border="#888", label_color="#444", value_color="#111")
+    warnings = []
+    if not all([w, d, za, stl]):
+        warnings.append(t("worksheet.warnings.missing_values", "Enter print dimensions and STL volume to complete the worksheet."))
+    if st.session_state["ws_wall_mm"] <= 0:
+        warnings.append(t("worksheet.warnings.zero_gap", "Gap width is 0 mm, so the mold box has no side clearance."))
+    if g["mold_vol"] < 0:
+        warnings.append(t("worksheet.warnings.negative_mold_volume", "Mold volume is negative. Check STL volume, relief height, and box dimensions."))
+    if p["actual_art_vol"] < 0:
+        warnings.append(t("worksheet.warnings.negative_art_volume", "Actual art volume is negative. Check base thickness against STL volume."))
+    for warning in warnings:
+        st.warning(warning)
 
-# ── Mold-type-specific inputs + results ──
-mold_type = st.session_state["ws_mold_type"]
+    card(t("worksheet.cards.print_calculations", "3D PRINT CALCULATIONS"), [
+        (t("worksheet.labels.base_volume", "Base Volume"), f"{p['base_volume']} cm³"),
+        (t("worksheet.labels.art_space_volume", "Art Space Volume"), f"{p['art_space_vol']} cm³"),
+        (t("worksheet.labels.actual_art_volume", "Actual Art Volume"), f"{p['actual_art_vol']} cm³"),
+        (t("worksheet.labels.volume_to_max_z", "Volume to Max Z"), f"{p['vol_to_max_z']} cm³"),
+    ], bg="#f8fafc", border="#64748b", label_color="#475569", value_color="#0f172a")
 
-if mold_type == "Alginate + Investment":
-    # ── Alginate inputs ──
-    st.subheader(t("worksheet.alginate.title", "Alginate"))
-    st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
-                    key="ws_alg_adjust_zi")
-    st.number_input(t("worksheet.fields.alginate_ratio", "Mix Ratio (water : 1 alginate)"), min_value=1.0, max_value=20.0,
-                    step=0.5, format="%.1f", key="ws_alg_mix_ratio",
-                    help=t("worksheet.fields.alginate_ratio_help", "e.g. 5.5 = 5.5 parts water to 1 part alginate"))
-    a = calc_alginate(w, d, g["mold_vol"], p["max_z"],
-                      st.session_state["ws_wall_mm"],
-                      st.session_state["ws_alg_adjust_zi"],
-                      st.session_state["ws_alg_mix_ratio"])
-    card(t("worksheet.cards.alginate", "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1", ratio=f"{st.session_state['ws_alg_mix_ratio']:.1f}"), [
-        (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{a['alg_mold_vol']} cm3"),
-        (t("worksheet.labels.water", "Water"), f"{a['alg_water_g']} g"),
-        (t("worksheet.labels.alginate", "Alginate"), f"{a['alg_alginate_g']} g"),
-        (t("worksheet.labels.mold_thickness", "Mold Thickness"), f"{a['alg_thickness']} mm"),
-        (t("worksheet.labels.total_thickness", "Total Thickness"), f"{a['alg_total_thick']} mm"),
-    ], bg="#dcfce7", border="#22c55e", label_color="#166534", value_color="#14532d")
+    card(t("worksheet.cards.mold_box", "MOLD BOX"), [
+        (t("worksheet.labels.box_wd", "Box W x D"), f"{g['box_w']:.0f} x {g['box_d']:.0f} mm"),
+        (t("worksheet.labels.box_volume", "Box Volume"), f"{g['box_volume']} cm³"),
+        (t("worksheet.labels.model_volume", "Model Volume"), f"{g['model_volume']} cm³"),
+        (t("worksheet.labels.mold_volume", "Mold Volume"), f"{g['mold_vol']} cm³"),
+    ], bg="#f8fafc", border="#64748b", label_color="#475569", value_color="#0f172a")
 
-    st.divider()
+    mold_type = st.session_state["ws_mold_type"]
+    if mold_type == "Alginate + Investment":
+        a = calc_alginate(w, d, g["mold_vol"], p["max_z"],
+                          st.session_state["ws_wall_mm"],
+                          st.session_state["ws_alg_adjust_zi"],
+                          st.session_state["ws_alg_mix_ratio"])
+        i = calc_investment(w, d, g["mold_vol"], p["max_z"],
+                            st.session_state["ws_wall_mm"],
+                            st.session_state["ws_inv_adjust_zi"])
 
-    # ── Investment inputs ──
-    st.subheader(t("worksheet.investment.title", "Investment"))
-    st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
-                    key="ws_inv_adjust_zi")
-    i = calc_investment(w, d, g["mold_vol"], p["max_z"],
-                        st.session_state["ws_wall_mm"],
-                        st.session_state["ws_inv_adjust_zi"])
-    card(t("worksheet.cards.dry_investment", "DRY INVESTMENT / PLASTER + SILICA · Mold vol {volume} cm3", volume=f"{i['inv_vol']}"), [
-        (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{i['inv_vol']} cm3"),
-        (t("worksheet.labels.dry_investment", "Dry Investment"), f"{i['dry_investment']} g"),
-        (t("worksheet.labels.plaster", "Plaster"), f"{i['plaster_g']} g"),
-        (t("worksheet.labels.silica_flour", "Silica Flour"), f"{i['silica_g']} g"),
-        (t("worksheet.labels.water", "Water"), f"{i['inv_water_g']} g"),
-        (t("worksheet.labels.total_thickness", "Total Thickness"), f"{i['inv_total_thick']} mm"),
-    ], bg="#fef9c3", border="#eab308", label_color="#92400e", value_color="#78350f")
-    card(t("worksheet.cards.rr910", "R&R 910 · Mold vol {volume} cm3 x 1.88", volume=f"{i['inv_vol']}"), [
-        (t("worksheet.labels.rr910", "R&R 910"), f"{i['rr910_g']} g"),
-        (t("worksheet.labels.water", "Water"), f"{i['rr910_water_g']} g"),
-    ], bg="#f3e8ff", border="#a855f7", label_color="#6b21a8", value_color="#581c87")
+        batch_cols = st.columns(3)
+        batch_cols[0].metric(t("worksheet.labels.water", "Water"), f"{a['alg_water_g']} g")
+        batch_cols[1].metric(t("worksheet.labels.alginate", "Alginate"), f"{a['alg_alginate_g']} g")
+        batch_cols[2].metric(t("worksheet.labels.dry_investment", "Dry Investment"), f"{i['dry_investment']} g")
 
-elif mold_type == "Silicone":
-    st.subheader(t("worksheet.silicone.title", "Silicone"))
-    st.number_input(t("worksheet.fields.adjust_base_z", "Adjust Base Z (mm)"), min_value=0.0, step=0.5, format="%.1f",
-                    key="ws_si_adjust_zi")
-    st.number_input(t("worksheet.fields.silicone_ratio", "Mix Ratio (x : 1)"), min_value=1.0, max_value=20.0,
-                    step=0.5, format="%.1f", key="ws_si_mix_ratio")
-    s = calc_silicone(w, d, g["box_volume"], g["model_volume"],
-                      st.session_state["ws_si_adjust_zi"],
-                      st.session_state["ws_si_mix_ratio"])
-    card(t("worksheet.cards.silicone", "SIRATECH SILICONE · ratio {ratio} : 1", ratio=f"{st.session_state['ws_si_mix_ratio']:.1f}"), [
-        (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{s['mold_volume_si']} cm3"),
-        (t("worksheet.labels.total", "Total"), f"{s['silicone_g']} g"),
-        (t("worksheet.labels.part_a", "Part A"), f"{s['part_a']} g"),
-        (t("worksheet.labels.part_b", "Part B"), f"{s['part_b']} g"),
-    ], bg="#dbeafe", border="#3b82f6", label_color="#1e40af", value_color="#1e3a8a")
+        card(t("worksheet.cards.alginate", "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1", ratio=f"{st.session_state['ws_alg_mix_ratio']:.1f}"), [
+            (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{a['alg_mold_vol']} cm³"),
+            (t("worksheet.labels.water", "Water"), f"{a['alg_water_g']} g"),
+            (t("worksheet.labels.alginate", "Alginate"), f"{a['alg_alginate_g']} g"),
+            (t("worksheet.labels.mold_thickness", "Mold Thickness"), f"{a['alg_thickness']} mm"),
+            (t("worksheet.labels.total_thickness", "Total Thickness"), f"{a['alg_total_thick']} mm"),
+        ], bg="#f0fdf4", border="#16a34a", label_color="#166534", value_color="#14532d")
 
-st.divider()
-st.text_area(
-    t("worksheet.sections.notes", "Notes"),
-    key="ws_notes",
-    height=80,
-    placeholder=t("worksheet.fields.notes_placeholder", "Any observations, adjustments, or special instructions..."),
-)
+        card(t("worksheet.cards.dry_investment", "DRY INVESTMENT / PLASTER + SILICA · Mold vol {volume} cm³", volume=f"{i['inv_vol']}"), [
+            (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{i['inv_vol']} cm³"),
+            (t("worksheet.labels.plaster", "Plaster"), f"{i['plaster_g']} g"),
+            (t("worksheet.labels.silica_flour", "Silica Flour"), f"{i['silica_g']} g"),
+            (t("worksheet.labels.water", "Water"), f"{i['inv_water_g']} g"),
+            (t("worksheet.labels.total_thickness", "Total Thickness"), f"{i['inv_total_thick']} mm"),
+        ], bg="#fffbeb", border="#d97706", label_color="#92400e", value_color="#78350f")
+
+        card(t("worksheet.cards.rr910", "R&R 910 · Mold vol {volume} cm³ x 1.88", volume=f"{i['inv_vol']}"), [
+            (t("worksheet.labels.rr910", "R&R 910"), f"{i['rr910_g']} g"),
+            (t("worksheet.labels.water", "Water"), f"{i['rr910_water_g']} g"),
+        ], bg="#faf5ff", border="#7c3aed", label_color="#6b21a8", value_color="#581c87")
+
+        print_sections = [
+            (
+                t("worksheet.cards.print_calculations", "3D PRINT CALCULATIONS"),
+                [
+                    (t("worksheet.labels.base_volume", "Base Volume"), f"{p['base_volume']} cm³"),
+                    (t("worksheet.labels.max_z_height", "Max Z Height"), f"{p['max_z']} mm"),
+                    (t("worksheet.labels.art_space_volume", "Art Space Volume"), f"{p['art_space_vol']} cm³"),
+                    (t("worksheet.labels.actual_art_volume", "Actual Art Volume"), f"{p['actual_art_vol']} cm³"),
+                    (t("worksheet.labels.volume_to_max_z", "Volume to Max Z"), f"{p['vol_to_max_z']} cm³"),
+                ],
+            ),
+            (
+                t("worksheet.cards.alginate", "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1", ratio=f"{st.session_state['ws_alg_mix_ratio']:.1f}"),
+                [
+                    (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{a['alg_mold_vol']} cm³"),
+                    (t("worksheet.labels.water", "Water"), f"{a['alg_water_g']} g"),
+                    (t("worksheet.labels.alginate", "Alginate"), f"{a['alg_alginate_g']} g"),
+                    (t("worksheet.labels.mold_thickness", "Mold Thickness"), f"{a['alg_thickness']} mm"),
+                    (t("worksheet.labels.total_thickness", "Total Thickness"), f"{a['alg_total_thick']} mm"),
+                ],
+            ),
+            (
+                t("worksheet.cards.dry_investment", "DRY INVESTMENT / PLASTER + SILICA · Mold vol {volume} cm³", volume=f"{i['inv_vol']}"),
+                [
+                    (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{i['inv_vol']} cm³"),
+                    (t("worksheet.labels.dry_investment", "Dry Investment"), f"{i['dry_investment']} g"),
+                    (t("worksheet.labels.plaster", "Plaster"), f"{i['plaster_g']} g"),
+                    (t("worksheet.labels.silica_flour", "Silica Flour"), f"{i['silica_g']} g"),
+                    (t("worksheet.labels.water", "Water"), f"{i['inv_water_g']} g"),
+                    (t("worksheet.labels.total_thickness", "Total Thickness"), f"{i['inv_total_thick']} mm"),
+                ],
+            ),
+            (
+                t("worksheet.cards.rr910", "R&R 910 · Mold vol {volume} cm³ x 1.88", volume=f"{i['inv_vol']}"),
+                [
+                    (t("worksheet.labels.rr910", "R&R 910"), f"{i['rr910_g']} g"),
+                    (t("worksheet.labels.water", "Water"), f"{i['rr910_water_g']} g"),
+                ],
+            ),
+        ]
+        report_title = st.session_state["ws_title"].strip() or t("worksheet.title", "Mold Worksheet")
+        render_batch_sheet_actions(report_title, st.session_state["ws_job_date"], print_sections)
+
+    elif mold_type == "Silicone + Investment":
+        s = calc_silicone(w, d, g["box_volume"], g["model_volume"],
+                          st.session_state["ws_si_adjust_zi"],
+                          st.session_state["ws_si_mix_ratio"])
+        i = calc_investment(w, d, g["mold_vol"], p["max_z"],
+                            st.session_state["ws_wall_mm"],
+                            st.session_state["ws_inv_adjust_zi"])
+        batch_cols = st.columns(3)
+        batch_cols[0].metric(t("worksheet.labels.total", "Total"), f"{s['silicone_g']} g")
+        batch_cols[1].metric(t("worksheet.labels.part_a", "Part A"), f"{s['part_a']} g")
+        batch_cols[2].metric(t("worksheet.labels.dry_investment", "Dry Investment"), f"{i['dry_investment']} g")
+
+        card(t("worksheet.cards.silicone", "SIRATECH SILICONE · ratio {ratio} : 1", ratio=f"{st.session_state['ws_si_mix_ratio']:.1f}"), [
+            (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{s['mold_volume_si']} cm³"),
+            (t("worksheet.labels.total", "Total"), f"{s['silicone_g']} g"),
+            (t("worksheet.labels.part_a", "Part A"), f"{s['part_a']} g"),
+            (t("worksheet.labels.part_b", "Part B"), f"{s['part_b']} g"),
+        ], bg="#eff6ff", border="#2563eb", label_color="#1e40af", value_color="#1e3a8a")
+
+        card(t("worksheet.cards.dry_investment", "DRY INVESTMENT / PLASTER + SILICA · Mold vol {volume} cm³", volume=f"{i['inv_vol']}"), [
+            (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{i['inv_vol']} cm³"),
+            (t("worksheet.labels.plaster", "Plaster"), f"{i['plaster_g']} g"),
+            (t("worksheet.labels.silica_flour", "Silica Flour"), f"{i['silica_g']} g"),
+            (t("worksheet.labels.water", "Water"), f"{i['inv_water_g']} g"),
+            (t("worksheet.labels.total_thickness", "Total Thickness"), f"{i['inv_total_thick']} mm"),
+        ], bg="#fffbeb", border="#d97706", label_color="#92400e", value_color="#78350f")
+
+        card(t("worksheet.cards.rr910", "R&R 910 · Mold vol {volume} cm³ x 1.88", volume=f"{i['inv_vol']}"), [
+            (t("worksheet.labels.rr910", "R&R 910"), f"{i['rr910_g']} g"),
+            (t("worksheet.labels.water", "Water"), f"{i['rr910_water_g']} g"),
+        ], bg="#faf5ff", border="#7c3aed", label_color="#6b21a8", value_color="#581c87")
+
+        print_sections = [
+            (
+                t("worksheet.cards.print_calculations", "3D PRINT CALCULATIONS"),
+                [
+                    (t("worksheet.labels.base_volume", "Base Volume"), f"{p['base_volume']} cm³"),
+                    (t("worksheet.labels.max_z_height", "Max Z Height"), f"{p['max_z']} mm"),
+                    (t("worksheet.labels.art_space_volume", "Art Space Volume"), f"{p['art_space_vol']} cm³"),
+                    (t("worksheet.labels.actual_art_volume", "Actual Art Volume"), f"{p['actual_art_vol']} cm³"),
+                    (t("worksheet.labels.volume_to_max_z", "Volume to Max Z"), f"{p['vol_to_max_z']} cm³"),
+                ],
+            ),
+            (
+                t("worksheet.cards.silicone", "SIRATECH SILICONE · ratio {ratio} : 1", ratio=f"{st.session_state['ws_si_mix_ratio']:.1f}"),
+                [
+                    (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{s['mold_volume_si']} cm³"),
+                    (t("worksheet.labels.total", "Total"), f"{s['silicone_g']} g"),
+                    (t("worksheet.labels.part_a", "Part A"), f"{s['part_a']} g"),
+                    (t("worksheet.labels.part_b", "Part B"), f"{s['part_b']} g"),
+                ],
+            ),
+            (
+                t("worksheet.cards.dry_investment", "DRY INVESTMENT / PLASTER + SILICA · Mold vol {volume} cm³", volume=f"{i['inv_vol']}"),
+                [
+                    (t("worksheet.labels.mold_volume_box_model_z", "Mold Volume (Box - Model + Z)"), f"{i['inv_vol']} cm³"),
+                    (t("worksheet.labels.dry_investment", "Dry Investment"), f"{i['dry_investment']} g"),
+                    (t("worksheet.labels.plaster", "Plaster"), f"{i['plaster_g']} g"),
+                    (t("worksheet.labels.silica_flour", "Silica Flour"), f"{i['silica_g']} g"),
+                    (t("worksheet.labels.water", "Water"), f"{i['inv_water_g']} g"),
+                    (t("worksheet.labels.total_thickness", "Total Thickness"), f"{i['inv_total_thick']} mm"),
+                ],
+            ),
+            (
+                t("worksheet.cards.rr910", "R&R 910 · Mold vol {volume} cm³ x 1.88", volume=f"{i['inv_vol']}"),
+                [
+                    (t("worksheet.labels.rr910", "R&R 910"), f"{i['rr910_g']} g"),
+                    (t("worksheet.labels.water", "Water"), f"{i['rr910_water_g']} g"),
+                ],
+            ),
+        ]
+        report_title = st.session_state["ws_title"].strip() or t("worksheet.title", "Mold Worksheet")
+        render_batch_sheet_actions(report_title, st.session_state["ws_job_date"], print_sections)
 
 # ─────────────────────────────────────────
 # Save
