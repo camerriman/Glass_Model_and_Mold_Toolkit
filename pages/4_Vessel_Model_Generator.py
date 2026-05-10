@@ -7,8 +7,11 @@ Wrap a heightmap image around a user-defined vessel profile.
 """
 
 import io
+import json
+import sqlite3
 import struct
 import zipfile
+from datetime import date, datetime
 from pathlib import Path
 import numpy as np
 import streamlit as st
@@ -21,6 +24,109 @@ st.set_page_config(page_title=tr("page.vessel.title", "Vessel Mold Model Generat
 render_app_sidebar()
 st.title(tr("page.vessel.title", "Vessel Mold Model Generator"))
 st.caption(tr("page.vessel.caption", "Define a vessel profile, upload a heightmap image, and generate a wrapped printable STL."))
+
+APP_ROOT = Path(__file__).resolve().parents[1]
+DB_PATH = APP_ROOT / "data" / "mold_records.db"
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+def get_conn():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_vessel_db():
+    with get_conn() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vessel_setups (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                title             TEXT NOT NULL,
+                job_date          TEXT,
+                created_at        TEXT NOT NULL,
+                base_r            REAL,
+                top_r             REAL,
+                height            REAL,
+                n_mid             INTEGER,
+                midpoints_json    TEXT,
+                wall_mm           REAL,
+                displacement      REAL,
+                placement         TEXT,
+                invert_relief     INTEGER,
+                tile_enabled      INTEGER,
+                tile_count        INTEGER,
+                add_lip           INTEGER,
+                lip_radius        REAL,
+                n_lip             INTEGER,
+                quality           TEXT,
+                override          INTEGER,
+                ov_theta          INTEGER,
+                ov_z              REAL,
+                source_image_name TEXT,
+                notes             TEXT
+            )
+            """
+        )
+
+
+init_vessel_db()
+
+
+def save_vessel_record(rec: dict) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO vessel_setups
+                (title, job_date, created_at, base_r, top_r, height, n_mid, midpoints_json,
+                 wall_mm, displacement, placement, invert_relief, tile_enabled, tile_count,
+                 add_lip, lip_radius, n_lip, quality, override, ov_theta, ov_z,
+                 source_image_name, notes)
+            VALUES
+                (:title, :job_date, :created_at, :base_r, :top_r, :height, :n_mid, :midpoints_json,
+                 :wall_mm, :displacement, :placement, :invert_relief, :tile_enabled, :tile_count,
+                 :add_lip, :lip_radius, :n_lip, :quality, :override, :ov_theta, :ov_z,
+                 :source_image_name, :notes)
+            """,
+            rec,
+        )
+        return cur.lastrowid
+
+
+def update_vessel_record(record_id: int, rec: dict) -> None:
+    rec["id"] = record_id
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE vessel_setups SET
+                title=:title, job_date=:job_date, base_r=:base_r, top_r=:top_r, height=:height,
+                n_mid=:n_mid, midpoints_json=:midpoints_json, wall_mm=:wall_mm,
+                displacement=:displacement, placement=:placement, invert_relief=:invert_relief,
+                tile_enabled=:tile_enabled, tile_count=:tile_count, add_lip=:add_lip,
+                lip_radius=:lip_radius, n_lip=:n_lip, quality=:quality, override=:override,
+                ov_theta=:ov_theta, ov_z=:ov_z, source_image_name=:source_image_name,
+                notes=:notes
+            WHERE id=:id
+            """,
+            rec,
+        )
+
+
+def delete_vessel_record(record_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM vessel_setups WHERE id=?", (record_id,))
+
+
+def list_vessel_records():
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT id, title, job_date, created_at, source_image_name FROM vessel_setups ORDER BY created_at DESC"
+        ).fetchall()
+
+
+def load_vessel_record(record_id: int):
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM vessel_setups WHERE id=?", (record_id,)).fetchone()
 
 # ─────────────────────────────────────────
 # STL writer
@@ -76,6 +182,8 @@ def format_vessel_settings(settings: dict) -> str:
             f"Relief (mm): {settings['displacement']:.1f}",
             f"Relief placement: {settings['placement_label']}",
             f"Invert relief: {'Yes' if settings['invert_relief'] else 'No'}",
+            f"Tile same image around vessel: {'Yes' if settings['tile_enabled'] else 'No'}",
+            f"Tiles around vessel: {settings['tile_count']}",
             "",
             "Rim Relief Channel",
             f"Enabled: {'Yes' if settings['add_rim_channel'] else 'No'}",
@@ -196,10 +304,25 @@ def estimate_internal_bore_volume_mm3(
 # ─────────────────────────────────────────
 # Heightmap loader
 # ─────────────────────────────────────────
-def load_heightmap(uploaded_file, n_theta: int, n_z: int) -> np.ndarray:
+def blend_heightmap_wrap(img: np.ndarray) -> np.ndarray:
+    """Cosine-blend left/right edges so a heightmap wraps cleanly."""
+    img = np.array(img, dtype=np.float32, copy=True)
+    blend_w = max(1, int(img.shape[1] * 0.05))
+    fade = np.linspace(0.0, 1.0, blend_w, dtype=np.float32)
+    for i in range(blend_w):
+        t = fade[i]
+        img[:, i] = img[:, i] * t + img[:, -(blend_w - i)] * (1 - t)
+    for i in range(blend_w):
+        t = fade[i]
+        img[:, -(i + 1)] = img[:, -(i + 1)] * t + img[:, blend_w - i - 1] * (1 - t)
+    return img
+
+
+def load_heightmap(uploaded_file, n_theta: int, n_z: int, tile_count: int = 1) -> np.ndarray:
     """
     Returns (n_z, n_theta) float array in [0, 1].
     Rows = Z slices (bottom to top), Cols = angle slices.
+    tile_count > 1 repeats the same uploaded image around the circumference.
     Uses Pillow + scipy — no cv2 required.
     """
     from scipy.ndimage import zoom
@@ -215,33 +338,27 @@ def load_heightmap(uploaded_file, n_theta: int, n_z: int) -> np.ndarray:
     img = Image.open(uploaded_file).convert("L")
     img = np.asarray(img, dtype=np.float32) / 255.0
 
-    # Resize to (n_z rows, n_theta cols) via scipy zoom
-    zh = n_z    / img.shape[0]
-    zw = n_theta / img.shape[1]
+    tile_count = max(1, int(tile_count))
+    tile_cols = n_theta if tile_count == 1 else int(np.ceil(n_theta / tile_count))
+
+    # Resize to (n_z rows, tile/full angular cols) via scipy zoom.
+    zh = n_z / img.shape[0]
+    zw = tile_cols / img.shape[1]
     img = zoom(img, (zh, zw), order=3)   # bicubic
 
-    # Flip vertically so image top = vase top
+    # Flip vertically so image top = vase top.
     img = img[::-1, :]
+    img = blend_heightmap_wrap(img)
 
-    # ── Seam fix: cosine-blend left/right edges so wrap is seamless ──
-    # Blend zone = 5% of width on each side
-    blend_w = max(1, int(img.shape[1] * 0.05))
-    fade    = np.linspace(0.0, 1.0, blend_w, dtype=np.float32)
-    # Left edge blends FROM right edge of image
-    for i in range(blend_w):
-        t = fade[i]
-        img[:, i] = img[:, i] * t + img[:, -(blend_w - i)] * (1 - t)
-    # Right edge blends TO left edge of image
-    for i in range(blend_w):
-        t = fade[i]
-        img[:, -(i + 1)] = img[:, -(i + 1)] * t + img[:, blend_w - i - 1] * (1 - t)
+    if tile_count > 1:
+        img = np.tile(img, (1, tile_count))[:, :n_theta]
 
     return np.clip(img, 0.0, 1.0)
 
 
 @st.cache_data(show_spinner=False)
-def load_heightmap_cached(file_bytes: bytes, n_theta: int, n_z: int) -> np.ndarray:
-    return load_heightmap(file_bytes, n_theta, n_z)
+def load_heightmap_cached(file_bytes: bytes, n_theta: int, n_z: int, tile_count: int = 1) -> np.ndarray:
+    return load_heightmap(file_bytes, n_theta, n_z, tile_count)
 
 
 # ─────────────────────────────────────────
@@ -581,8 +698,11 @@ st.session_state.setdefault("vessel_settings_text", "")
 st.session_state.setdefault("vessel_upload_nonce", 0)
 st.session_state.setdefault("vessel_is_building", False)
 st.session_state.setdefault("vessel_reset_pending", False)
+st.session_state.setdefault("vessel_loaded_id", None)
 
 VESSEL_DEFAULTS = {
+    "vessel_title": "",
+    "vessel_job_date": date.today(),
     "vessel_base_r": 20.0,
     "vessel_top_r": 50.0,
     "vessel_height": 60.0,
@@ -591,6 +711,8 @@ VESSEL_DEFAULTS = {
     "vessel_displacement": 2.0,
     "vessel_placement": "Outside — relief on exterior",
     "vessel_invert_relief": False,
+    "vessel_tile_enabled": False,
+    "vessel_tile_count": 4,
     "vessel_add_lip": False,
     "vessel_lip_radius": 1.5,
     "vessel_n_lip": 24,
@@ -598,6 +720,8 @@ VESSEL_DEFAULTS = {
     "vessel_override": False,
     "vessel_ov_theta": 180,
     "vessel_ov_z": 0.5,
+    "vessel_source_image_name": "",
+    "vessel_notes": "",
 }
 
 for key, value in VESSEL_DEFAULTS.items():
@@ -619,14 +743,135 @@ def reset_vessel_defaults() -> None:
     st.session_state["vessel_settings_text"] = ""
     st.session_state["vessel_is_building"] = False
     st.session_state["vessel_reset_pending"] = False
+    st.session_state["vessel_loaded_id"] = None
+
+
+def clear_vessel_outputs() -> None:
+    st.session_state["stl_bytes"] = None
+    st.session_state["stl_tri_count"] = 0
+    st.session_state["vessel_stl_name"] = "vessel_model.stl"
+    st.session_state["vessel_zip_bytes"] = None
+    st.session_state["vessel_zip_name"] = "vessel_model_bundle.zip"
+    st.session_state["vessel_settings_text"] = ""
+    st.session_state["vessel_is_building"] = False
+
+
+def load_vessel_setup_into_state(row) -> None:
+    if not row:
+        return
+    st.session_state["vessel_title"] = row["title"] or ""
+    if row["job_date"]:
+        try:
+            st.session_state["vessel_job_date"] = date.fromisoformat(row["job_date"])
+        except ValueError:
+            st.session_state["vessel_job_date"] = date.today()
+    else:
+        st.session_state["vessel_job_date"] = date.today()
+
+    mappings = {
+        "base_r": "vessel_base_r",
+        "top_r": "vessel_top_r",
+        "height": "vessel_height",
+        "n_mid": "vessel_n_mid",
+        "wall_mm": "vessel_wall_mm",
+        "displacement": "vessel_displacement",
+        "placement": "vessel_placement",
+        "lip_radius": "vessel_lip_radius",
+        "n_lip": "vessel_n_lip",
+        "quality": "vessel_quality",
+        "ov_theta": "vessel_ov_theta",
+        "ov_z": "vessel_ov_z",
+        "notes": "vessel_notes",
+    }
+    for column, key in mappings.items():
+        if column in row.keys() and row[column] is not None:
+            st.session_state[key] = row[column]
+
+    for column, key in {
+        "invert_relief": "vessel_invert_relief",
+        "tile_enabled": "vessel_tile_enabled",
+        "add_lip": "vessel_add_lip",
+        "override": "vessel_override",
+    }.items():
+        st.session_state[key] = bool(row[column]) if column in row.keys() and row[column] is not None else False
+    st.session_state["vessel_tile_count"] = int(row["tile_count"] or VESSEL_DEFAULTS["vessel_tile_count"])
+    st.session_state["vessel_source_image_name"] = row["source_image_name"] or ""
+
+    for idx in range(4):
+        st.session_state.pop(f"vessel_zf_{idx}", None)
+        st.session_state.pop(f"vessel_rm_{idx}", None)
+    try:
+        midpoints_saved = json.loads(row["midpoints_json"] or "[]")
+    except json.JSONDecodeError:
+        midpoints_saved = []
+    st.session_state["vessel_n_mid"] = min(4, len(midpoints_saved))
+    height_value = float(st.session_state["vessel_height"] or VESSEL_DEFAULTS["vessel_height"])
+    for idx, item in enumerate(midpoints_saved[:4]):
+        z_frac = float(item.get("z_frac", 0.0))
+        radius = float(item.get("radius", st.session_state["vessel_base_r"]))
+        st.session_state[f"vessel_zf_{idx}"] = max(1.0, min(height_value - 1, z_frac * height_value))
+        st.session_state[f"vessel_rm_{idx}"] = radius
+
+    st.session_state["vessel_loaded_id"] = row["id"]
+    clear_vessel_outputs()
 
 
 if st.session_state.get("vessel_reset_pending"):
     reset_vessel_defaults()
 
+tool_left, tool_right = st.columns([1, 1], gap="large")
+with tool_right:
+    with st.expander(tr("page.vessel.records.title", "Saved Vessel Setups"), expanded=False):
+        records = list_vessel_records()
+        if not records:
+            st.info(tr("page.vessel.records.empty", "No saved vessel setups yet."))
+        else:
+            for row in records:
+                saved_date = row["job_date"] or tr("page.vessel.records.no_date", "no date")
+                source_note = f" · {row['source_image_name']}" if row["source_image_name"] else ""
+                rc1, rc2, rc3 = st.columns([4, 1, 1])
+                with rc1:
+                    st.markdown(f"**{row['title']}** — {saved_date}{source_note}")
+                    st.caption(f"Saved {row['created_at']}")
+                with rc2:
+                    if st.button(tr("worksheet.actions.load", "Load"), key=f"vessel_load_{row['id']}"):
+                        load_vessel_setup_into_state(load_vessel_record(row["id"]))
+                        st.rerun()
+                with rc3:
+                    if st.button(tr("worksheet.actions.delete_help", "Delete"), key=f"vessel_del_{row['id']}"):
+                        delete_vessel_record(row["id"])
+                        if st.session_state["vessel_loaded_id"] == row["id"]:
+                            reset_vessel_defaults()
+                        st.rerun()
+
+        st.divider()
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            if st.button(tr("worksheet.actions.new", "+ New"), key="vessel_new_setup", use_container_width=True):
+                reset_vessel_defaults()
+                st.rerun()
+        with bc2:
+            if st.button(tr("worksheet.actions.reset", "Reset"), key="vessel_reset_setup", use_container_width=True):
+                reset_vessel_defaults()
+                st.rerun()
+
+st.divider()
+
 left, right = st.columns([1, 1], gap="large")
 
 with left:
+    st.subheader(tr("page.vessel.sections.setup", "Setup"))
+    setup_a, setup_b = st.columns([2, 1])
+    with setup_a:
+        st.text_input(
+            tr("worksheet.fields.title", "Title"),
+            key="vessel_title",
+            placeholder=tr("page.vessel.fields.title_placeholder", "e.g. Vessel texture test #1"),
+        )
+    with setup_b:
+        st.date_input(tr("worksheet.fields.date", "Date"), key="vessel_job_date")
+
+    st.divider()
     st.subheader(tr("page.vessel.sections.profile", "Profile"))
 
     c1, c2, c3 = st.columns(3)
@@ -731,6 +976,23 @@ with left:
         help=tr("page.vessel.help.invert_relief", "Swap peaks and valleys - dark areas become raised, light areas recessed"),
         key="vessel_invert_relief",
     )
+    tile_enabled = st.checkbox(
+        tr("page.vessel.fields.tile_same_image", "Tile same image around vessel"),
+        help=tr("page.vessel.help.tile_same_image", "Repeat the uploaded heightmap around the vessel instead of stretching it once around the full circumference."),
+        key="vessel_tile_enabled",
+    )
+    if tile_enabled:
+        tile_count = st.slider(
+            tr("page.vessel.fields.tile_count", "Tiles around vessel"),
+            min_value=2,
+            max_value=24,
+            value=int(st.session_state.get("vessel_tile_count", 4)),
+            step=1,
+            help=tr("page.vessel.help.tile_count", "Number of repeated copies around the circumference."),
+            key="vessel_tile_count",
+        )
+    else:
+        tile_count = 1
 
     st.divider()
     st.subheader(tr("page.vessel.sections.rim", "Rim"))
@@ -766,6 +1028,7 @@ with left:
     if uploaded:
         st.image(uploaded, caption=tr("page.vessel.caption.heightmap_preview", "Heightmap preview"), width="content")
         uploaded_bytes = uploaded.getvalue()
+        st.session_state["vessel_source_image_name"] = uploaded.name
     else:
         uploaded_bytes = None
 
@@ -814,6 +1077,63 @@ with left:
                                            help=tr("page.vessel.help.vertical_spacing", "Smaller = more rings = finer vertical detail"),
                                            key="vessel_ov_z")
             n_z = max(20, int(round(height / mm_per_ring)))
+
+    st.divider()
+    st.text_area(
+        tr("worksheet.sections.notes", "Notes"),
+        key="vessel_notes",
+        height=80,
+        placeholder=tr("page.vessel.fields.notes_placeholder", "Setup notes, source image notes, or firing/mold reminders..."),
+    )
+    save_label = (
+        tr("page.vessel.actions.update_setup", "Update Setup")
+        if st.session_state.get("vessel_loaded_id")
+        else tr("page.vessel.actions.save_setup", "Save Setup")
+    )
+    save_setup = st.button(save_label, key="vessel_save_setup", use_container_width=True, type="secondary")
+    if save_setup:
+        title = st.session_state["vessel_title"].strip()
+        if not title:
+            st.error(tr("errors.worksheet.title_required", "Please enter a title before saving."))
+        else:
+            job_date_val = st.session_state["vessel_job_date"]
+            job_date_str = job_date_val.isoformat() if hasattr(job_date_val, "isoformat") else str(job_date_val)
+            source_image_name = uploaded.name if uploaded is not None else st.session_state.get("vessel_source_image_name", "")
+            rec = {
+                "title": title,
+                "job_date": job_date_str,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+                "base_r": float(base_r),
+                "top_r": float(top_r),
+                "height": float(height),
+                "n_mid": int(n_mid),
+                "midpoints_json": json.dumps([
+                    {"z_frac": float(z_frac), "radius": float(radius)}
+                    for z_frac, radius in midpoints
+                ]),
+                "wall_mm": float(wall_mm),
+                "displacement": float(displacement),
+                "placement": placement,
+                "invert_relief": int(bool(invert_relief)),
+                "tile_enabled": int(bool(tile_enabled)),
+                "tile_count": int(tile_count),
+                "add_lip": int(bool(add_lip)),
+                "lip_radius": float(lip_radius),
+                "n_lip": int(n_lip),
+                "quality": quality,
+                "override": int(bool(override)),
+                "ov_theta": int(n_theta),
+                "ov_z": float(mm_per_ring),
+                "source_image_name": source_image_name,
+                "notes": st.session_state["vessel_notes"],
+            }
+            if st.session_state.get("vessel_loaded_id"):
+                update_vessel_record(st.session_state["vessel_loaded_id"], rec)
+                st.success(tr("page.vessel.messages.setup_updated", "Setup updated: {title}", title=title))
+            else:
+                st.session_state["vessel_loaded_id"] = save_vessel_record(rec)
+                st.success(tr("page.vessel.messages.setup_saved", "Setup saved: {title}", title=title))
+            st.session_state["vessel_source_image_name"] = source_image_name
 
     action_col1, action_col2 = st.columns(2)
     is_building = st.session_state.get("vessel_is_building", False)
@@ -892,7 +1212,7 @@ with right:
             n_z=n_z,
         )
     elif uploaded_bytes is not None:
-        hmap_for_volume = load_heightmap_cached(uploaded_bytes, n_theta, n_z)
+        hmap_for_volume = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count)
         if invert_relief:
             hmap_for_volume = 1.0 - hmap_for_volume
         bore_volume_mm3 = estimate_internal_bore_volume_mm3(
@@ -927,7 +1247,7 @@ with right:
             try:
                 with build_feedback.container():
                     with st.spinner(tr("page.vessel.messages.loading_heightmap", "Loading heightmap...")):
-                        hmap = load_heightmap_cached(uploaded_bytes, n_theta, n_z)
+                        hmap = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count)
 
                 with build_feedback.container():
                     with st.spinner(tr("page.vessel.messages.building_segments", "Building mesh ({theta}x{vertical} segments)...", theta=n_theta, vertical=n_z)):
@@ -967,6 +1287,8 @@ with right:
                         "displacement": float(displacement),
                         "placement_label": placement,
                         "invert_relief": bool(invert_relief),
+                        "tile_enabled": bool(tile_enabled),
+                        "tile_count": int(tile_count),
                         "add_rim_channel": bool(add_lip),
                         "rim_radius": float(lip_radius),
                         "n_rim": int(n_lip),

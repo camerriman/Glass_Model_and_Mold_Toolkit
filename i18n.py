@@ -335,7 +335,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "page.svg_crop.errors.vpype_failed": "vpype fallo:\n\n{error}",
         "page.svg_crop.actions.download": "Descargar SVG recortado",
         "worksheet.title": "Hoja de trabajo del molde",
-        "worksheet.caption": "Completa datos desde un settings.txt o ingresa valores manualmente. Selecciona el tipo de molde para ver sus calculos.",
+        "worksheet.caption": "Completa datos desde un settings.txt o ingresa valores manualmente. Selecciona el flujo del molde para ver sus calculos.",
         "worksheet.import.title": "Importar desde settings.txt",
         "worksheet.import.upload": "Suelta un settings.txt aqui",
         "worksheet.import.paste": "...o pega el contenido",
@@ -349,6 +349,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "worksheet.records.no_date": "sin fecha",
         "worksheet.actions.load": "Cargar",
         "worksheet.actions.delete_help": "Eliminar",
+        "worksheet.actions.batch_sheet_disabled": "Ingresa las dimensiones de impresion y el volumen STL para activar la exportacion de la hoja de lote.",
         "worksheet.actions.new": "+ Nuevo",
         "worksheet.actions.reset": "Restablecer",
         "worksheet.actions.save": "Guardar",
@@ -384,16 +385,17 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "worksheet.labels.mold_volume": "Volumen del molde",
         "worksheet.alginate.title": "Alginato",
         "worksheet.investment.title": "Revestimiento",
-        "worksheet.silicone.title": "Silicona",
+        "worksheet.silicone.title": "Siraya Tech Defiant 25",
         "worksheet.fields.adjust_base_z": "Ajustar base Z (mm)",
         "worksheet.fields.alginate_ratio": "Relacion de mezcla (agua : 1 alginato)",
         "worksheet.fields.alginate_ratio_help": "p. ej. 5.5 = 5.5 partes de agua por 1 de alginato",
         "worksheet.fields.silicone_ratio": "Relacion de mezcla (x : 1)",
         "worksheet.cards.alginate": "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1",
-        "worksheet.cards.dry_investment": "REVESTIMIENTO SECO / YESO + SILICE · Volumen del molde {volume} cm³",
-        "worksheet.cards.rr910": "R&R 910 · Volumen del molde {volume} cm³ x 1.88",
-        "worksheet.cards.silicone": "SIRATECH SILICONE · relacion {ratio} : 1",
+        "worksheet.cards.dry_investment": "REVESTIMIENTO SECO / YESO + SILICE · Volumen {volume} cm³",
+        "worksheet.cards.rr910": "R&R 910 · Volumen {volume} cm³ · densidad 1.88 g/ml",
+        "worksheet.cards.silicone": "Siraya Tech Defiant 25 · relacion {ratio} : 1",
         "worksheet.labels.mold_volume_box_model_z": "Volumen del molde (caja - modelo + Z)",
+        "worksheet.labels.duplicate_volume_model_z": "Volumen (modelo + separacion + base Z)",
         "worksheet.labels.water": "Agua",
         "worksheet.labels.alginate": "Alginato",
         "worksheet.labels.mold_thickness": "Espesor del molde",
@@ -401,7 +403,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "worksheet.labels.dry_investment": "Revestimiento seco",
         "worksheet.labels.plaster": "Yeso",
         "worksheet.labels.silica_flour": "Harina de silice",
-        "worksheet.labels.rr910": "R&R 910",
+        "worksheet.labels.rr910": "Polvo R&R 910",
+        "worksheet.labels.rr910_ratio": "Relacion agua/polvo",
+        "worksheet.labels.rr910_total": "Total mezclado",
         "worksheet.labels.total": "Total",
         "worksheet.labels.part_a": "Parte A",
         "worksheet.labels.part_b": "Parte B",
@@ -1111,19 +1115,20 @@ ITALIAN_TRANSLATIONS.update(
 ITALIAN_TRANSLATIONS.update(
     {
         "worksheet.actions.delete_help": "Elimina",
+        "worksheet.actions.batch_sheet_disabled": "Inserisci dimensioni di stampa e volume STL per abilitare l'esportazione del foglio batch.",
         "worksheet.actions.load": "Carica",
         "worksheet.actions.new": "+ Nuovo",
         "worksheet.actions.reset": "Reimposta",
         "worksheet.actions.save": "Salva",
         "worksheet.actions.update": "Aggiorna",
         "worksheet.alginate.title": "Alginato",
-        "worksheet.caption": "Compila i dati da un settings.txt oppure inseriscili manualmente. Seleziona il tipo di stampo per vedere i relativi calcoli.",
+        "worksheet.caption": "Compila i dati da un settings.txt oppure inseriscili manualmente. Seleziona il flusso di lavoro dello stampo per vedere i relativi calcoli.",
         "worksheet.cards.alginate": "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1",
-        "worksheet.cards.dry_investment": "INVESTIMENTO SECCO / GESSO + SILICE · Volume stampo {volume} cm³",
+        "worksheet.cards.dry_investment": "INVESTIMENTO SECCO / GESSO + SILICE · Volume {volume} cm³",
         "worksheet.cards.mold_box": "SCATOLA DELLO STAMPO",
         "worksheet.cards.print_calculations": "CALCOLI STAMPA 3D",
-        "worksheet.cards.rr910": "R&R 910 · Volume stampo {volume} cm³ x 1.88",
-        "worksheet.cards.silicone": "SIRATECH SILICONE · rapporto {ratio} : 1",
+        "worksheet.cards.rr910": "R&R 910 · Volume {volume} cm³ · densita 1.88 g/ml",
+        "worksheet.cards.silicone": "Siraya Tech Defiant 25 · rapporto {ratio} : 1",
         "worksheet.fields.adjust_base_z": "Regola base Z (mm)",
         "worksheet.fields.alginate_ratio": "Rapporto di miscelazione (acqua : 1 alginato)",
         "worksheet.fields.alginate_ratio_help": "es. 5.5 = 5.5 parti di acqua per 1 di alginato",
@@ -1160,10 +1165,13 @@ ITALIAN_TRANSLATIONS.update(
         "worksheet.labels.mold_thickness": "Spessore dello stampo",
         "worksheet.labels.mold_volume": "Volume dello stampo",
         "worksheet.labels.mold_volume_box_model_z": "Volume stampo (scatola - modello + Z)",
+        "worksheet.labels.duplicate_volume_model_z": "Volume (modello + spazio + base Z)",
         "worksheet.labels.part_a": "Parte A",
         "worksheet.labels.part_b": "Parte B",
         "worksheet.labels.plaster": "Gesso",
-        "worksheet.labels.rr910": "R&R 910",
+        "worksheet.labels.rr910": "Polvere R&R 910",
+        "worksheet.labels.rr910_ratio": "Rapporto acqua/polvere",
+        "worksheet.labels.rr910_total": "Totale miscelato",
         "worksheet.labels.silica_flour": "Farina di silice",
         "worksheet.labels.total": "Totale",
         "worksheet.labels.total_thickness": "Spessore totale",
@@ -1180,7 +1188,7 @@ ITALIAN_TRANSLATIONS.update(
         "worksheet.sections.mold_type": "Tipo di stampo",
         "worksheet.sections.notes": "Note",
         "worksheet.sections.print_dimensions": "Dimensioni della stampa 3D",
-        "worksheet.silicone.title": "Silicone",
+        "worksheet.silicone.title": "Siraya Tech Defiant 25",
         "worksheet.title": "Scheda stampo",
     }
 )
@@ -1660,19 +1668,20 @@ GERMAN_TRANSLATIONS.update(
 GERMAN_TRANSLATIONS.update(
     {
         "worksheet.actions.delete_help": "Loeschen",
+        "worksheet.actions.batch_sheet_disabled": "Gib Druckabmessungen und STL-Volumen ein, um den Batch Sheet Export zu aktivieren.",
         "worksheet.actions.load": "Laden",
         "worksheet.actions.new": "+ Neu",
         "worksheet.actions.reset": "Zuruecksetzen",
         "worksheet.actions.save": "Speichern",
         "worksheet.actions.update": "Aktualisieren",
         "worksheet.alginate.title": "Alginat",
-        "worksheet.caption": "Fuellen Daten aus einer settings.txt aus oder gib Werte manuell ein. Waehle den Formtyp, um die zugehoerigen Berechnungen zu sehen.",
+        "worksheet.caption": "Fuellen Daten aus einer settings.txt aus oder gib Werte manuell ein. Waehle den Form-Workflow, um die zugehoerigen Berechnungen zu sehen.",
         "worksheet.cards.alginate": "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1",
-        "worksheet.cards.dry_investment": "TROCKENMASSE / GIPS + SILIKA · Formvolumen {volume} cm³",
+        "worksheet.cards.dry_investment": "TROCKENMASSE / GIPS + SILIKA · Volumen {volume} cm³",
         "worksheet.cards.mold_box": "FORMKASTEN",
         "worksheet.cards.print_calculations": "3D-DRUCK-BERECHNUNGEN",
-        "worksheet.cards.rr910": "R&R 910 · Formvolumen {volume} cm³ x 1.88",
-        "worksheet.cards.silicone": "SIRATECH SILICONE · Verhaeltnis {ratio} : 1",
+        "worksheet.cards.rr910": "R&R 910 · Volumen {volume} cm³ · Dichte 1.88 g/ml",
+        "worksheet.cards.silicone": "Siraya Tech Defiant 25 · Verhaeltnis {ratio} : 1",
         "worksheet.fields.adjust_base_z": "Basis Z anpassen (mm)",
         "worksheet.fields.alginate_ratio": "Mischungsverhaeltnis (Wasser : 1 Alginat)",
         "worksheet.fields.alginate_ratio_help": "z. B. 5.5 = 5.5 Teile Wasser auf 1 Teil Alginat",
@@ -1709,10 +1718,13 @@ GERMAN_TRANSLATIONS.update(
         "worksheet.labels.mold_thickness": "Formdicke",
         "worksheet.labels.mold_volume": "Formvolumen",
         "worksheet.labels.mold_volume_box_model_z": "Formvolumen (Kasten - Modell + Z)",
+        "worksheet.labels.duplicate_volume_model_z": "Volumen (Modell + Spalt + Basis Z)",
         "worksheet.labels.part_a": "Teil A",
         "worksheet.labels.part_b": "Teil B",
         "worksheet.labels.plaster": "Gips",
-        "worksheet.labels.rr910": "R&R 910",
+        "worksheet.labels.rr910": "R&R 910 Pulver",
+        "worksheet.labels.rr910_ratio": "Wasser/Pulver-Verhaeltnis",
+        "worksheet.labels.rr910_total": "Gemisch gesamt",
         "worksheet.labels.silica_flour": "Silikamehl",
         "worksheet.labels.total": "Gesamt",
         "worksheet.labels.total_thickness": "Gesamtdicke",
@@ -1729,7 +1741,7 @@ GERMAN_TRANSLATIONS.update(
         "worksheet.sections.mold_type": "Formtyp",
         "worksheet.sections.notes": "Notizen",
         "worksheet.sections.print_dimensions": "3D-Druck-Abmessungen",
-        "worksheet.silicone.title": "Silikon",
+        "worksheet.silicone.title": "Siraya Tech Defiant 25",
         "worksheet.title": "Form-Arbeitsblatt",
     }
 )
@@ -2210,19 +2222,20 @@ FRENCH_TRANSLATIONS.update(
 FRENCH_TRANSLATIONS.update(
     {
         "worksheet.actions.delete_help": "Supprimer",
+        "worksheet.actions.batch_sheet_disabled": "Saisissez les dimensions d'impression et le volume STL pour activer l'export de la fiche de lot.",
         "worksheet.actions.load": "Charger",
         "worksheet.actions.new": "+ Nouveau",
         "worksheet.actions.reset": "Reinitialiser",
         "worksheet.actions.save": "Enregistrer",
         "worksheet.actions.update": "Mettre a jour",
         "worksheet.alginate.title": "Alginat",
-        "worksheet.caption": "Renseignez les donnees depuis un settings.txt ou saisissez les valeurs manuellement. Selectionnez le type de moule pour voir ses calculs.",
+        "worksheet.caption": "Renseignez les donnees depuis un settings.txt ou saisissez les valeurs manuellement. Selectionnez le flux de travail du moule pour voir ses calculs.",
         "worksheet.cards.alginate": "ACCU-CAST ALGINATE 570 PGV · {ratio} : 1",
-        "worksheet.cards.dry_investment": "INVESTISSEMENT SEC / PLATRE + SILICE · Volume du moule {volume} cm³",
+        "worksheet.cards.dry_investment": "INVESTISSEMENT SEC / PLATRE + SILICE · Volume {volume} cm³",
         "worksheet.cards.mold_box": "BOITE DU MOULE",
         "worksheet.cards.print_calculations": "CALCULS D'IMPRESSION 3D",
-        "worksheet.cards.rr910": "R&R 910 · Volume du moule {volume} cm³ x 1.88",
-        "worksheet.cards.silicone": "SIRATECH SILICONE · rapport {ratio} : 1",
+        "worksheet.cards.rr910": "R&R 910 · Volume {volume} cm³ · densite 1.88 g/ml",
+        "worksheet.cards.silicone": "Siraya Tech Defiant 25 · rapport {ratio} : 1",
         "worksheet.fields.adjust_base_z": "Ajuster la base Z (mm)",
         "worksheet.fields.alginate_ratio": "Rapport de melange (eau : 1 alginat)",
         "worksheet.fields.alginate_ratio_help": "ex. 5.5 = 5.5 parts d'eau pour 1 part d'alginat",
@@ -2259,10 +2272,13 @@ FRENCH_TRANSLATIONS.update(
         "worksheet.labels.mold_thickness": "Epaisseur du moule",
         "worksheet.labels.mold_volume": "Volume du moule",
         "worksheet.labels.mold_volume_box_model_z": "Volume du moule (boite - modele + Z)",
+        "worksheet.labels.duplicate_volume_model_z": "Volume (modele + ecart + base Z)",
         "worksheet.labels.part_a": "Partie A",
         "worksheet.labels.part_b": "Partie B",
         "worksheet.labels.plaster": "Platre",
-        "worksheet.labels.rr910": "R&R 910",
+        "worksheet.labels.rr910": "Poudre R&R 910",
+        "worksheet.labels.rr910_ratio": "Rapport eau/poudre",
+        "worksheet.labels.rr910_total": "Total melange",
         "worksheet.labels.silica_flour": "Farine de silice",
         "worksheet.labels.total": "Total",
         "worksheet.labels.total_thickness": "Epaisseur totale",
@@ -2279,7 +2295,7 @@ FRENCH_TRANSLATIONS.update(
         "worksheet.sections.mold_type": "Type de moule",
         "worksheet.sections.notes": "Notes",
         "worksheet.sections.print_dimensions": "Dimensions de l'impression 3D",
-        "worksheet.silicone.title": "Silicone",
+        "worksheet.silicone.title": "Siraya Tech Defiant 25",
         "worksheet.title": "Feuille de travail du moule",
     }
 )
@@ -2498,6 +2514,362 @@ TRANSLATIONS["fr"].update(
         "frit.summary.mix.reactive_yes": "Potentiel reactif entre les frittes actives: {details}.",
         "frit.summary.reactive.detail_base": "{slot}: {pairings}",
         "frit.summary.reactive.detail_pair": "{left} avec {right}: {pairings}",
+    }
+)
+
+TRANSLATIONS["en"].update(
+    {
+        "worksheet.formulas.title": "Formula Notes",
+        "worksheet.formulas.body": """
+**Duplicate Volume**
+
+| Item | Formula |
+| --- | --- |
+| Duplicate Volume | Model Volume + Gap Volume + Base Z Volume |
+| Gap Volume | ((Box W x Box D) - (Print W x Print D)) x Max Z / 1000 |
+| Base Z Volume | Box W x Box D x Adjust Base Z / 1000 |
+
+**Alginate**
+
+| Item | Formula |
+| --- | --- |
+| Water | Duplicate Volume |
+| Alginate | Water / Mix Ratio |
+
+**Siraya Tech Defiant 25**
+
+| Item | Formula / Value |
+| --- | --- |
+| Total | Duplicate Volume x 1.12 |
+| Density | 1.12 g/cm³ |
+| Mix Ratio | 1.0 : 1 by weight |
+| Part A / Part B | Equal weights at 1.0 : 1 |
+
+Pot life is about 15 minutes. Full cure is 4-6 hours at 25°C.
+
+**Dry Investment**
+
+| Item | Formula |
+| --- | --- |
+| Dry powder | Duplicate Volume x 1.25 |
+| Water | Dry powder / 1.75 |
+
+**R&R 910**
+
+| Item | Formula / Value |
+| --- | --- |
+| Mixed Total | Duplicate Volume x 1.88 |
+| Powder | Mixed Total x (100 / 128) |
+| Water | Powder x 0.28 |
+| Water/Powder Ratio | 28/100 by weight |
+
+Mix for 2-3 minutes.
+
+Pour time is 10-11 minutes. Set time is 14-17 minutes.
+
+After set, let the mold sit at least 1 hour before pattern removal. For curing after pattern removal, hold at 300-350°F until water is removed, then raise at 150-200°F per hour.
+""",
+    }
+)
+
+TRANSLATIONS["es"].update(
+    {
+        "worksheet.formulas.title": "Notas de formulas",
+        "worksheet.formulas.body": """
+**Volumen duplicado**
+
+| Elemento | Formula |
+| --- | --- |
+| Volumen duplicado | Volumen del modelo + volumen de separacion + volumen de base Z |
+| Volumen de separacion | ((Caja A x P) - (Impresion A x P)) x Z maxima / 1000 |
+| Volumen de base Z | Caja A x P x Ajustar base Z / 1000 |
+
+**Alginato**
+
+| Elemento | Formula |
+| --- | --- |
+| Agua | Volumen duplicado |
+| Alginato | Agua / relacion de mezcla |
+
+**Siraya Tech Defiant 25**
+
+| Elemento | Formula / valor |
+| --- | --- |
+| Total | Volumen duplicado x 1.12 |
+| Densidad | 1.12 g/cm³ |
+| Relacion de mezcla | 1.0 : 1 por peso |
+| Parte A / Parte B | Pesos iguales a 1.0 : 1 |
+
+La vida util es de unos 15 minutos. Cura completa en 4-6 horas a 25°C.
+
+**Revestimiento seco**
+
+| Elemento | Formula |
+| --- | --- |
+| Polvo seco | Volumen duplicado x 1.25 |
+| Agua | Polvo seco / 1.75 |
+
+**R&R 910**
+
+| Elemento | Formula / valor |
+| --- | --- |
+| Total mezclado | Volumen duplicado x 1.88 |
+| Polvo | Total mezclado x (100 / 128) |
+| Agua | Polvo x 0.28 |
+| Relacion agua/polvo | 28/100 por peso |
+
+Mezclar durante 2-3 minutos.
+
+Tiempo de vertido: 10-11 minutos. Tiempo de fraguado: 14-17 minutos.
+
+Despues del fraguado, dejar reposar el molde al menos 1 hora antes de retirar el patron. Para curar despues de retirar el patron, mantener a 300-350°F hasta eliminar el agua y luego subir a 150-200°F por hora.
+""",
+    }
+)
+
+TRANSLATIONS["it"].update(
+    {
+        "worksheet.formulas.title": "Note sulle formule",
+        "worksheet.formulas.body": """
+**Volume duplicato**
+
+| Voce | Formula |
+| --- | --- |
+| Volume duplicato | Volume del modello + volume dello spazio + volume base Z |
+| Volume dello spazio | ((Scatola L x P) - (Stampa L x P)) x Z massima / 1000 |
+| Volume base Z | Scatola L x P x Regola base Z / 1000 |
+
+**Alginato**
+
+| Voce | Formula |
+| --- | --- |
+| Acqua | Volume duplicato |
+| Alginato | Acqua / rapporto di miscelazione |
+
+**Siraya Tech Defiant 25**
+
+| Voce | Formula / valore |
+| --- | --- |
+| Totale | Volume duplicato x 1.12 |
+| Densita | 1.12 g/cm³ |
+| Rapporto di miscelazione | 1.0 : 1 in peso |
+| Parte A / Parte B | Pesi uguali a 1.0 : 1 |
+
+La vita utile e di circa 15 minuti. Cura completa in 4-6 ore a 25°C.
+
+**Investimento secco**
+
+| Voce | Formula |
+| --- | --- |
+| Polvere secca | Volume duplicato x 1.25 |
+| Acqua | Polvere secca / 1.75 |
+
+**R&R 910**
+
+| Voce | Formula / valore |
+| --- | --- |
+| Totale miscelato | Volume duplicato x 1.88 |
+| Polvere | Totale miscelato x (100 / 128) |
+| Acqua | Polvere x 0.28 |
+| Rapporto acqua/polvere | 28/100 in peso |
+
+Miscelare per 2-3 minuti.
+
+Tempo di colata: 10-11 minuti. Tempo di presa: 14-17 minuti.
+
+Dopo la presa, lasciare riposare lo stampo almeno 1 ora prima di rimuovere il modello. Per la cura dopo la rimozione del modello, mantenere a 300-350°F fino alla rimozione dell'acqua, poi aumentare di 150-200°F all'ora.
+""",
+    }
+)
+
+TRANSLATIONS["de"].update(
+    {
+        "worksheet.formulas.title": "Formelhinweise",
+        "worksheet.formulas.body": """
+**Duplikatvolumen**
+
+| Punkt | Formel |
+| --- | --- |
+| Duplikatvolumen | Modellvolumen + Spaltvolumen + Basis-Z-Volumen |
+| Spaltvolumen | ((Kasten B x T) - (Druck B x T)) x maximale Z-Hoehe / 1000 |
+| Basis-Z-Volumen | Kasten B x T x Basis Z anpassen / 1000 |
+
+**Alginat**
+
+| Punkt | Formel |
+| --- | --- |
+| Wasser | Duplikatvolumen |
+| Alginat | Wasser / Mischungsverhaeltnis |
+
+**Siraya Tech Defiant 25**
+
+| Punkt | Formel / Wert |
+| --- | --- |
+| Gesamt | Duplikatvolumen x 1.12 |
+| Dichte | 1.12 g/cm³ |
+| Mischungsverhaeltnis | 1.0 : 1 nach Gewicht |
+| Teil A / Teil B | Gleiche Gewichte bei 1.0 : 1 |
+
+Die Verarbeitungszeit betraegt etwa 15 Minuten. Vollstaendige Aushartung in 4-6 Stunden bei 25°C.
+
+**Trockene Einbettmasse**
+
+| Punkt | Formel |
+| --- | --- |
+| Trockenpulver | Duplikatvolumen x 1.25 |
+| Wasser | Trockenpulver / 1.75 |
+
+**R&R 910**
+
+| Punkt | Formel / Wert |
+| --- | --- |
+| Gemisch gesamt | Duplikatvolumen x 1.88 |
+| Pulver | Gemisch gesamt x (100 / 128) |
+| Wasser | Pulver x 0.28 |
+| Wasser/Pulver-Verhaeltnis | 28/100 nach Gewicht |
+
+2-3 Minuten mischen.
+
+Giesszeit: 10-11 Minuten. Abbindezeit: 14-17 Minuten.
+
+Nach dem Abbinden die Form mindestens 1 Stunde ruhen lassen, bevor das Modell entfernt wird. Zur Aushartung nach dem Entfernen des Modells bei 300-350°F halten, bis das Wasser entfernt ist, dann mit 150-200°F pro Stunde erhoehen.
+""",
+    }
+)
+
+TRANSLATIONS["fr"].update(
+    {
+        "worksheet.formulas.title": "Notes de formules",
+        "worksheet.formulas.body": """
+**Volume du duplicata**
+
+| Element | Formule |
+| --- | --- |
+| Volume du duplicata | Volume du modele + volume d'ecart + volume de base Z |
+| Volume d'ecart | ((Boite L x P) - (Impression L x P)) x Z max / 1000 |
+| Volume de base Z | Boite L x P x Ajuster la base Z / 1000 |
+
+**Alginat**
+
+| Element | Formule |
+| --- | --- |
+| Eau | Volume du duplicata |
+| Alginat | Eau / rapport de melange |
+
+**Siraya Tech Defiant 25**
+
+| Element | Formule / valeur |
+| --- | --- |
+| Total | Volume du duplicata x 1.12 |
+| Densite | 1.12 g/cm³ |
+| Rapport de melange | 1.0 : 1 en poids |
+| Partie A / Partie B | Poids egaux a 1.0 : 1 |
+
+La duree d'utilisation est d'environ 15 minutes. Cure complete en 4-6 heures a 25°C.
+
+**Investissement sec**
+
+| Element | Formule |
+| --- | --- |
+| Poudre seche | Volume du duplicata x 1.25 |
+| Eau | Poudre seche / 1.75 |
+
+**R&R 910**
+
+| Element | Formule / valeur |
+| --- | --- |
+| Total melange | Volume du duplicata x 1.88 |
+| Poudre | Total melange x (100 / 128) |
+| Eau | Poudre x 0.28 |
+| Rapport eau/poudre | 28/100 en poids |
+
+Melanger pendant 2-3 minutes.
+
+Temps de coulee: 10-11 minutes. Temps de prise: 14-17 minutes.
+
+Apres la prise, laisser reposer le moule au moins 1 heure avant de retirer le modele. Pour la cure apres retrait du modele, maintenir a 300-350°F jusqu'a ce que l'eau soit eliminee, puis augmenter de 150-200°F par heure.
+""",
+    }
+)
+
+TRANSLATIONS["en"].update(
+    {
+        "worksheet.labels.dimensions": "Dimensions",
+        "worksheet.labels.mix_ratios": "Mix Ratios",
+        "worksheet.labels.alg_si_box_wd": "Alginate / Silicone Box W x D",
+        "worksheet.labels.alg_si_box_volume": "Alginate / Silicone Box Volume",
+        "worksheet.labels.investment_box_wd": "Investment Box W x D",
+        "worksheet.labels.investment_box_volume": "Investment Box Volume",
+        "worksheet.fields.alg_si_gap_width": "Alginate / Silicone Gap Width (mm)",
+        "worksheet.fields.investment_gap_width": "Investment Gap Width (mm)",
+        "worksheet.help.alg_si_gap_width": "Side clearance used for alginate and silicone duplicate-volume calculations.",
+        "worksheet.help.investment_gap_width": "Side clearance used for dry investment and R&R 910 calculations.",
+        "worksheet.export.mix_ratios_alginate": "Accu-Cast {alginate}:1; Plaster/Silica 1:1; R&R 910 water/powder 28/100",
+        "worksheet.export.mix_ratios_silicone": "Defiant 25 {silicone}:1; Plaster/Silica 1:1; R&R 910 water/powder 28/100",
+    }
+)
+TRANSLATIONS["es"].update(
+    {
+        "worksheet.labels.dimensions": "Dimensiones",
+        "worksheet.labels.mix_ratios": "Proporciones de mezcla",
+        "worksheet.labels.alg_si_box_wd": "Caja alginato / silicona A x P",
+        "worksheet.labels.alg_si_box_volume": "Volumen de caja alginato / silicona",
+        "worksheet.labels.investment_box_wd": "Caja de revestimiento A x P",
+        "worksheet.labels.investment_box_volume": "Volumen de caja de revestimiento",
+        "worksheet.fields.alg_si_gap_width": "Separacion alginato / silicona (mm)",
+        "worksheet.fields.investment_gap_width": "Separacion de revestimiento (mm)",
+        "worksheet.help.alg_si_gap_width": "Holgura lateral usada para los calculos de volumen de duplicado de alginato y silicona.",
+        "worksheet.help.investment_gap_width": "Holgura lateral usada para los calculos de revestimiento seco y R&R 910.",
+        "worksheet.export.mix_ratios_alginate": "Accu-Cast {alginate}:1; Yeso/Silice 1:1; R&R 910 agua/polvo 28/100",
+        "worksheet.export.mix_ratios_silicone": "Defiant 25 {silicone}:1; Yeso/Silice 1:1; R&R 910 agua/polvo 28/100",
+    }
+)
+TRANSLATIONS["it"].update(
+    {
+        "worksheet.labels.dimensions": "Dimensioni",
+        "worksheet.labels.mix_ratios": "Rapporti di miscela",
+        "worksheet.labels.alg_si_box_wd": "Scatola alginato / silicone L x P",
+        "worksheet.labels.alg_si_box_volume": "Volume scatola alginato / silicone",
+        "worksheet.labels.investment_box_wd": "Scatola investimento L x P",
+        "worksheet.labels.investment_box_volume": "Volume scatola investimento",
+        "worksheet.fields.alg_si_gap_width": "Spazio alginato / silicone (mm)",
+        "worksheet.fields.investment_gap_width": "Spazio investimento (mm)",
+        "worksheet.help.alg_si_gap_width": "Gioco laterale usato per i calcoli del volume duplicato di alginato e silicone.",
+        "worksheet.help.investment_gap_width": "Gioco laterale usato per i calcoli di investimento secco e R&R 910.",
+        "worksheet.export.mix_ratios_alginate": "Accu-Cast {alginate}:1; Gesso/Silice 1:1; R&R 910 acqua/polvere 28/100",
+        "worksheet.export.mix_ratios_silicone": "Defiant 25 {silicone}:1; Gesso/Silice 1:1; R&R 910 acqua/polvere 28/100",
+    }
+)
+TRANSLATIONS["de"].update(
+    {
+        "worksheet.labels.dimensions": "Abmessungen",
+        "worksheet.labels.mix_ratios": "Mischungsverhaeltnisse",
+        "worksheet.labels.alg_si_box_wd": "Alginat-/Silikon-Kasten B x T",
+        "worksheet.labels.alg_si_box_volume": "Alginat-/Silikon-Kastenvolumen",
+        "worksheet.labels.investment_box_wd": "Einbettmasse-Kasten B x T",
+        "worksheet.labels.investment_box_volume": "Einbettmasse-Kastenvolumen",
+        "worksheet.fields.alg_si_gap_width": "Alginat-/Silikon-Abstand (mm)",
+        "worksheet.fields.investment_gap_width": "Einbettmasse-Abstand (mm)",
+        "worksheet.help.alg_si_gap_width": "Seitlicher Abstand fuer die Duplikatvolumen-Berechnung von Alginat und Silikon.",
+        "worksheet.help.investment_gap_width": "Seitlicher Abstand fuer die Berechnung von Trockeneinbettmasse und R&R 910.",
+        "worksheet.export.mix_ratios_alginate": "Accu-Cast {alginate}:1; Gips/Silika 1:1; R&R 910 Wasser/Pulver 28/100",
+        "worksheet.export.mix_ratios_silicone": "Defiant 25 {silicone}:1; Gips/Silika 1:1; R&R 910 Wasser/Pulver 28/100",
+    }
+)
+TRANSLATIONS["fr"].update(
+    {
+        "worksheet.labels.dimensions": "Dimensions",
+        "worksheet.labels.mix_ratios": "Rapports de melange",
+        "worksheet.labels.alg_si_box_wd": "Boite alginate / silicone L x P",
+        "worksheet.labels.alg_si_box_volume": "Volume boite alginate / silicone",
+        "worksheet.labels.investment_box_wd": "Boite investissement L x P",
+        "worksheet.labels.investment_box_volume": "Volume boite investissement",
+        "worksheet.fields.alg_si_gap_width": "Ecart alginate / silicone (mm)",
+        "worksheet.fields.investment_gap_width": "Ecart investissement (mm)",
+        "worksheet.help.alg_si_gap_width": "Degagement lateral utilise pour les calculs de volume de duplicata alginate et silicone.",
+        "worksheet.help.investment_gap_width": "Degagement lateral utilise pour les calculs d'investissement sec et R&R 910.",
+        "worksheet.export.mix_ratios_alginate": "Accu-Cast {alginate}:1; Platre/Silice 1:1; R&R 910 eau/poudre 28/100",
+        "worksheet.export.mix_ratios_silicone": "Defiant 25 {silicone}:1; Platre/Silice 1:1; R&R 910 eau/poudre 28/100",
     }
 )
 
