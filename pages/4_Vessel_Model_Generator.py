@@ -8,6 +8,7 @@ Wrap a heightmap image around a user-defined vessel profile.
 
 import io
 import json
+import hashlib
 import sqlite3
 import struct
 import zipfile
@@ -20,9 +21,9 @@ from PIL import Image
 from scipy.interpolate import CubicSpline
 from i18n import render_app_sidebar, t as tr
 
-st.set_page_config(page_title=tr("page.vessel.title", "Vessel Mold Model Generator"), layout="wide")
+st.set_page_config(page_title=tr("page.vessel.title", "Vessel Model Generator"), layout="wide")
 render_app_sidebar()
-st.title(tr("page.vessel.title", "Vessel Mold Model Generator"))
+st.title(tr("page.vessel.title", "Vessel Model Generator"))
 st.caption(tr("page.vessel.caption", "Define a vessel profile, upload a heightmap image, and generate a wrapped printable STL."))
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -48,14 +49,21 @@ def init_vessel_db():
                 base_r            REAL,
                 top_r             REAL,
                 height            REAL,
+                cross_section     TEXT,
+                oval_x_scale      REAL,
+                oval_y_scale      REAL,
                 n_mid             INTEGER,
                 midpoints_json    TEXT,
                 wall_mm           REAL,
                 displacement      REAL,
                 placement         TEXT,
                 invert_relief     INTEGER,
+                tone_mapping      TEXT,
+                image_orientation TEXT,
+                fit_mode          TEXT,
                 tile_enabled      INTEGER,
                 tile_count        INTEGER,
+                mirror_tiles      INTEGER,
                 add_lip           INTEGER,
                 lip_radius        REAL,
                 n_lip             INTEGER,
@@ -68,6 +76,18 @@ def init_vessel_db():
             )
             """
         )
+        existing = {r[1] for r in conn.execute("PRAGMA table_info(vessel_setups)").fetchall()}
+        for col, col_type, dflt in [
+            ("tone_mapping", "TEXT", "'Positive'"),
+            ("image_orientation", "TEXT", "'Upright'"),
+            ("fit_mode", "TEXT", "'Stretch to tile'"),
+            ("mirror_tiles", "INTEGER", "0"),
+            ("cross_section", "TEXT", "'Circle'"),
+            ("oval_x_scale", "REAL", "1.0"),
+            ("oval_y_scale", "REAL", "1.0"),
+        ]:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE vessel_setups ADD COLUMN {col} {col_type} DEFAULT {dflt}")
 
 
 init_vessel_db()
@@ -78,13 +98,13 @@ def save_vessel_record(rec: dict) -> int:
         cur = conn.execute(
             """
             INSERT INTO vessel_setups
-                (title, job_date, created_at, base_r, top_r, height, n_mid, midpoints_json,
-                 wall_mm, displacement, placement, invert_relief, tile_enabled, tile_count,
+                (title, job_date, created_at, base_r, top_r, height, cross_section, oval_x_scale, oval_y_scale, n_mid, midpoints_json,
+                 wall_mm, displacement, placement, invert_relief, tone_mapping, image_orientation, fit_mode, tile_enabled, tile_count, mirror_tiles,
                  add_lip, lip_radius, n_lip, quality, override, ov_theta, ov_z,
                  source_image_name, notes)
             VALUES
-                (:title, :job_date, :created_at, :base_r, :top_r, :height, :n_mid, :midpoints_json,
-                 :wall_mm, :displacement, :placement, :invert_relief, :tile_enabled, :tile_count,
+                (:title, :job_date, :created_at, :base_r, :top_r, :height, :cross_section, :oval_x_scale, :oval_y_scale, :n_mid, :midpoints_json,
+                 :wall_mm, :displacement, :placement, :invert_relief, :tone_mapping, :image_orientation, :fit_mode, :tile_enabled, :tile_count, :mirror_tiles,
                  :add_lip, :lip_radius, :n_lip, :quality, :override, :ov_theta, :ov_z,
                  :source_image_name, :notes)
             """,
@@ -100,9 +120,11 @@ def update_vessel_record(record_id: int, rec: dict) -> None:
             """
             UPDATE vessel_setups SET
                 title=:title, job_date=:job_date, base_r=:base_r, top_r=:top_r, height=:height,
+                cross_section=:cross_section, oval_x_scale=:oval_x_scale, oval_y_scale=:oval_y_scale,
                 n_mid=:n_mid, midpoints_json=:midpoints_json, wall_mm=:wall_mm,
                 displacement=:displacement, placement=:placement, invert_relief=:invert_relief,
-                tile_enabled=:tile_enabled, tile_count=:tile_count, add_lip=:add_lip,
+                tone_mapping=:tone_mapping, image_orientation=:image_orientation, fit_mode=:fit_mode,
+                tile_enabled=:tile_enabled, tile_count=:tile_count, mirror_tiles=:mirror_tiles, add_lip=:add_lip,
                 lip_radius=:lip_radius, n_lip=:n_lip, quality=:quality, override=:override,
                 ov_theta=:ov_theta, ov_z=:ov_z, source_image_name=:source_image_name,
                 notes=:notes
@@ -160,6 +182,9 @@ def format_vessel_settings(settings: dict) -> str:
         "Vessel Mold Model Generator Settings",
         "",
         "Profile",
+        f"Cross-section: {settings['cross_section']}",
+        f"Oval width scale: {settings['oval_x_scale']:.2f}",
+        f"Oval depth scale: {settings['oval_y_scale']:.2f}",
         f"Base radius (mm): {settings['base_r']:.1f}",
         f"Top radius (mm): {settings['top_r']:.1f}",
         f"Height (mm): {settings['height']:.1f}",
@@ -178,12 +203,16 @@ def format_vessel_settings(settings: dict) -> str:
         [
             "",
             "Wall And Relief",
-            f"Wall thickness (mm): {settings['wall_mm']:.1f}",
+            f"Min thickness (mm): {settings['wall_mm']:.1f}",
+            f"Max thickness (mm): {(settings['wall_mm'] + settings['displacement']):.1f}",
             f"Relief (mm): {settings['displacement']:.1f}",
             f"Relief placement: {settings['placement_label']}",
-            f"Invert relief: {'Yes' if settings['invert_relief'] else 'No'}",
+            f"Tone mapping: {settings['tone_mapping']}",
+            f"Image orientation: {settings['image_orientation']}",
+            f"Fit mode: {settings['fit_mode']}",
             f"Tile same image around vessel: {'Yes' if settings['tile_enabled'] else 'No'}",
             f"Tiles around vessel: {settings['tile_count']}",
+            f"Mirror alternate tiles: {'Yes' if settings['mirror_tiles'] else 'No'}",
             "",
             "Rim Relief Channel",
             f"Enabled: {'Yes' if settings['add_rim_channel'] else 'No'}",
@@ -202,7 +231,7 @@ def format_vessel_settings(settings: dict) -> str:
         ]
     )
     if settings["bore_volume_mm3"] is not None:
-        lines.append(f"Estimated internal bore volume: {settings['bore_volume_mm3'] / 1000.0:,.2f} cm3")
+        lines.append(f"Estimated internal bore volume: {settings['bore_volume_mm3'] / 1000.0:,.2f} cm³")
     lines.extend(
         [
             f"Source image: {settings['source_image_name']}",
@@ -278,6 +307,8 @@ def estimate_internal_bore_volume_mm3(
     n_theta=180,
     n_z=120,
     heightmap=None,
+    oval_x_scale=1.0,
+    oval_y_scale=1.0,
 ):
     """
     Estimate open bore volume in mm^3 from bottom to top.
@@ -298,6 +329,7 @@ def estimate_internal_bore_volume_mm3(
         inner_r = np.maximum(1.0, r_base - float(wall_mm))
         area_mm2 = np.pi * (inner_r ** 2)
 
+    area_mm2 = area_mm2 * float(oval_x_scale) * float(oval_y_scale)
     return float(np.trapz(area_mm2, z_arr))
 
 
@@ -318,15 +350,87 @@ def blend_heightmap_wrap(img: np.ndarray) -> np.ndarray:
     return img
 
 
-def load_heightmap(uploaded_file, n_theta: int, n_z: int, tile_count: int = 1) -> np.ndarray:
+def resize_heightmap(img: np.ndarray, target_rows: int, target_cols: int, fit_mode: str) -> np.ndarray:
+    """Resize to a tile canvas while keeping relief aligned to vessel height."""
+    from scipy.ndimage import zoom
+
+    fit_mode = fit_mode or "Stretch to tile"
+    if fit_mode == "Stretch to tile":
+        return zoom(img, (target_rows / img.shape[0], target_cols / img.shape[1]), order=3)
+
+    scale_h = target_rows / img.shape[0]
+    scale_w = target_cols / img.shape[1]
+    if fit_mode == "Fit inside tile":
+        # Preserve aspect ratio, but always fill vessel height so relief starts at
+        # the base and reaches the rim. Only the angular direction may pad/crop.
+        scale = scale_h
+    else:
+        scale = max(scale_h, scale_w)
+    resized = zoom(img, (scale, scale), order=3)
+    edge_value = float(np.mean(
+        [
+            resized[0, :].mean(),
+            resized[-1, :].mean(),
+            resized[:, 0].mean(),
+            resized[:, -1].mean(),
+        ]
+    ))
+    out = np.full((target_rows, target_cols), edge_value, dtype=np.float32)
+
+    if resized.shape[0] >= target_rows:
+        src_y0 = (resized.shape[0] - target_rows) // 2
+        dst_y0 = 0
+        copy_rows = target_rows
+    else:
+        src_y0 = 0
+        dst_y0 = (target_rows - resized.shape[0]) // 2
+        copy_rows = resized.shape[0]
+
+    if resized.shape[1] >= target_cols:
+        src_x0 = (resized.shape[1] - target_cols) // 2
+        dst_x0 = 0
+        copy_cols = target_cols
+    else:
+        src_x0 = 0
+        dst_x0 = (target_cols - resized.shape[1]) // 2
+        copy_cols = resized.shape[1]
+
+    out[dst_y0 : dst_y0 + copy_rows, dst_x0 : dst_x0 + copy_cols] = resized[
+        src_y0 : src_y0 + copy_rows,
+        src_x0 : src_x0 + copy_cols,
+    ]
+    if dst_x0 > 0:
+        out[dst_y0 : dst_y0 + copy_rows, :dst_x0] = out[dst_y0 : dst_y0 + copy_rows, dst_x0 : dst_x0 + 1]
+    if dst_x0 + copy_cols < target_cols:
+        out[dst_y0 : dst_y0 + copy_rows, dst_x0 + copy_cols :] = out[
+            dst_y0 : dst_y0 + copy_rows,
+            dst_x0 + copy_cols - 1 : dst_x0 + copy_cols,
+        ]
+    if dst_y0 > 0:
+        out[:dst_y0, :] = out[dst_y0 : dst_y0 + 1, :]
+    if dst_y0 + copy_rows < target_rows:
+        out[dst_y0 + copy_rows :, :] = out[dst_y0 + copy_rows - 1 : dst_y0 + copy_rows, :]
+    return out
+
+
+def load_heightmap(
+    uploaded_file,
+    n_theta: int,
+    n_z: int,
+    tile_count: int = 1,
+    orientation: str = "Upright",
+    fit_mode: str = "Stretch to tile",
+    mirror_tiles: bool = False,
+) -> np.ndarray:
     """
     Returns (n_z, n_theta) float array in [0, 1].
     Rows = Z slices (bottom to top), Cols = angle slices.
     tile_count > 1 repeats the same uploaded image around the circumference.
+    mirror_tiles alternates normal/mirrored copies and works best with even tile counts.
+    orientation controls whether image top maps to vessel top or bottom.
+    fit_mode controls stretch/contain/cover behavior inside each tile.
     Uses Pillow + scipy — no cv2 required.
     """
-    from scipy.ndimage import zoom
-
     if isinstance(uploaded_file, (bytes, bytearray)):
         uploaded_file = io.BytesIO(uploaded_file)
     else:
@@ -341,24 +445,36 @@ def load_heightmap(uploaded_file, n_theta: int, n_z: int, tile_count: int = 1) -
     tile_count = max(1, int(tile_count))
     tile_cols = n_theta if tile_count == 1 else int(np.ceil(n_theta / tile_count))
 
-    # Resize to (n_z rows, tile/full angular cols) via scipy zoom.
-    zh = n_z / img.shape[0]
-    zw = tile_cols / img.shape[1]
-    img = zoom(img, (zh, zw), order=3)   # bicubic
+    img = resize_heightmap(img, n_z, tile_cols, fit_mode)
 
-    # Flip vertically so image top = vase top.
-    img = img[::-1, :]
-    img = blend_heightmap_wrap(img)
+    if orientation == "Upright":
+        # Mesh row 0 is vessel bottom, so flip to make image top map to vessel top.
+        img = img[::-1, :]
+    if not (mirror_tiles and tile_count > 1 and tile_count % 2 == 0):
+        img = blend_heightmap_wrap(img)
 
     if tile_count > 1:
-        img = np.tile(img, (1, tile_count))[:, :n_theta]
+        if mirror_tiles and tile_count % 2 == 0:
+            mirrored = img[:, ::-1]
+            tiles = [img if idx % 2 == 0 else mirrored for idx in range(tile_count)]
+            img = np.concatenate(tiles, axis=1)[:, :n_theta]
+        else:
+            img = np.tile(img, (1, tile_count))[:, :n_theta]
 
     return np.clip(img, 0.0, 1.0)
 
 
 @st.cache_data(show_spinner=False)
-def load_heightmap_cached(file_bytes: bytes, n_theta: int, n_z: int, tile_count: int = 1) -> np.ndarray:
-    return load_heightmap(file_bytes, n_theta, n_z, tile_count)
+def load_heightmap_cached(
+    file_bytes: bytes,
+    n_theta: int,
+    n_z: int,
+    tile_count: int = 1,
+    orientation: str = "Upright",
+    fit_mode: str = "Stretch to tile",
+    mirror_tiles: bool = False,
+) -> np.ndarray:
+    return load_heightmap(file_bytes, n_theta, n_z, tile_count, orientation, fit_mode, mirror_tiles)
 
 
 # ─────────────────────────────────────────
@@ -376,6 +492,8 @@ def build_vase_mesh(
     add_rim_channel=False,
     rim_radius=0.0,
     n_rim=24,
+    oval_x_scale=1.0,
+    oval_y_scale=1.0,
 ):
     """
     Build solid open-ended mold tube mesh.
@@ -392,6 +510,11 @@ def build_vase_mesh(
     r_base = np.clip(profile_fn(z_arr), 1.0, None)
     heightmap = np.asarray(heightmap, dtype=np.float64)
     smooth_top_radius = float(r_base[-1])
+    oval_x_scale = float(oval_x_scale)
+    oval_y_scale = float(oval_y_scale)
+
+    def point_from_radius(r, t, z):
+        return np.array([r * oval_x_scale * np.cos(t), r * oval_y_scale * np.sin(t), z], dtype=np.float32)
 
     tris = []
     rim_radius = float(max(0.0, rim_radius))
@@ -411,12 +534,12 @@ def build_vase_mesh(
         def inner_v(iz, it):
             r = max(1.0, r_base[iz] - wall_mm)
             t = theta[it]
-            return np.array([r * np.cos(t), r * np.sin(t), z_arr[iz]], dtype=np.float32)
+            return point_from_radius(r, t, z_arr[iz])
 
         def outer_v(iz, it):
             r = r_base[iz] + heightmap[iz, it % n_theta] * displacement
             t = theta[it]
-            return np.array([r * np.cos(t), r * np.sin(t), z_arr[iz]], dtype=np.float32)
+            return point_from_radius(r, t, z_arr[iz])
 
         def inner_top_radius(_it):
             return float(max(1.0, r_base[-1] - wall_mm))
@@ -428,12 +551,12 @@ def build_vase_mesh(
         def inner_v(iz, it):
             r = max(1.0, r_base[iz] - heightmap[iz, it % n_theta] * displacement)
             t = theta[it]
-            return np.array([r * np.cos(t), r * np.sin(t), z_arr[iz]], dtype=np.float32)
+            return point_from_radius(r, t, z_arr[iz])
 
         def outer_v(iz, it):
             r = r_base[iz] + wall_mm
             t = theta[it]
-            return np.array([r * np.cos(t), r * np.sin(t), z_arr[iz]], dtype=np.float32)
+            return point_from_radius(r, t, z_arr[iz])
 
         def outer_top_radius(_it):
             return float(r_base[-1] + wall_mm)
@@ -474,7 +597,7 @@ def build_vase_mesh(
             def wall_end(theta_idx):
                 r = rim_edge_radius
                 t = theta[theta_idx]
-                return np.array([r * np.cos(t), r * np.sin(t), rim_wall_z], dtype=np.float32)
+                return point_from_radius(r, t, rim_wall_z)
 
             a = outer_v(iz, it)
             b = outer_v(iz, it1)
@@ -501,7 +624,7 @@ def build_vase_mesh(
             def wall_end(theta_idx):
                 r = rim_edge_radius
                 t = theta[theta_idx]
-                return np.array([r * np.cos(t), r * np.sin(t), rim_wall_z], dtype=np.float32)
+                return point_from_radius(r, t, rim_wall_z)
 
             a = inner_v(iz, it)
             b = inner_v(iz, it1)
@@ -526,17 +649,17 @@ def build_vase_mesh(
         if rim_active and placement == "outside":
             t1 = theta[it1]
             t0 = theta[it]
-            a = np.array([clean_top_inner_radius * np.cos(t0), clean_top_inner_radius * np.sin(t0), height], dtype=np.float32)
-            b = np.array([clean_top_inner_radius * np.cos(t1), clean_top_inner_radius * np.sin(t1), height], dtype=np.float32)
-            c = np.array([clean_top_outer_radius * np.cos(t1), clean_top_outer_radius * np.sin(t1), height], dtype=np.float32)
-            d = np.array([clean_top_outer_radius * np.cos(t0), clean_top_outer_radius * np.sin(t0), height], dtype=np.float32)
+            a = point_from_radius(clean_top_inner_radius, t0, height)
+            b = point_from_radius(clean_top_inner_radius, t1, height)
+            c = point_from_radius(clean_top_outer_radius, t1, height)
+            d = point_from_radius(clean_top_outer_radius, t0, height)
         elif rim_active and placement == "inside":
             t0 = theta[it]
             t1 = theta[it1]
-            a = np.array([clean_top_inner_radius * np.cos(t0), clean_top_inner_radius * np.sin(t0), height], dtype=np.float32)
-            b = np.array([clean_top_inner_radius * np.cos(t1), clean_top_inner_radius * np.sin(t1), height], dtype=np.float32)
-            c = np.array([clean_top_outer_radius * np.cos(t1), clean_top_outer_radius * np.sin(t1), height], dtype=np.float32)
-            d = np.array([clean_top_outer_radius * np.cos(t0), clean_top_outer_radius * np.sin(t0), height], dtype=np.float32)
+            a = point_from_radius(clean_top_inner_radius, t0, height)
+            b = point_from_radius(clean_top_inner_radius, t1, height)
+            c = point_from_radius(clean_top_outer_radius, t1, height)
+            d = point_from_radius(clean_top_outer_radius, t0, height)
         else:
             a = inner_v(iz, it)
             b = inner_v(iz, it1)
@@ -557,7 +680,7 @@ def build_vase_mesh(
                         center_r = smooth_top_radius + rim_radius
                         r = center_r - rim_radius * np.cos(phi)
                         z = height - rim_radius * np.sin(phi)
-                        return np.array([r * np.cos(t), r * np.sin(t), z], dtype=np.float32)
+                        return point_from_radius(r, t, z)
 
                     a = groove_v(it, phi0)
                     b = groove_v(it1, phi0)
@@ -570,7 +693,7 @@ def build_vase_mesh(
                         center_r = smooth_top_radius - rim_radius
                         r = center_r + rim_radius * np.cos(phi)
                         z = height - rim_radius * np.sin(phi)
-                        return np.array([r * np.cos(t), r * np.sin(t), z], dtype=np.float32)
+                        return point_from_radius(r, t, z)
 
                     a = groove_v(it, phi0)
                     b = groove_v(it1, phi0)
@@ -699,6 +822,7 @@ st.session_state.setdefault("vessel_upload_nonce", 0)
 st.session_state.setdefault("vessel_is_building", False)
 st.session_state.setdefault("vessel_reset_pending", False)
 st.session_state.setdefault("vessel_loaded_id", None)
+st.session_state.setdefault("vessel_generated_signature", None)
 
 VESSEL_DEFAULTS = {
     "vessel_title": "",
@@ -706,13 +830,21 @@ VESSEL_DEFAULTS = {
     "vessel_base_r": 20.0,
     "vessel_top_r": 50.0,
     "vessel_height": 60.0,
+    "vessel_cross_section": "Circle",
+    "vessel_oval_x_scale": 1.0,
+    "vessel_oval_y_scale": 1.0,
     "vessel_n_mid": 1,
     "vessel_wall_mm": 3.0,
     "vessel_displacement": 2.0,
+    "vessel_max_thickness": 5.0,
     "vessel_placement": "Outside — relief on exterior",
     "vessel_invert_relief": False,
+    "vessel_tone_mapping": "Positive",
+    "vessel_image_orientation": "Upright",
+    "vessel_fit_mode": "Stretch to tile",
     "vessel_tile_enabled": False,
     "vessel_tile_count": 4,
+    "vessel_mirror_tiles": False,
     "vessel_add_lip": False,
     "vessel_lip_radius": 1.5,
     "vessel_n_lip": 24,
@@ -744,6 +876,7 @@ def reset_vessel_defaults() -> None:
     st.session_state["vessel_is_building"] = False
     st.session_state["vessel_reset_pending"] = False
     st.session_state["vessel_loaded_id"] = None
+    st.session_state["vessel_generated_signature"] = None
 
 
 def clear_vessel_outputs() -> None:
@@ -754,6 +887,7 @@ def clear_vessel_outputs() -> None:
     st.session_state["vessel_zip_name"] = "vessel_model_bundle.zip"
     st.session_state["vessel_settings_text"] = ""
     st.session_state["vessel_is_building"] = False
+    st.session_state["vessel_generated_signature"] = None
 
 
 def load_vessel_setup_into_state(row) -> None:
@@ -772,10 +906,16 @@ def load_vessel_setup_into_state(row) -> None:
         "base_r": "vessel_base_r",
         "top_r": "vessel_top_r",
         "height": "vessel_height",
+        "cross_section": "vessel_cross_section",
+        "oval_x_scale": "vessel_oval_x_scale",
+        "oval_y_scale": "vessel_oval_y_scale",
         "n_mid": "vessel_n_mid",
         "wall_mm": "vessel_wall_mm",
         "displacement": "vessel_displacement",
         "placement": "vessel_placement",
+        "tone_mapping": "vessel_tone_mapping",
+        "image_orientation": "vessel_image_orientation",
+        "fit_mode": "vessel_fit_mode",
         "lip_radius": "vessel_lip_radius",
         "n_lip": "vessel_n_lip",
         "quality": "vessel_quality",
@@ -790,10 +930,15 @@ def load_vessel_setup_into_state(row) -> None:
     for column, key in {
         "invert_relief": "vessel_invert_relief",
         "tile_enabled": "vessel_tile_enabled",
+        "mirror_tiles": "vessel_mirror_tiles",
         "add_lip": "vessel_add_lip",
         "override": "vessel_override",
     }.items():
         st.session_state[key] = bool(row[column]) if column in row.keys() and row[column] is not None else False
+    if "tone_mapping" not in row.keys() or not row["tone_mapping"]:
+        st.session_state["vessel_tone_mapping"] = "Negative" if st.session_state["vessel_invert_relief"] else "Positive"
+    st.session_state["vessel_invert_relief"] = st.session_state["vessel_tone_mapping"] == "Negative"
+    st.session_state["vessel_max_thickness"] = float(st.session_state["vessel_wall_mm"]) + float(st.session_state["vessel_displacement"])
     st.session_state["vessel_tile_count"] = int(row["tile_count"] or VESSEL_DEFAULTS["vessel_tile_count"])
     st.session_state["vessel_source_image_name"] = row["source_image_name"] or ""
 
@@ -814,6 +959,61 @@ def load_vessel_setup_into_state(row) -> None:
 
     st.session_state["vessel_loaded_id"] = row["id"]
     clear_vessel_outputs()
+
+
+def vessel_generation_signature(
+    *,
+    base_r,
+    top_r,
+    height,
+    cross_section,
+    oval_x_scale,
+    oval_y_scale,
+    midpoints,
+    wall_mm,
+    displacement,
+    placement_key,
+    tone_mapping,
+    image_orientation,
+    fit_mode,
+    tile_enabled,
+    tile_count,
+    mirror_tiles,
+    add_lip,
+    lip_radius,
+    n_lip,
+    n_theta,
+    n_z,
+    mm_per_ring,
+    uploaded_bytes,
+) -> str:
+    uploaded_hash = hashlib.sha256(uploaded_bytes).hexdigest() if uploaded_bytes else ""
+    payload = {
+        "base_r": round(float(base_r), 4),
+        "top_r": round(float(top_r), 4),
+        "height": round(float(height), 4),
+        "cross_section": cross_section,
+        "oval_x_scale": round(float(oval_x_scale), 4),
+        "oval_y_scale": round(float(oval_y_scale), 4),
+        "midpoints": [(round(float(z), 6), round(float(r), 4)) for z, r in midpoints],
+        "wall_mm": round(float(wall_mm), 4),
+        "displacement": round(float(displacement), 4),
+        "placement_key": placement_key,
+        "tone_mapping": tone_mapping,
+        "image_orientation": image_orientation,
+        "fit_mode": fit_mode,
+        "tile_enabled": bool(tile_enabled),
+        "tile_count": int(tile_count),
+        "mirror_tiles": bool(mirror_tiles),
+        "add_lip": bool(add_lip),
+        "lip_radius": round(float(lip_radius), 4),
+        "n_lip": int(n_lip),
+        "n_theta": int(n_theta),
+        "n_z": int(n_z),
+        "mm_per_ring": round(float(mm_per_ring), 6),
+        "uploaded_hash": uploaded_hash,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 if st.session_state.get("vessel_reset_pending"):
@@ -900,6 +1100,36 @@ with left:
             key="vessel_height",
         )
 
+    cross_section = st.radio(
+        tr("page.vessel.fields.cross_section", "Cross-section"),
+        ["Circle", "Oval"],
+        horizontal=True,
+        key="vessel_cross_section",
+    )
+    if cross_section == "Oval":
+        oval_cols = st.columns(2)
+        with oval_cols[0]:
+            oval_x_scale = st.number_input(
+                tr("page.vessel.fields.oval_width_scale", "Oval width scale"),
+                min_value=0.25,
+                max_value=3.0,
+                step=0.05,
+                key="vessel_oval_x_scale",
+                help=tr("page.vessel.help.oval_width_scale", "Scales the X/width axis of the circular profile."),
+            )
+        with oval_cols[1]:
+            oval_y_scale = st.number_input(
+                tr("page.vessel.fields.oval_depth_scale", "Oval depth scale"),
+                min_value=0.25,
+                max_value=3.0,
+                step=0.05,
+                key="vessel_oval_y_scale",
+                help=tr("page.vessel.help.oval_depth_scale", "Scales the Y/depth axis of the circular profile."),
+            )
+    else:
+        oval_x_scale = 1.0
+        oval_y_scale = 1.0
+
     st.caption(tr("page.vessel.caption.midpoints", "Add midpoints to curve the profile (optional)"))
     n_mid = st.slider(tr("page.vessel.fields.num_midpoints", "Number of midpoints"), 0, 4, key="vessel_n_mid")
     midpoints = []
@@ -945,24 +1175,35 @@ with left:
     midpoints = [(z_frac, r_mid) for _, z_frac, r_mid in sorted(mid_inputs)]
 
     st.divider()
-    st.subheader(tr("page.vessel.sections.wall_relief", "Wall Thickness & Relief"))
+    st.subheader(tr("page.vessel.sections.wall_relief", "Thickness & Image Mapping"))
+    current_min = float(st.session_state.get("vessel_wall_mm", 3.0))
+    current_max = max(
+        current_min + 0.1,
+        float(st.session_state.get("vessel_max_thickness", current_min + st.session_state.get("vessel_displacement", 2.0))),
+    )
+    st.session_state["vessel_max_thickness"] = current_max
     wc1, wc2 = st.columns(2)
     with wc1:
         wall_mm = st.number_input(
-            tr("page.vessel.fields.wall_thickness", "Wall thickness (mm)"),
+            tr("page.vessel.fields.min_thickness", "Min thickness (mm)"),
             min_value=0.5,
             step=0.5,
-            help=tr("page.vessel.help.wall_thickness", "Thickness of the mold wall behind the uploaded relief. Changing this adds structure on the smooth opposite side instead of moving the relief-bearing surface."),
+            help=tr("page.vessel.help.min_thickness", "Thinnest wall thickness. This is the base wall behind the lightest relief value."),
             key="vessel_wall_mm",
         )
+    if float(st.session_state.get("vessel_max_thickness", wall_mm + 0.1)) <= float(wall_mm):
+        st.session_state["vessel_max_thickness"] = float(wall_mm) + 0.1
     with wc2:
-        displacement = st.number_input(
-            tr("page.vessel.fields.relief", "Relief (mm)"),
-            min_value=0.1,
+        max_thickness = st.number_input(
+            tr("page.vessel.fields.max_thickness", "Max thickness (mm)"),
+            min_value=float(wall_mm + 0.1),
             step=0.1,
-            help=tr("page.vessel.help.relief", "Depth or height of the wrapped relief relative to the wall thickness."),
-            key="vessel_displacement",
+            help=tr("page.vessel.help.max_thickness", "Thickest wall thickness. Relief depth is Max thickness minus Min thickness."),
+            key="vessel_max_thickness",
         )
+    displacement = round(max(0.1, float(max_thickness) - float(wall_mm)), 3)
+    st.session_state["vessel_displacement"] = displacement
+
     placement = st.radio(
         tr("page.vessel.fields.placement", "Relief placement"),
         ["Outside — relief on exterior", "Inside — carved interior"],
@@ -971,10 +1212,38 @@ with left:
         format_func=vessel_placement_label,
     )
     placement_key = "outside" if placement.startswith("Outside") else "inside"
-    invert_relief = st.checkbox(
-        tr("page.vessel.fields.invert_relief", "Invert relief"),
-        help=tr("page.vessel.help.invert_relief", "Swap peaks and valleys - dark areas become raised, light areas recessed"),
-        key="vessel_invert_relief",
+    tone_mapping = st.radio(
+        tr("page.vessel.fields.tone_mapping", "Tone mapping"),
+        ["Positive", "Negative"],
+        horizontal=True,
+        key="vessel_tone_mapping",
+        help=tr("page.vessel.help.tone_mapping", "Positive uses the image as-is. Negative swaps peaks and valleys."),
+    )
+    invert_relief = tone_mapping == "Negative"
+    st.session_state["vessel_invert_relief"] = invert_relief
+
+    map_a, map_b = st.columns(2)
+    with map_a:
+        image_orientation = st.radio(
+            tr("page.vessel.fields.image_orientation", "Image orientation"),
+            ["Upright", "Inverted"],
+            horizontal=True,
+            key="vessel_image_orientation",
+            help=tr("page.vessel.help.image_orientation", "Upright maps the image top to the vessel top. Inverted flips it vertically."),
+        )
+    with map_b:
+        fit_mode = st.selectbox(
+            tr("page.vessel.fields.fit_mode", "Fit mode"),
+            ["Stretch to tile", "Fit inside tile", "Crop to fill tile"],
+            key="vessel_fit_mode",
+            help=tr("page.vessel.help.fit_mode", "Controls how the image is resized before wrapping or tiling."),
+        )
+    st.caption(
+        tr(
+            "page.vessel.caption.relief_depth",
+            "Relief depth: {value} mm",
+            value=f"{displacement:.1f}",
+        )
     )
     tile_enabled = st.checkbox(
         tr("page.vessel.fields.tile_same_image", "Tile same image around vessel"),
@@ -991,8 +1260,20 @@ with left:
             help=tr("page.vessel.help.tile_count", "Number of repeated copies around the circumference."),
             key="vessel_tile_count",
         )
+        mirror_tiles = st.checkbox(
+            tr("page.vessel.fields.mirror_tiles", "Mirror alternate tiles"),
+            value=bool(st.session_state.get("vessel_mirror_tiles", False)),
+            disabled=tile_count % 2 != 0,
+            help=tr("page.vessel.help.mirror_tiles", "Alternates normal and mirrored copies so neighboring tile ends match. Requires an even tile count."),
+            key="vessel_mirror_tiles",
+        )
+        if tile_count % 2 != 0:
+            mirror_tiles = False
+            st.caption(tr("page.vessel.caption.mirror_even_only", "Mirror tiles requires an even number of tiles."))
     else:
         tile_count = 1
+        mirror_tiles = False
+        st.session_state["vessel_mirror_tiles"] = False
 
     st.divider()
     st.subheader(tr("page.vessel.sections.rim", "Rim"))
@@ -1078,6 +1359,35 @@ with left:
                                            key="vessel_ov_z")
             n_z = max(20, int(round(height / mm_per_ring)))
 
+    current_signature = vessel_generation_signature(
+        base_r=base_r,
+        top_r=top_r,
+        height=height,
+        cross_section=cross_section,
+        oval_x_scale=oval_x_scale,
+        oval_y_scale=oval_y_scale,
+        midpoints=midpoints,
+        wall_mm=wall_mm,
+        displacement=displacement,
+        placement_key=placement_key,
+        tone_mapping=tone_mapping,
+        image_orientation=image_orientation,
+        fit_mode=fit_mode,
+        tile_enabled=tile_enabled,
+        tile_count=tile_count,
+        mirror_tiles=mirror_tiles,
+        add_lip=add_lip,
+        lip_radius=lip_radius,
+        n_lip=n_lip,
+        n_theta=n_theta,
+        n_z=n_z,
+        mm_per_ring=mm_per_ring,
+        uploaded_bytes=uploaded_bytes,
+    )
+    if st.session_state["stl_bytes"] and st.session_state.get("vessel_generated_signature") != current_signature:
+        clear_vessel_outputs()
+        st.info(tr("page.vessel.messages.settings_changed", "Settings changed. Generate again to update the STL and downloads."))
+
     st.divider()
     st.text_area(
         tr("worksheet.sections.notes", "Notes"),
@@ -1106,6 +1416,9 @@ with left:
                 "base_r": float(base_r),
                 "top_r": float(top_r),
                 "height": float(height),
+                "cross_section": cross_section,
+                "oval_x_scale": float(oval_x_scale),
+                "oval_y_scale": float(oval_y_scale),
                 "n_mid": int(n_mid),
                 "midpoints_json": json.dumps([
                     {"z_frac": float(z_frac), "radius": float(radius)}
@@ -1115,8 +1428,12 @@ with left:
                 "displacement": float(displacement),
                 "placement": placement,
                 "invert_relief": int(bool(invert_relief)),
+                "tone_mapping": tone_mapping,
+                "image_orientation": image_orientation,
+                "fit_mode": fit_mode,
                 "tile_enabled": int(bool(tile_enabled)),
                 "tile_count": int(tile_count),
+                "mirror_tiles": int(bool(mirror_tiles)),
                 "add_lip": int(bool(add_lip)),
                 "lip_radius": float(lip_radius),
                 "n_lip": int(n_lip),
@@ -1135,61 +1452,51 @@ with left:
                 st.success(tr("page.vessel.messages.setup_saved", "Setup saved: {title}", title=title))
             st.session_state["vessel_source_image_name"] = source_image_name
 
+    downloads_ready = bool(st.session_state["stl_bytes"]) and st.session_state.get("vessel_generated_signature") == current_signature
     action_col1, action_col2 = st.columns(2)
-    is_building = st.session_state.get("vessel_is_building", False)
-    generate = action_col1.button(
-        f"⚙️ {tr('page.vessel.actions.generate', 'Generate')}",
-        use_container_width=True,
-        type="primary",
-        disabled=is_building,
-    )
+    is_building = False
+    if downloads_ready:
+        generate = False
+        action_col1.download_button(
+            f"⬇️ {tr('page.vessel.actions.download_bundle', 'Download Build Bundle')}",
+            data=st.session_state["vessel_zip_bytes"] or b"",
+            file_name=st.session_state["vessel_zip_name"],
+            mime="application/zip",
+            use_container_width=True,
+            type="primary",
+            disabled=not bool(st.session_state["vessel_zip_bytes"]),
+            key="vessel_download_bundle_primary",
+        )
+    else:
+        generate = action_col1.button(
+            f"⚙️ {tr('page.vessel.actions.generate', 'Generate')}",
+            use_container_width=True,
+            type="primary",
+            disabled=is_building,
+            key="vessel_generate_mesh",
+        )
     reset = action_col2.button(
         tr("page.vessel.actions.reset", "Reset Defaults"),
         use_container_width=True,
         disabled=is_building,
+        key="vessel_reset_defaults_action",
     )
     if reset:
         st.session_state["vessel_reset_pending"] = True
         st.rerun()
     if generate:
-        st.session_state["vessel_is_building"] = True
-        st.session_state["stl_bytes"] = None
-        st.session_state["stl_tri_count"] = 0
-        st.session_state["vessel_stl_name"] = "vessel_model.stl"
-        st.session_state["vessel_zip_bytes"] = None
-        st.session_state["vessel_zip_name"] = "vessel_model_bundle.zip"
-        st.session_state["vessel_settings_text"] = ""
+        clear_vessel_outputs()
 
-    build_feedback = st.empty()
-    if st.session_state.get("vessel_is_building"):
-        build_feedback.info(tr("page.vessel.messages.generating", "Generating mesh..."))
+    build_feedback = action_col1.empty()
+    if generate:
+        build_feedback.info(tr("page.vessel.messages.generating_standby", "Generating mesh... please stand by."))
 
     st.divider()
-    if st.session_state["stl_bytes"] and not st.session_state.get("vessel_is_building"):
+    if downloads_ready:
         st.success(tr("page.vessel.messages.mesh_ready", "Mesh ready | {count} triangles", count=f"{st.session_state['stl_tri_count']:,}"))
-        download_col1, download_col2 = st.columns(2)
-        download_col1.download_button(
-            f"⬇️ {tr('page.vessel.actions.download_stl', 'Download STL')}",
-            data=st.session_state["stl_bytes"],
-            file_name=st.session_state["vessel_stl_name"],
-            mime="application/octet-stream",
-            use_container_width=True,
-            type="primary",
-        )
-        download_col2.download_button(
-            f"⬇️ {tr('page.vessel.actions.download_bundle', 'Download Build Bundle')}",
-            data=st.session_state["vessel_zip_bytes"],
-            file_name=st.session_state["vessel_zip_name"],
-            mime="application/zip",
-            use_container_width=True,
-            disabled=not bool(st.session_state["vessel_zip_bytes"]),
-        )
+        st.caption(tr("page.vessel.caption.bundle_contents", "Build bundle includes the STL, vessel settings, and source heightmap image."))
     else:
-        download_col1, download_col2 = st.columns(2)
-        download_col1.button(f"⬇️ {tr('page.vessel.actions.download_stl', 'Download STL')}", use_container_width=True,
-                             disabled=True, help=tr("page.vessel.help.generate_first", "Click Generate first"))
-        download_col2.button(f"⬇️ {tr('page.vessel.actions.download_bundle', 'Download Build Bundle')}", use_container_width=True,
-                             disabled=True, help=tr("page.vessel.help.generate_model_first", "Generate a model first"))
+        st.caption(tr("page.vessel.help.generate_first", "Click Generate first"))
 
 with right:
     # Always show profile preview
@@ -1210,9 +1517,11 @@ with right:
             placement=placement_key,
             n_theta=n_theta,
             n_z=n_z,
+            oval_x_scale=oval_x_scale,
+            oval_y_scale=oval_y_scale,
         )
     elif uploaded_bytes is not None:
-        hmap_for_volume = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count)
+        hmap_for_volume = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count, image_orientation, fit_mode, mirror_tiles)
         if invert_relief:
             hmap_for_volume = 1.0 - hmap_for_volume
         bore_volume_mm3 = estimate_internal_bore_volume_mm3(
@@ -1224,6 +1533,8 @@ with right:
             n_theta=n_theta,
             n_z=n_z,
             heightmap=hmap_for_volume,
+            oval_x_scale=oval_x_scale,
+            oval_y_scale=oval_y_scale,
         )
     else:
         bore_note = tr("page.vessel.messages.bore_note", "Upload a heightmap image to calculate internal bore volume for carved interior.")
@@ -1233,37 +1544,43 @@ with right:
         st.metric(tr("page.vessel.metrics.output_height", "Output height"), f"{height:.1f} mm")
     with metric_cols[1]:
         if bore_volume_mm3 is not None:
-            st.metric(tr("page.vessel.metrics.bore_volume", "Internal bore volume"), f"{bore_volume_mm3 / 1000.0:,.2f} cm3")
+            st.metric(tr("page.vessel.metrics.bore_volume", "Internal bore volume"), f"{bore_volume_mm3 / 1000.0:,.2f} cm³")
             st.caption(tr("page.vessel.caption.bore_ml", "Equivalent to approximately {value} mL.", value=f"{bore_volume_mm3 / 1000.0:,.2f}"))
         elif bore_note:
             st.info(bore_note)
 
     if generate:
         if not uploaded:
-            st.session_state["vessel_is_building"] = False
             build_feedback.warning(tr("page.vessel.messages.upload_heightmap_first", "Upload a heightmap image first."))
             st.warning(tr("page.vessel.messages.upload_heightmap_first", "Upload a heightmap image first."))
         else:
             try:
-                with build_feedback.container():
-                    with st.spinner(tr("page.vessel.messages.loading_heightmap", "Loading heightmap...")):
-                        hmap = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count)
+                build_feedback.info(tr("page.vessel.messages.loading_heightmap", "Loading heightmap..."))
+                hmap = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count, image_orientation, fit_mode, mirror_tiles)
 
-                with build_feedback.container():
-                    with st.spinner(tr("page.vessel.messages.building_segments", "Building mesh ({theta}x{vertical} segments)...", theta=n_theta, vertical=n_z)):
-                        if invert_relief:
-                            hmap = 1.0 - hmap
-                        tris = build_vase_mesh(
-                            profile_fn, height, displacement,
-                            hmap,
-                            n_theta,
-                            n_z,
-                            wall_mm,
-                            placement_key,
-                            add_rim_channel=add_lip,
-                            rim_radius=lip_radius,
-                            n_rim=n_lip,
-                        )
+                build_feedback.info(
+                    tr(
+                        "page.vessel.messages.building_segments",
+                        "Building mesh ({theta}x{vertical} segments)...",
+                        theta=n_theta,
+                        vertical=n_z,
+                    )
+                )
+                if invert_relief:
+                    hmap = 1.0 - hmap
+                tris = build_vase_mesh(
+                    profile_fn, height, displacement,
+                    hmap,
+                    n_theta,
+                    n_z,
+                    wall_mm,
+                    placement_key,
+                    add_rim_channel=add_lip,
+                    rim_radius=lip_radius,
+                    n_rim=n_lip,
+                    oval_x_scale=oval_x_scale,
+                    oval_y_scale=oval_y_scale,
+                )
 
                 generated_bore_volume_mm3 = estimate_internal_bore_volume_mm3(
                     profile_fn,
@@ -1274,6 +1591,8 @@ with right:
                     n_theta=n_theta,
                     n_z=n_z,
                     heightmap=hmap if placement_key == "inside" else None,
+                    oval_x_scale=oval_x_scale,
+                    oval_y_scale=oval_y_scale,
                 )
                 stl_bytes = write_stl(tris)
                 source_image_name = uploaded.name if uploaded is not None else "source_heightmap"
@@ -1282,13 +1601,19 @@ with right:
                         "base_r": float(base_r),
                         "top_r": float(top_r),
                         "height": float(height),
+                        "cross_section": cross_section,
+                        "oval_x_scale": float(oval_x_scale),
+                        "oval_y_scale": float(oval_y_scale),
                         "midpoints": [(float(z_frac), float(radius)) for z_frac, radius in midpoints],
                         "wall_mm": float(wall_mm),
                         "displacement": float(displacement),
                         "placement_label": placement,
-                        "invert_relief": bool(invert_relief),
+                        "tone_mapping": tone_mapping,
+                        "image_orientation": image_orientation,
+                        "fit_mode": fit_mode,
                         "tile_enabled": bool(tile_enabled),
                         "tile_count": int(tile_count),
+                        "mirror_tiles": bool(mirror_tiles),
                         "add_rim_channel": bool(add_lip),
                         "rim_radius": float(lip_radius),
                         "n_rim": int(n_lip),
@@ -1318,8 +1643,7 @@ with right:
                     uploaded_bytes,
                 )
                 st.session_state["vessel_zip_name"] = bundle_name
-                st.session_state["vessel_is_building"] = False
+                st.session_state["vessel_generated_signature"] = current_signature
                 st.rerun()
             except Exception:
-                st.session_state["vessel_is_building"] = False
                 raise

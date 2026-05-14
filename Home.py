@@ -29,8 +29,10 @@ with col1:
         st.switch_page("pages/4_Vessel_Model_Generator.py")
     if st.button(t("home.nav.tiles_panels", "Model Tiles & Panels"), width='stretch'):
         st.switch_page("pages/2_Model_Tiles_Panels.py")
-    if st.button(t("home.nav.mold_worksheet", "Mold Worksheet"), width='stretch'):
+    if st.button(t("home.nav.mold_worksheet", "Cameo Mold Worksheet"), width='stretch'):
         st.switch_page("pages/3_Mold_Worksheet.py")
+    if st.button(t("home.nav.pate_mold_worksheet", "Vessel Mold Worksheet"), width='stretch'):
+        st.switch_page("pages/19_Pate_de_verre_Mold_Worksheet.py")
 
 with col2:
     st.markdown(f"#### {t('home.sections.glass_library', 'Glass Library')}")
@@ -38,6 +40,8 @@ with col2:
         st.switch_page("pages/6_Glass_Library.py")
     if st.button(t("home.nav.glass_color_wheel", "Glass Color Wheel"), width="stretch"):
         st.switch_page("pages/7_Glass_Color_Wheel.py")
+    if st.button(t("home.nav.glass_depth_side_view", "Glass Depth Side View"), width="stretch"):
+        st.switch_page("pages/18_Glass_Depth_Side_View.py")
     if st.button(t("home.nav.layered_predictor", "Layered Glass Predictor"), width='stretch'):
         st.switch_page("pages/16_Layered_Glass_Predictor.py")
     if st.button(t("home.nav.frit_mix_explorer", "Frit Mix Explorer"), width='stretch'):

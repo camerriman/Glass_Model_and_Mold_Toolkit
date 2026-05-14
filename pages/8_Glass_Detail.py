@@ -3,7 +3,9 @@
 # Launched from the Glass Library grid (click icon → sets session state → switch_page here).
 from __future__ import annotations
 
+import base64
 import html
+import io
 import math
 import re
 import sqlite3
@@ -14,6 +16,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from PIL import Image
 
 from i18n import render_app_sidebar, t, translate_element_name, translate_family_name
 
@@ -24,7 +27,7 @@ APP_ROOT  = Path(__file__).resolve().parents[1]
 if str(APP_ROOT) not in sys.path:
     sys.path.append(str(APP_ROOT))
 
-from utilities.glass_detail_pdf import build_glass_detail_pdf
+from utilities.glass_detail_pdf import build_glass_detail_pdf, calculate_black_point_mm, rgb_at_depth
 
 DB_PATH   = APP_ROOT / "data" / "glass_library.sqlite"
 IMG_ROOT  = APP_ROOT / "images"
@@ -75,6 +78,145 @@ render_app_sidebar()
 # ---------------------------------------------------------------------------
 st.markdown("""
 <style>
+.block-container {
+    max-width: 1180px;
+}
+.glass-detail-title h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    letter-spacing: 0;
+    text-align: left;
+    line-height: 1.12;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-color: #d8d8d8;
+    border-radius: 10px;
+    background: #fbfbfb;
+}
+.glass-report-caption {
+    color: #666;
+    font-size: 0.95rem;
+}
+.glass-depth-report {
+    font-family: Arial, sans-serif;
+    margin-top: 1.5rem;
+}
+.glass-depth-intro {
+    color: #111;
+    font-size: 0.98rem;
+    margin: 0.35rem 0 1.1rem;
+}
+.glass-depth-card {
+    border: 1px solid #d8d8d8;
+    border-radius: 10px;
+    background: #fbfbfb;
+    padding: 1rem 1.1rem;
+    margin: 1rem 0 1.35rem;
+}
+.glass-depth-card h4 {
+    margin: 0;
+    font-size: 1.35rem;
+    line-height: 1.2;
+}
+.glass-depth-summary {
+    margin: 0.25rem 0 1rem;
+    color: #111;
+    font-size: 0.95rem;
+}
+.glass-depth-body {
+    display: grid;
+    grid-template-columns: 210px minmax(320px, 1fr);
+    gap: 1.4rem;
+    align-items: start;
+}
+.glass-depth-visual {
+    display: flex;
+    align-items: stretch;
+    gap: 0.75rem;
+    min-height: 330px;
+}
+.glass-depth-bar {
+    position: relative;
+    width: 72px;
+    height: 320px;
+    border: 1px solid #aaa;
+    overflow: hidden;
+}
+.glass-depth-ref,
+.glass-depth-black {
+    position: absolute;
+    left: -12px;
+    right: -12px;
+    z-index: 2;
+}
+.glass-depth-ref {
+    border-top: 2px dashed rgba(80, 80, 80, 0.8);
+}
+.glass-depth-black {
+    height: 3px;
+    background: #d72828;
+}
+.glass-depth-axis {
+    position: relative;
+    height: 320px;
+    width: 82px;
+    border-left: 2px solid #707070;
+    color: #666;
+    font-size: 0.78rem;
+}
+.glass-depth-tick {
+    position: absolute;
+    left: -7px;
+    width: 12px;
+    border-top: 2px solid #707070;
+}
+.glass-depth-tick span {
+    position: absolute;
+    left: 17px;
+    top: -8px;
+    white-space: nowrap;
+}
+.glass-depth-label {
+    position: absolute;
+    left: 48px;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    font-size: 0.78rem;
+}
+.glass-depth-label.is-black {
+    color: #a82020;
+}
+.glass-depth-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+}
+.glass-depth-table th {
+    background: #4f4f4f;
+    color: #fff;
+    padding: 0.45rem 0.55rem;
+    font-weight: 600;
+    text-align: center;
+}
+.glass-depth-table td {
+    border: 1px solid #ddd;
+    padding: 0.42rem 0.55rem;
+    text-align: center;
+}
+.glass-depth-table tr:nth-child(even) td {
+    background: #f4f4f4;
+}
+.glass-depth-swatch {
+    width: 86px;
+    height: 18px;
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    margin: 0 auto;
+}
+@media (max-width: 760px) {
+    .glass-depth-body {
+        grid-template-columns: 1fr;
+    }
+}
 @media print {
     /* Hide Streamlit chrome */
     [data-testid="stSidebar"],
@@ -250,6 +392,37 @@ def icon_image_path(cat_id: str, prefix: str, mode: str) -> Path | None:
     return p if p.exists() else None
 
 
+@st.cache_data(show_spinner=False)
+def image_data_uri(path_text: str, max_width: int = 640) -> str:
+    source = Image.open(path_text).convert("RGB")
+    source.thumbnail((max_width, max_width), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", source.size, "white")
+    canvas.paste(source)
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="PNG", optimize=True)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def render_sample_image(image_path: Path | None, *, width: int = 320) -> None:
+    path = image_path if image_path and image_path.exists() else MISSING_FULL if MISSING_FULL.exists() else None
+    if path is None:
+        return
+    try:
+        src = image_data_uri(str(path), max_width=width * 2)
+    except Exception:
+        return
+    st.html(
+        f"""
+        <img
+          src="{src}"
+          alt=""
+          style="display:block;width:100%;max-width:{width}px;height:auto;border-radius:8px;"
+        >
+        """
+    )
+
+
 def switch_to_page(target: str) -> bool:
     candidates = [target]
     if target.startswith("pages/"):
@@ -338,6 +511,18 @@ def hsv_saturation_curve(
 def transmittance(rgb_value: float) -> str:
     return f"{(rgb_value / 255.0) * 100:.1f}%"
 
+
+BLACK_POINT_THRESHOLD = 1.0
+
+
+def black_point_label(measurement: dict | None) -> str:
+    if not measurement:
+        return t("detail.black_point.unavailable", "Not available")
+    value = calculate_black_point_mm(measurement, thickness, threshold=BLACK_POINT_THRESHOLD)
+    if value is None:
+        return t("detail.black_point.not_reached", "Not reached")
+    return f"{value:.1f} mm"
+
 # ---------------------------------------------------------------------------
 # Navigation — glass_id from query param (?cat_id=001122) or session state
 # ---------------------------------------------------------------------------
@@ -358,12 +543,6 @@ if not glass_id:
         )
     )
     st.stop()
-
-# On first load via URL, Streamlit needs one rerun to fully resolve
-# image paths and render all components correctly.
-if not st.session_state.get("_detail_loaded"):
-    st.session_state["_detail_loaded"] = True
-    st.rerun()
 
 # ---------------------------------------------------------------------------
 # Load data
@@ -400,6 +579,8 @@ pdf_bytes = build_glass_detail_pdf(
     meas_t=meas_t,
     reflected_image=reflected_full_image,
     transmitted_image=transmitted_full_image,
+    include_depth=True,
+    depth_threshold=BLACK_POINT_THRESHOLD,
 )
 
 color_name = (catalog.get("color_name") or "").strip()
@@ -417,7 +598,7 @@ detail_return_label = (
 # ---------------------------------------------------------------------------
 # Page header
 # ---------------------------------------------------------------------------
-col_back, col_title, col_print = st.columns([0.16, 0.74, 0.10])
+col_back, col_title, col_print = st.columns([0.12, 0.72, 0.16])
 with col_back:
     st.markdown("&nbsp;", unsafe_allow_html=True)
     if st.button(f"\u2190 {detail_return_label}", key="detail_back", width="content"):
@@ -425,7 +606,7 @@ with col_back:
         if not switch_to_page(target):
             st.warning(t("detail.messages.return_failed", "Could not return to the previous page."))
 with col_title:
-    st.title(f"{glass_id}  {color_name}")
+    st.html(f'<div class="glass-detail-title"><h1>{html.escape(str(glass_id))}  {html.escape(color_name)}</h1></div>')
 
     # Build contains/reacts lists
     contains = []
@@ -664,21 +845,29 @@ def render_light_overview(
     *,
     show_thickness: bool,
 ) -> None:
-    table_col, image_col, note_col = st.columns([0.4, 0.2, 0.4])
-    with table_col:
+    with st.container(border=True):
         st.markdown(f"#### {title}")
+        render_sample_image(image_path, width=320)
+        if show_thickness:
+            st.markdown(t("detail.messages.thickness_ref", "**Thickness (ref):** {thickness} mm", thickness=thickness))
         if measurement:
+            st.markdown(
+                t(
+                    "detail.black_point.label",
+                    "**Black point:** {value}",
+                    value=black_point_label(measurement),
+                )
+            )
+            st.caption(
+                t(
+                    "detail.black_point.caption",
+                    "Depth where all RGB channels attenuate to {threshold:g} or lower on the 0-255 scale.",
+                    threshold=BLACK_POINT_THRESHOLD,
+                )
+            )
             measurement_table(measurement)
         else:
             st.write(missing_message)
-    with image_col:
-        if image_path:
-            st.image(str(image_path), width=300)
-        elif MISSING_FULL.exists():
-            st.image(str(MISSING_FULL), width=300)
-    with note_col:
-        if show_thickness:
-            st.markdown(t("detail.messages.thickness_ref", "**Thickness (ref):** {thickness} mm", thickness=thickness))
 
 
 def render_optical_response_caption() -> None:
@@ -698,6 +887,8 @@ def render_curve_tables(
     measurement: dict,
     color_shift_title: str,
     brightness_title: str,
+    *,
+    show_tables: bool = False,
 ) -> None:
     st.markdown(f"#### {section_title}")
     chart_col, bs_col = st.columns(2)
@@ -706,41 +897,171 @@ def render_curve_tables(
             rgb_curve_figure(measurement, thickness, max_t, color_shift_title),
             width="stretch",
         )
-        render_html_block(color_shift_table_html(measurement, thickness, max_t, color_shift_title))
+        if show_tables:
+            render_html_block(color_shift_table_html(measurement, thickness, max_t, color_shift_title))
     with bs_col:
         st.plotly_chart(
             bs_curve_figure(measurement, thickness, max_t, brightness_title),
             width="stretch",
         )
-        render_html_block(bs_table_html(measurement, thickness, max_t, brightness_title))
+        if show_tables:
+            render_html_block(bs_table_html(measurement, thickness, max_t, brightness_title))
 
 
-render_light_overview(
-    t("detail.sections.reflected_light", "Reflected Light"),
-    t("detail.messages.no_reflected_data", "No reflected measurement data."),
-    meas_r,
-    reflected_full_image,
-    show_thickness=True,
-)
+def depth_ticks(max_depth: float) -> list[float]:
+    if max_depth <= 6:
+        step = 1.0
+    elif max_depth <= 12:
+        step = 2.0
+    elif max_depth <= 24:
+        step = 4.0
+    else:
+        step = 8.0
+    ticks = [0.0]
+    current = step
+    while current < max_depth:
+        ticks.append(current)
+        current += step
+    ticks.append(round(max_depth, 1))
+    return ticks
+
+
+def depth_pct(value: float, max_depth: float) -> float:
+    return min(100.0, max(0.0, value / max(max_depth, 0.001) * 100.0))
+
+
+def depth_gradient_css(measurement: dict, ref_thickness: float, max_depth: float) -> str:
+    stops = []
+    for idx in range(36):
+        depth = max_depth * idx / 35
+        r, g, b = rgb_at_depth(measurement, ref_thickness, depth)
+        stops.append(f"rgb({r},{g},{b}) {depth_pct(depth, max_depth):.2f}%")
+    return "linear-gradient(to bottom, " + ", ".join(stops) + ")"
+
+
+def depth_samples(measurement: dict, ref_thickness: float, max_depth: float, black_point: float | None) -> list[float]:
+    values = [0.0, ref_thickness, black_point if black_point is not None else max_depth]
+    deduped: list[float] = []
+    for value in sorted(v for v in values if v is not None):
+        if not deduped or abs(value - deduped[-1]) > 0.05:
+            deduped.append(value)
+    return deduped
+
+
+def depth_panel_html(title: str, measurement: dict | None) -> str:
+    if not measurement:
+        return ""
+    black_point = calculate_black_point_mm(measurement, thickness, threshold=BLACK_POINT_THRESHOLD)
+    max_depth = max(thickness * 4.0, (black_point or 0.0) * 1.15, thickness + 1.0)
+    black_label = t("detail.black_point.not_reached", "Not reached") if black_point is None else f"{black_point:.1f} mm"
+    gradient = depth_gradient_css(measurement, thickness, max_depth)
+    ref_top = depth_pct(thickness, max_depth)
+    black_marker = ""
+    if black_point is not None and black_point <= max_depth:
+        black_top = depth_pct(black_point, max_depth)
+        black_marker = f"""
+          <span class="glass-depth-black" style="top:{black_top:.2f}%;"></span>
+          <span class="glass-depth-label is-black" style="top:{black_top:.2f}%;">black {html.escape(black_label)}</span>
+        """
+    ticks = "".join(
+        f'<span class="glass-depth-tick" style="top:{depth_pct(tick, max_depth):.2f}%;"><span>{tick:g} mm</span></span>'
+        for tick in depth_ticks(max_depth)
+    )
+
+    rows = []
+    for depth in depth_samples(measurement, thickness, max_depth, black_point):
+        r, g, b = rgb_at_depth(measurement, thickness, depth)
+        rows.append(
+            f"""
+            <tr>
+              <td>{depth:.1f} mm</td>
+              <td>{r}</td>
+              <td>{g}</td>
+              <td>{b}</td>
+              <td><div class="glass-depth-swatch" style="background:rgb({r},{g},{b});"></div></td>
+            </tr>
+            """
+        )
+
+    return f"""
+    <div class="glass-depth-card">
+      <h4>{html.escape(title)}</h4>
+      <div class="glass-depth-summary">Black point: {html.escape(black_label)} &nbsp; | &nbsp; threshold: RGB &lt;= {BLACK_POINT_THRESHOLD:g}</div>
+      <div class="glass-depth-body">
+        <div class="glass-depth-visual">
+          <div class="glass-depth-bar" style="background:{gradient};">
+            <span class="glass-depth-ref" style="top:{ref_top:.2f}%;"></span>
+            {black_marker}
+          </div>
+          <div class="glass-depth-axis">
+            {ticks}
+            <span class="glass-depth-label" style="top:{ref_top:.2f}%;">ref {thickness:.1f} mm</span>
+          </div>
+        </div>
+        <table class="glass-depth-table">
+          <thead>
+            <tr><th>Depth</th><th>R</th><th>G</th><th>B</th><th>Color</th></tr>
+          </thead>
+          <tbody>{''.join(rows)}</tbody>
+        </table>
+      </div>
+    </div>
+    """
+
+
+def render_depth_detail() -> None:
+    panels = [
+        depth_panel_html(t("detail.sections.reflected_light", "Reflected Light"), meas_r),
+        depth_panel_html(t("detail.sections.transmitted_light", "Transmitted Light"), meas_t),
+    ]
+    body = "".join(panel for panel in panels if panel)
+    if not body:
+        return
+    st.markdown(f"### {t('detail.sections.glass_depth_side_view', 'Glass Depth Side View')}")
+    st.html(
+        f"""
+        <div class="glass-depth-report">
+          <p class="glass-depth-intro">
+            {html.escape(t(
+                'detail.depth.intro',
+                'Black point is calculated where all RGB channels attenuate to {threshold:g} or lower on the 0-255 scale using Beer-Lambert extrapolation from the reference measurement.',
+                threshold=BLACK_POINT_THRESHOLD,
+            ))}
+          </p>
+          {body}
+        </div>
+        """
+    )
+
+
+top_col1, top_col2 = st.columns(2)
+with top_col1:
+    render_light_overview(
+        t("detail.sections.reflected_light", "Reflected Light"),
+        t("detail.messages.no_reflected_data", "No reflected measurement data."),
+        meas_r,
+        reflected_full_image,
+        show_thickness=True,
+    )
+with top_col2:
+    render_light_overview(
+        t("detail.sections.transmitted_light", "Transmitted Light"),
+        t("detail.messages.no_transmitted_data", "No transmitted measurement data."),
+        meas_t,
+        transmitted_full_image,
+        show_thickness=True,
+    )
+
+if meas_r or meas_t:
+    render_optical_response_caption()
 
 if meas_r:
-    render_optical_response_caption()
     render_curve_tables(
         t("detail.sections.reflected", "Reflected"),
         meas_r,
         t("detail.figure.color_shift.reflected", "Reflected Color Shift"),
         t("detail.figure.bs.reflected", "Reflected Brightness & Saturation"),
     )
-
-st.divider()
-
-render_light_overview(
-    t("detail.sections.transmitted_light", "Transmitted Light"),
-    t("detail.messages.no_transmitted_data", "No transmitted measurement data."),
-    meas_t,
-    transmitted_full_image,
-    show_thickness=False,
-)
 
 if meas_t:
     render_curve_tables(
@@ -771,3 +1092,6 @@ with notes_col2:
         st.markdown(f"### {t('shared.sections.working_notes', 'Working Notes')}")
         work_height = min(max(100, len(work) // 2), 1000)
         render_html_block(note_markup(work), max_height=work_height)
+
+st.divider()
+render_depth_detail()

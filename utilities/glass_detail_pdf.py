@@ -43,6 +43,8 @@ def build_glass_detail_pdf(
     meas_t: dict,
     reflected_image: Path | None,
     transmitted_image: Path | None,
+    include_depth: bool = False,
+    depth_threshold: float = 1.0,
 ) -> bytes:
     title_font = _load_font(42, bold=True)
     meta_font = _load_font(22)
@@ -157,11 +159,153 @@ def build_glass_detail_pdf(
         y += 18
 
     pages.append(page)
+    if include_depth:
+        pages.extend(
+            _build_glass_depth_pages(
+                glass_id,
+                color_name,
+                family_name,
+                thickness_mm,
+                meas_r,
+                meas_t,
+                threshold=depth_threshold,
+            )
+        )
 
     buffer = io.BytesIO()
     first, *rest = pages
     first.save(buffer, format="PDF", save_all=True, append_images=rest, resolution=200.0)
     return buffer.getvalue()
+
+
+def calculate_black_point_mm(
+    meas: dict,
+    ref_thickness: float,
+    *,
+    threshold: float = 1.0,
+) -> float | None:
+    """Depth where every RGB channel has attenuated to threshold or lower."""
+    rt = max(float(ref_thickness), 0.01)
+    threshold = max(float(threshold), 0.001)
+    crossings: list[float] = []
+    for channel in ("R", "G", "B"):
+        value = max(float(_safe_int(meas.get(channel))), threshold)
+        if value <= threshold:
+            crossings.append(rt)
+            continue
+        if value >= 255.0:
+            return None
+        alpha = -math.log(value / 255.0) / rt
+        if alpha <= 0:
+            return None
+        crossings.append(math.log(255.0 / threshold) / alpha)
+    if not crossings:
+        return None
+    return max(crossings)
+
+
+def rgb_at_depth(meas: dict, ref_thickness: float, depth: float) -> tuple[int, int, int]:
+    rgb = []
+    for channel in ("R", "G", "B"):
+        values_t, values = _beer_lambert_curve(_safe_int(meas.get(channel)), ref_thickness, max(depth, 0.001), points=2)
+        rgb.append(int(round(values[-1])))
+    return tuple(max(0, min(255, value)) for value in rgb)
+
+
+def build_glass_depth_pdf(
+    glass_id: str,
+    color_name: str,
+    family_name: str,
+    thickness_mm: float,
+    meas_r: dict,
+    meas_t: dict,
+    *,
+    threshold: float = 1.0,
+) -> bytes:
+    pages = _build_glass_depth_pages(
+        glass_id,
+        color_name,
+        family_name,
+        thickness_mm,
+        meas_r,
+        meas_t,
+        threshold=threshold,
+    )
+
+    buffer = io.BytesIO()
+    first, *rest = pages
+    first.save(buffer, format="PDF", save_all=True, append_images=rest, resolution=200.0)
+    return buffer.getvalue()
+
+
+def _build_glass_depth_pages(
+    glass_id: str,
+    color_name: str,
+    family_name: str,
+    thickness_mm: float,
+    meas_r: dict,
+    meas_t: dict,
+    *,
+    threshold: float,
+) -> list[Image.Image]:
+    title_font = _load_font(42, bold=True)
+    meta_font = _load_font(22)
+    section_font = _load_font(26, bold=True)
+    body_font = _load_font(20)
+    small_font = _load_font(17)
+
+    page, draw = _new_page()
+    y = MARGIN
+
+    title = f"{glass_id}  {color_name}".strip()
+    draw.text((MARGIN, y), title, fill=BLACK, font=title_font)
+    y += _text_height(draw, title, title_font) + 12
+
+    meta = f"Glass depth side view  |  Family: {family_name}  |  Reference thickness: {thickness_mm:.1f} mm"
+    draw.text((MARGIN, y), meta, fill=MUTED, font=meta_font)
+    y += _text_height(draw, meta, meta_font) + 24
+
+    intro = (
+        f"Black point is calculated where all RGB channels attenuate to {threshold:g} or lower "
+        "on the 0-255 scale using Beer-Lambert extrapolation from the reference measurement."
+    )
+    for line in _wrap_text(draw, intro, body_font, CONTENT_WIDTH):
+        draw.text((MARGIN, y), line, fill=BLACK, font=body_font)
+        y += _text_height(draw, line, body_font) + 8
+    y += 18
+
+    panels: list[tuple[str, dict]] = []
+    if meas_r:
+        panels.append(("Reflected Light", meas_r))
+    if meas_t:
+        panels.append(("Transmitted Light", meas_t))
+
+    pages: list[Image.Image] = []
+    for title, meas in panels:
+        black_point = calculate_black_point_mm(meas, thickness_mm, threshold=threshold)
+        max_depth = max(thickness_mm * 4.0, (black_point or 0.0) * 1.15, thickness_mm + 1.0)
+        needed = 590
+        if y + needed > PAGE_HEIGHT - MARGIN:
+            pages.append(page)
+            page, draw = _new_page()
+            y = MARGIN
+        y = _draw_depth_panel(
+            draw,
+            y,
+            title,
+            meas,
+            thickness_mm,
+            max_depth,
+            black_point,
+            threshold,
+            section_font,
+            body_font,
+            small_font,
+        )
+        y += 30
+
+    pages.append(page)
+    return pages
 
 
 def _new_page() -> tuple[Image.Image, ImageDraw.ImageDraw]:
@@ -622,6 +766,166 @@ def _draw_chart_panel(
             for t_val, val in zip(item["t"], item["values"])
         ]
         draw.line(points, fill=item["color"], width=3)
+
+
+def _draw_depth_panel(
+    draw: ImageDraw.ImageDraw,
+    y: int,
+    title: str,
+    meas: dict,
+    ref_thickness: float,
+    max_depth: float,
+    black_point: float | None,
+    threshold: float,
+    title_font: ImageFont.ImageFont,
+    body_font: ImageFont.ImageFont,
+    small_font: ImageFont.ImageFont,
+) -> int:
+    panel_height = 560
+    x = MARGIN
+    width = CONTENT_WIDTH
+    draw.rounded_rectangle((x, y, x + width, y + panel_height), radius=10, outline=GRID, width=1, fill=PANEL_BG)
+    draw.text((x + 18, y + 16), title, fill=BLACK, font=title_font)
+
+    bp_label = "not reached in modeled range" if black_point is None else f"{black_point:.1f} mm"
+    summary = f"Black point: {bp_label}  |  threshold: RGB <= {threshold:g}"
+    draw.text((x + 18, y + 54), summary, fill=BLACK, font=body_font)
+
+    bar_x = x + 56
+    bar_y = y + 104
+    bar_w = 96
+    bar_h = 360
+    steps = max(120, bar_h)
+    for idx in range(steps):
+        depth = max_depth * idx / max(steps - 1, 1)
+        colour = rgb_at_depth(meas, ref_thickness, depth)
+        py0 = bar_y + int(idx * bar_h / steps)
+        py1 = bar_y + int((idx + 1) * bar_h / steps) + 1
+        draw.rectangle((bar_x, py0, bar_x + bar_w, py1), fill=colour)
+    footer_h = 42
+    draw.rectangle((bar_x, bar_y + bar_h - footer_h, bar_x + bar_w, bar_y + bar_h), fill=(20, 20, 20))
+    draw.rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), outline=SWATCH_BORDER, width=2)
+
+    axis_x = bar_x + bar_w + 28
+    draw.line((axis_x, bar_y, axis_x, bar_y + bar_h), fill=MUTED, width=2)
+    for tick in _depth_ticks(max_depth):
+        ty = _map_y_depth(tick, bar_y, bar_y + bar_h, max_depth)
+        draw.line((axis_x - 8, ty, axis_x + 8, ty), fill=MUTED, width=2)
+        label = f"{tick:g} mm"
+        draw.text((axis_x + 16, ty - 9), label, fill=MUTED, font=small_font)
+
+    ref_y = _map_y_depth(ref_thickness, bar_y, bar_y + bar_h, max_depth)
+    _draw_dashed_hline(draw, bar_x - 14, axis_x + 10, ref_y, (70, 70, 70))
+    ref_label = f"ref {ref_thickness:.1f} mm"
+    depth_label_x = axis_x + 78
+    draw.text((depth_label_x, ref_y - 9), ref_label, fill=MUTED, font=small_font)
+
+    if black_point is not None and black_point <= max_depth:
+        bp_y = _map_y_depth(black_point, bar_y, bar_y + bar_h, max_depth)
+        draw.line((bar_x - 18, bp_y, axis_x + 10, bp_y), fill=(210, 40, 40), width=4)
+        label = f"black {black_point:.1f} mm"
+        draw.text((depth_label_x, bp_y - 9), label, fill=(160, 20, 20), font=small_font)
+
+    table_x = x + 390
+    table_y = y + 126
+    _draw_depth_samples_table(draw, table_x, table_y, width - 420, meas, ref_thickness, max_depth, black_point, body_font, small_font)
+    return y + panel_height
+
+
+def _depth_ticks(max_depth: float) -> list[float]:
+    if max_depth <= 6:
+        step = 1.0
+    elif max_depth <= 12:
+        step = 2.0
+    elif max_depth <= 24:
+        step = 4.0
+    else:
+        step = 8.0
+    ticks = [0.0]
+    current = step
+    while current < max_depth:
+        ticks.append(current)
+        current += step
+    ticks.append(round(max_depth, 1))
+    return ticks
+
+
+def _map_y_depth(value: float, top: int, bottom: int, max_depth: float) -> int:
+    if max_depth <= 0:
+        return top
+    return int(top + ((value / max_depth) * (bottom - top)))
+
+
+def _draw_dashed_hline(draw: ImageDraw.ImageDraw, left: int, right: int, y: int, colour: tuple[int, int, int]) -> None:
+    dash = 10
+    gap = 6
+    current = left
+    while current < right:
+        end = min(current + dash, right)
+        draw.line((current, y, end, y), fill=colour, width=2)
+        current = end + gap
+
+
+def _draw_depth_samples_table(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    width: int,
+    meas: dict,
+    ref_thickness: float,
+    max_depth: float,
+    black_point: float | None,
+    body_font: ImageFont.ImageFont,
+    small_font: ImageFont.ImageFont,
+) -> None:
+    sample_depths = [0.0, ref_thickness]
+    if black_point is not None:
+        sample_depths.append(black_point)
+    else:
+        sample_depths.append(max_depth)
+    deduped: list[float] = []
+    for depth in sorted(sample_depths):
+        if not deduped or abs(depth - deduped[-1]) > 0.05:
+            deduped.append(depth)
+
+    col_widths = [150, 160, 160, 160, width - 630]
+    row_h = 38
+    headers = ["Depth", "R", "G", "B", "Color"]
+    cursor_x = x
+    for idx, header in enumerate(headers):
+        draw.rectangle((cursor_x, y, cursor_x + col_widths[idx], y + row_h), fill=(78, 78, 78), outline=GRID, width=1)
+        draw.text(
+            (
+                cursor_x + (col_widths[idx] - _text_width(draw, header, body_font)) / 2,
+                y + (row_h - _text_height(draw, header, body_font)) / 2 - 1,
+            ),
+            header,
+            fill=WHITE,
+            font=body_font,
+        )
+        cursor_x += col_widths[idx]
+
+    row_y = y + row_h
+    for row_idx, depth in enumerate(deduped):
+        fill = WHITE if row_idx % 2 else SECTION_BG
+        rgb = rgb_at_depth(meas, ref_thickness, depth)
+        values = [f"{depth:.1f} mm", str(rgb[0]), str(rgb[1]), str(rgb[2]), ""]
+        cursor_x = x
+        for idx, value in enumerate(values):
+            draw.rectangle((cursor_x, row_y, cursor_x + col_widths[idx], row_y + row_h), fill=fill, outline=GRID, width=1)
+            if idx == 4:
+                swatch_w = min(110, col_widths[idx] - 24)
+                draw.rounded_rectangle(
+                    (cursor_x + 12, row_y + 8, cursor_x + 12 + swatch_w, row_y + row_h - 8),
+                    radius=4,
+                    fill=rgb,
+                    outline=SWATCH_BORDER,
+                    width=1,
+                )
+            else:
+                _draw_centered_text(draw, cursor_x, row_y, col_widths[idx], row_h, value, small_font)
+            cursor_x += col_widths[idx]
+        row_y += row_h
 
 
 def _map_x(value: float, left: int, right: int, x_max: float) -> int:

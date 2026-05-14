@@ -14,16 +14,15 @@ from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 from i18n import format_date, format_datetime, render_app_sidebar, t
 
 # ─────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────
-st.set_page_config(page_title=t("worksheet.title", "Mold Worksheet"), layout="wide")
+st.set_page_config(page_title=t("worksheet.title", "Cameo Mold Worksheet"), layout="wide")
 render_app_sidebar()
-st.title(t("worksheet.title", "Mold Worksheet"))
+st.title(t("worksheet.title", "Cameo Mold Worksheet"))
 st.caption(
     t(
         "worksheet.caption",
@@ -400,7 +399,7 @@ def build_print_export(
     header_rows: list[tuple[str, str, str, str]] | None = None,
 ) -> str:
     """Create a compact browser-printable HTML worksheet."""
-    safe_title = html.escape(title.strip() or t("worksheet.title", "Mold Worksheet"))
+    safe_title = html.escape(title.strip() or t("worksheet.title", "Cameo Mold Worksheet"))
     if hasattr(job_date, "isoformat"):
         safe_date = html.escape(format_date(job_date.isoformat()))
     else:
@@ -434,7 +433,7 @@ def build_print_export(
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>{safe_title} - Mold Worksheet</title>
+<title>{safe_title} - Cameo Mold Worksheet</title>
 <style>
   @page {{
     size: letter portrait;
@@ -611,7 +610,7 @@ def build_batch_sheet_pdf(
 
     y = margin
     if header_rows:
-        safe_title = title.strip() or t("worksheet.title", "Mold Worksheet")
+        safe_title = title.strip() or t("worksheet.title", "Cameo Mold Worksheet")
         date_text = format_date(job_date.isoformat() if hasattr(job_date, "isoformat") else str(job_date))
         header_bg = rgb("#f8fafc")
         header_border = rgb("#64748b")
@@ -750,7 +749,7 @@ def render_batch_sheet_actions(
         if enabled
         else ""
     )
-    components.html(
+    st.iframe(
         f"""
         <button
             type="button"
@@ -1092,6 +1091,10 @@ with output_col:
             t(
                 "worksheet.formulas.body",
                 """
+**Metric Volume / Water Equivalence**
+
+All length, weight, and volume measurements in this worksheet use metric units. For water, 1 cm³ = 1 ml = 1 g. Example: a container interior measuring 20 x 20 x 2.5 cm has a volume of 1000 cm³, holds 1000 ml of water, and contains 1000 g of water.
+
 **Duplicate Volume**
 
 | Item | Formula |
@@ -1155,7 +1158,7 @@ After set, let the mold sit at least 1 hour before pattern removal. For curing a
     card(mold_box_title, mold_box_rows, bg="#f8fafc", border="#64748b", label_color="#475569", value_color="#0f172a")
 
     mold_type = st.session_state["ws_mold_type"]
-    report_title = st.session_state["ws_title"].strip() or t("worksheet.title", "Mold Worksheet")
+    report_title = st.session_state["ws_title"].strip() or t("worksheet.title", "Cameo Mold Worksheet")
     dimensions_text = f"{w:.1f} x {d:.1f} x {p['max_z']} mm"
     workflow_label = mold_type_label(mold_type)
 

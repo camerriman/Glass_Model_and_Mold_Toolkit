@@ -1009,10 +1009,12 @@ def render_optical_detail(
         st.plotly_chart(
             rgb_curve_figure(row_r, thickness, max_thickness, t("detail.figure.color_shift.reflected", "Reflected Color Shift")),
             config={"displaylogo": False},
+            key=f"compare_detail_{glass_id}_reflected_rgb",
         )
         st.plotly_chart(
             bs_curve_figure(row_r, thickness, max_thickness, t("detail.figure.bs.reflected", "Reflected Brightness & Saturation")),
             config={"displaylogo": False},
+            key=f"compare_detail_{glass_id}_reflected_bs",
         )
     if row_t is not None:
         transmitted_icon = first_existing_icon(glass_id, prefix, "T")
@@ -1024,10 +1026,12 @@ def render_optical_detail(
         st.plotly_chart(
             rgb_curve_figure(row_t, thickness, max_thickness, t("detail.figure.color_shift.transmitted", "Transmitted Color Shift")),
             config={"displaylogo": False},
+            key=f"compare_detail_{glass_id}_transmitted_rgb",
         )
         st.plotly_chart(
             bs_curve_figure(row_t, thickness, max_thickness, t("detail.figure.bs.transmitted", "Transmitted Brightness & Saturation")),
             config={"displaylogo": False},
+            key=f"compare_detail_{glass_id}_transmitted_bs",
         )
 
 
@@ -1146,8 +1150,16 @@ def render_differences(
                     t("compare.figure.bs_overlay_reflected", "Reflected Brightness & Saturation Overlay"),
                 )
                 if reflected_rgb is not None:
-                    st.plotly_chart(reflected_rgb, config={"displaylogo": False})
-                    st.plotly_chart(reflected_bs, config={"displaylogo": False})
+                    st.plotly_chart(
+                        reflected_rgb,
+                        config={"displaylogo": False},
+                        key=f"compare_overlay_{reference_id}_{glass_id}_reflected_rgb",
+                    )
+                    st.plotly_chart(
+                        reflected_bs,
+                        config={"displaylogo": False},
+                        key=f"compare_overlay_{reference_id}_{glass_id}_reflected_bs",
+                    )
                 else:
                     st.caption(t("compare.messages.no_reflected_overlay", "No reflected overlay data available."))
 
@@ -1164,8 +1176,16 @@ def render_differences(
                     t("compare.figure.bs_overlay_transmitted", "Transmitted Brightness & Saturation Overlay"),
                 )
                 if transmitted_rgb is not None:
-                    st.plotly_chart(transmitted_rgb, config={"displaylogo": False})
-                    st.plotly_chart(transmitted_bs, config={"displaylogo": False})
+                    st.plotly_chart(
+                        transmitted_rgb,
+                        config={"displaylogo": False},
+                        key=f"compare_overlay_{reference_id}_{glass_id}_transmitted_rgb",
+                    )
+                    st.plotly_chart(
+                        transmitted_bs,
+                        config={"displaylogo": False},
+                        key=f"compare_overlay_{reference_id}_{glass_id}_transmitted_bs",
+                    )
                 else:
                     st.caption(t("compare.messages.no_transmitted_overlay", "No transmitted overlay data available."))
 

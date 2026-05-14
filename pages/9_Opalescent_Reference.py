@@ -51,6 +51,27 @@ REACTION_COLS = {
     "au": set(),
 }
 
+SORT_OPTIONS = [
+    ("cat_id", "Product ID"),
+    ("color_name", "Color name"),
+    ("r", "R value"),
+    ("g", "G value"),
+    ("b", "B value"),
+    ("h", "Hue (H)"),
+    ("s", "Saturation (S)"),
+    ("v", "Brightness (HSB B)"),
+    ("is_striker", "Striker"),
+    ("se", "Selenium (Se)"),
+    ("su", "Sulfur (S)"),
+    ("cu", "Copper (Cu)"),
+    ("pb", "Lead (Pb)"),
+    ("ag", "Silver (Ag)"),
+    ("au", "Gold (Au)"),
+]
+
+NUMERIC_SORT_FIELDS = {"r", "g", "b", "h", "s", "v"}
+FLAG_SORT_FIELDS = {"is_striker", "se", "su", "cu", "pb", "ag", "au"}
+
 st.set_page_config(page_title=tr("page.reference.return_label", "{family} Reference", family=FAMILY_DISPLAY), layout="wide")
 render_app_sidebar()
 
@@ -439,6 +460,41 @@ def val_or_dash(x) -> str:
     return str(safe_int(x))
 
 
+def sort_field_label(value: str) -> str:
+    return dict(SORT_OPTIONS).get(value, value)
+
+
+def sort_reference_rows(rows: pd.DataFrame, sort_field: str, value_mode: str, ascending: bool) -> pd.DataFrame:
+    sorted_rows = rows.copy()
+    if sort_field in NUMERIC_SORT_FIELDS:
+        sort_col = f"{sort_field}_{'t' if value_mode == 'T' else 'r'}"
+        sorted_rows["_sort_value"] = pd.to_numeric(sorted_rows[sort_col], errors="coerce")
+        return sorted_rows.sort_values(
+            ["_sort_value", "cat_id"],
+            ascending=[ascending, True],
+            na_position="last",
+            kind="mergesort",
+        ).drop(columns=["_sort_value"])
+
+    if sort_field in FLAG_SORT_FIELDS:
+        sorted_rows["_sort_value"] = sorted_rows[sort_field].map(lambda value: safe_int(value, 0))
+        return sorted_rows.sort_values(
+            ["_sort_value", "cat_id"],
+            ascending=[ascending, True],
+            kind="mergesort",
+        ).drop(columns=["_sort_value"])
+
+    if sort_field == "color_name":
+        sorted_rows["_sort_value"] = sorted_rows["color_name"].fillna("").astype(str).str.lower()
+        return sorted_rows.sort_values(
+            ["_sort_value", "cat_id"],
+            ascending=[ascending, True],
+            kind="mergesort",
+        ).drop(columns=["_sort_value"])
+
+    return sorted_rows.sort_values("cat_id", ascending=ascending, kind="mergesort")
+
+
 def detail_href(cat_id: str) -> str:
     return (
         f"{DETAIL_PAGE_URL}?"
@@ -592,7 +648,7 @@ def print_button_html(root_id: str, title: str, meta: str) -> str:
 hdr_col, print_col = st.columns([0.9, 0.1])
 with hdr_col:
     st.title(tr("page.reference.title", "{family} Glass Reference", family=FAMILY_DISPLAY))
-    st.caption(tr("page.reference.caption", "Transmitted (T) and Reflected (R) | Sorted by catalog number"))
+    st.caption(tr("page.reference.caption", "Transmitted (T) and Reflected (R) reference values"))
 print_slot = print_col.empty()
 
 st.divider()
@@ -610,6 +666,34 @@ else:
         thickness_val = str(round(float(thickness_series.iloc[0]), 1))
 
     st.caption(tr("page.reference.summary", "{count} glasses | reference thickness {thickness} mm", count=len(subset), thickness=thickness_val))
+
+    sort_col, value_mode_col, direction_col = st.columns([0.46, 0.30, 0.24])
+    with sort_col:
+        sort_field = st.selectbox(
+            tr("page.reference.sort.field", "Sort by"),
+            [value for value, _ in SORT_OPTIONS],
+            index=0,
+            format_func=sort_field_label,
+        )
+    with value_mode_col:
+        value_mode = st.segmented_control(
+            tr("page.reference.sort.measurement", "Measurement values"),
+            options=["T", "R"],
+            default="T",
+            format_func=lambda value: tr("shared.mode.transmitted", "Transmitted") if value == "T" else tr("shared.mode.reflected", "Reflected"),
+            disabled=sort_field not in NUMERIC_SORT_FIELDS,
+        )
+        value_mode = value_mode or "T"
+    with direction_col:
+        sort_direction = st.segmented_control(
+            tr("page.reference.sort.direction", "Direction"),
+            options=["asc", "desc"],
+            default="asc",
+            format_func=lambda value: tr("shared.sort.ascending", "Ascending") if value == "asc" else tr("shared.sort.descending", "Descending"),
+        )
+        sort_direction = sort_direction or "asc"
+
+    subset = sort_reference_rows(subset, sort_field, value_mode, sort_direction == "asc")
 
     # Legend
     el_legend_items = "".join(
