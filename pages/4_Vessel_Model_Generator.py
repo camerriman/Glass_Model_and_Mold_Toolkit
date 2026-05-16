@@ -52,6 +52,12 @@ def init_vessel_db():
                 cross_section     TEXT,
                 oval_x_scale      REAL,
                 oval_y_scale      REAL,
+                add_base_border   INTEGER,
+                base_z            REAL,
+                demold_cut_enabled INTEGER,
+                demold_cut_radius REAL,
+                demold_cut_apply  TEXT,
+                demold_cut_shape  TEXT,
                 n_mid             INTEGER,
                 midpoints_json    TEXT,
                 wall_mm           REAL,
@@ -85,6 +91,12 @@ def init_vessel_db():
             ("cross_section", "TEXT", "'Circle'"),
             ("oval_x_scale", "REAL", "1.0"),
             ("oval_y_scale", "REAL", "1.0"),
+            ("add_base_border", "INTEGER", "0"),
+            ("base_z", "REAL", "0.0"),
+            ("demold_cut_enabled", "INTEGER", "0"),
+            ("demold_cut_radius", "REAL", "0.0"),
+            ("demold_cut_apply", "TEXT", "'Base transition'"),
+            ("demold_cut_shape", "TEXT", "'Match vessel cross-section'"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE vessel_setups ADD COLUMN {col} {col_type} DEFAULT {dflt}")
@@ -98,12 +110,16 @@ def save_vessel_record(rec: dict) -> int:
         cur = conn.execute(
             """
             INSERT INTO vessel_setups
-                (title, job_date, created_at, base_r, top_r, height, cross_section, oval_x_scale, oval_y_scale, n_mid, midpoints_json,
+                (title, job_date, created_at, base_r, top_r, height, cross_section, oval_x_scale, oval_y_scale,
+                 add_base_border, base_z, demold_cut_enabled, demold_cut_radius, demold_cut_apply, demold_cut_shape,
+                 n_mid, midpoints_json,
                  wall_mm, displacement, placement, invert_relief, tone_mapping, image_orientation, fit_mode, tile_enabled, tile_count, mirror_tiles,
                  add_lip, lip_radius, n_lip, quality, override, ov_theta, ov_z,
                  source_image_name, notes)
             VALUES
-                (:title, :job_date, :created_at, :base_r, :top_r, :height, :cross_section, :oval_x_scale, :oval_y_scale, :n_mid, :midpoints_json,
+                (:title, :job_date, :created_at, :base_r, :top_r, :height, :cross_section, :oval_x_scale, :oval_y_scale,
+                 :add_base_border, :base_z, :demold_cut_enabled, :demold_cut_radius, :demold_cut_apply, :demold_cut_shape,
+                 :n_mid, :midpoints_json,
                  :wall_mm, :displacement, :placement, :invert_relief, :tone_mapping, :image_orientation, :fit_mode, :tile_enabled, :tile_count, :mirror_tiles,
                  :add_lip, :lip_radius, :n_lip, :quality, :override, :ov_theta, :ov_z,
                  :source_image_name, :notes)
@@ -121,6 +137,9 @@ def update_vessel_record(record_id: int, rec: dict) -> None:
             UPDATE vessel_setups SET
                 title=:title, job_date=:job_date, base_r=:base_r, top_r=:top_r, height=:height,
                 cross_section=:cross_section, oval_x_scale=:oval_x_scale, oval_y_scale=:oval_y_scale,
+                add_base_border=:add_base_border, base_z=:base_z,
+                demold_cut_enabled=:demold_cut_enabled, demold_cut_radius=:demold_cut_radius,
+                demold_cut_apply=:demold_cut_apply, demold_cut_shape=:demold_cut_shape,
                 n_mid=:n_mid, midpoints_json=:midpoints_json, wall_mm=:wall_mm,
                 displacement=:displacement, placement=:placement, invert_relief=:invert_relief,
                 tone_mapping=:tone_mapping, image_orientation=:image_orientation, fit_mode=:fit_mode,
@@ -187,7 +206,15 @@ def format_vessel_settings(settings: dict) -> str:
         f"Oval depth scale: {settings['oval_y_scale']:.2f}",
         f"Base radius (mm): {settings['base_r']:.1f}",
         f"Top radius (mm): {settings['top_r']:.1f}",
-        f"Height (mm): {settings['height']:.1f}",
+        f"Profile height (mm): {settings['height']:.1f}",
+        f"Base border: {'Yes' if settings['add_base_border'] else 'No'}",
+        f"Base Z (mm): {settings['base_z']:.1f}",
+        f"Output height (mm): {settings['output_height']:.1f}",
+        f"Demold clearance cut: {'Yes' if settings['demold_cut_enabled'] else 'No'}",
+        f"Demold cutter radius (mm): {settings['demold_cut_radius']:.1f}",
+        f"Demold cutter diameter (mm): {settings['demold_cut_radius'] * 2.0:.1f}",
+        f"Demold apply to: {settings['demold_cut_apply']}",
+        f"Demold cutter shape: {settings['demold_cut_shape']}",
         "",
         "Midpoints",
     ]
@@ -298,6 +325,25 @@ def build_profile(base_r, top_r, height, midpoints):
     return CubicSpline(zs_clean, rs_clean, bc_type="clamped")
 
 
+def add_base_border_to_profile(profile_fn, base_r: float, profile_height: float, base_z: float):
+    """Return a profile function with a smooth vertical base section below the vessel."""
+    base_z = float(max(0.0, base_z))
+    profile_height = float(profile_height)
+    base_r = float(base_r)
+    if base_z <= 0.0:
+        return profile_fn
+
+    def profile_with_border(z):
+        z_np = np.asarray(z, dtype=np.float64)
+        shifted = np.clip(z_np - base_z, 0.0, profile_height)
+        radius = np.where(z_np < base_z, base_r, profile_fn(shifted))
+        if np.isscalar(z):
+            return float(radius)
+        return radius
+
+    return profile_with_border
+
+
 def estimate_internal_bore_volume_mm3(
     profile_fn,
     height,
@@ -309,6 +355,11 @@ def estimate_internal_bore_volume_mm3(
     heightmap=None,
     oval_x_scale=1.0,
     oval_y_scale=1.0,
+    base_z=0.0,
+    demold_cut_enabled=False,
+    demold_cut_radius=0.0,
+    demold_cut_apply="Base transition",
+    demold_cut_shape="Match vessel cross-section",
 ):
     """
     Estimate open bore volume in mm^3 from bottom to top.
@@ -317,6 +368,9 @@ def estimate_internal_bore_volume_mm3(
     """
     z_arr = np.linspace(0.0, float(height), int(n_z), dtype=np.float64)
     r_base = np.clip(profile_fn(z_arr), 1.0, None).astype(np.float64)
+    base_z = float(max(0.0, base_z))
+    demold_cut_enabled = bool(demold_cut_enabled)
+    demold_cut_radius = float(max(0.0, demold_cut_radius))
 
     if placement == "inside" and heightmap is not None:
         hmap = np.asarray(heightmap, dtype=np.float64)
@@ -324,6 +378,23 @@ def estimate_internal_bore_volume_mm3(
             1.0,
             r_base[:, None] - hmap * float(displacement),
         )
+        if demold_cut_enabled and demold_cut_radius > 0:
+            if demold_cut_apply == "Full height":
+                cut_mask = np.ones_like(z_arr, dtype=bool)
+            elif demold_cut_apply == "Base border only":
+                cut_mask = z_arr < base_z
+            else:
+                meets = np.where(r_base >= demold_cut_radius)[0]
+                transition_cut_top_z = float(z_arr[meets[0]]) if len(meets) else float(height)
+                cut_mask = z_arr <= max(base_z, transition_cut_top_z)
+
+            if demold_cut_shape == "Circular cutter":
+                theta = np.linspace(0, 2 * np.pi, inner_r.shape[1], endpoint=False)
+                scale = np.sqrt((float(oval_x_scale) * np.cos(theta)) ** 2 + (float(oval_y_scale) * np.sin(theta)) ** 2)
+                cutter = demold_cut_radius / np.maximum(scale, 1e-6)
+            else:
+                cutter = np.full(inner_r.shape[1], demold_cut_radius, dtype=np.float64)
+            inner_r[cut_mask, :] = np.maximum(inner_r[cut_mask, :], cutter[None, :])
         area_mm2 = np.pi * np.mean(inner_r ** 2, axis=1)
     else:
         inner_r = np.maximum(1.0, r_base - float(wall_mm))
@@ -477,6 +548,27 @@ def load_heightmap_cached(
     return load_heightmap(file_bytes, n_theta, n_z, tile_count, orientation, fit_mode, mirror_tiles)
 
 
+def load_heightmap_for_output(
+    file_bytes: bytes,
+    n_theta: int,
+    profile_n_z: int,
+    base_n_z: int,
+    orientation: str,
+    fit_mode: str,
+    tile_count: int,
+    mirror_tiles: bool,
+    invert_relief: bool,
+) -> np.ndarray:
+    """Load relief for the profiled vessel area and prepend blank rows for a base border."""
+    hmap = load_heightmap_cached(file_bytes, n_theta, profile_n_z, tile_count, orientation, fit_mode, mirror_tiles)
+    if invert_relief:
+        hmap = 1.0 - hmap
+    if base_n_z > 0:
+        blank = np.zeros((int(base_n_z), int(n_theta)), dtype=np.float32)
+        hmap = np.vstack([blank, hmap])
+    return np.clip(hmap, 0.0, 1.0)
+
+
 # ─────────────────────────────────────────
 # Mesh builder
 # ─────────────────────────────────────────
@@ -494,6 +586,11 @@ def build_vase_mesh(
     n_rim=24,
     oval_x_scale=1.0,
     oval_y_scale=1.0,
+    base_z=0.0,
+    demold_cut_enabled=False,
+    demold_cut_radius=0.0,
+    demold_cut_apply="Base transition",
+    demold_cut_shape="Match vessel cross-section",
 ):
     """
     Build solid open-ended mold tube mesh.
@@ -512,9 +609,33 @@ def build_vase_mesh(
     smooth_top_radius = float(r_base[-1])
     oval_x_scale = float(oval_x_scale)
     oval_y_scale = float(oval_y_scale)
+    base_z = float(max(0.0, base_z))
+    demold_cut_enabled = bool(demold_cut_enabled)
+    demold_cut_radius = float(max(0.0, demold_cut_radius))
+    demold_cut_apply = demold_cut_apply or "Base transition"
+    demold_cut_shape = demold_cut_shape or "Match vessel cross-section"
+    transition_cut_top_z = 0.0
+    if demold_cut_enabled and demold_cut_apply == "Base transition" and demold_cut_radius > 0:
+        meets = np.where(r_base >= demold_cut_radius)[0]
+        transition_cut_top_z = float(z_arr[meets[0]]) if len(meets) else float(height)
 
     def point_from_radius(r, t, z):
         return np.array([r * oval_x_scale * np.cos(t), r * oval_y_scale * np.sin(t), z], dtype=np.float32)
+
+    def demold_radius_for_theta(t):
+        if demold_cut_shape == "Circular cutter":
+            scale = np.sqrt((oval_x_scale * np.cos(t)) ** 2 + (oval_y_scale * np.sin(t)) ** 2)
+            return demold_cut_radius / max(float(scale), 1e-6)
+        return demold_cut_radius
+
+    def demold_cut_active(iz):
+        if not demold_cut_enabled or demold_cut_radius <= 0:
+            return False
+        if demold_cut_apply == "Full height":
+            return True
+        if demold_cut_apply == "Base border only":
+            return z_arr[iz] < base_z
+        return z_arr[iz] <= max(base_z, transition_cut_top_z)
 
     tris = []
     rim_radius = float(max(0.0, rim_radius))
@@ -549,7 +670,12 @@ def build_vase_mesh(
     else:
         # Inner relief surface stays fixed. Base thickness adds outward.
         def inner_v(iz, it):
-            r = max(1.0, r_base[iz] - heightmap[iz, it % n_theta] * displacement)
+            if z_arr[iz] < base_z:
+                r = max(1.0, r_base[iz] - displacement)
+            else:
+                r = max(1.0, r_base[iz] - heightmap[iz, it % n_theta] * displacement)
+            if demold_cut_active(iz):
+                r = max(r, demold_radius_for_theta(theta[it]))
             t = theta[it]
             return point_from_radius(r, t, z_arr[iz])
 
@@ -745,10 +871,13 @@ def make_preview(tris: np.ndarray) -> go.Figure:
 # ─────────────────────────────────────────
 def make_profile_preview(profile_fn, height, wall_mm,
                          displacement, placement="outside",
-                         midpoints=None, n_z=200) -> go.Figure:
+                         midpoints=None, n_z=200, base_z=0.0, profile_height=None,
+                         demold_cut_enabled=False, demold_cut_radius=0.0,
+                         demold_cut_apply="Base transition") -> go.Figure:
     z      = np.linspace(0, height, n_z)
     r_base = np.clip(profile_fn(z), 1.0, None)
     avg_d  = displacement * 0.5   # average relief for preview
+    relief_preview = np.where(z < float(base_z), 0.0, avg_d)
 
     # Fixed reference axes match print bed: 300mm wide, 300mm tall
     # Profile scales visually within this window — axes never move
@@ -759,11 +888,22 @@ def make_profile_preview(profile_fn, height, wall_mm,
 
     if placement == "outside":
         r_inner = np.maximum(1.0, r_base - wall_mm)
-        r_outer = r_base + avg_d
+        r_outer = r_base + relief_preview
         inner_label = "Interior surface (smooth)"
         outer_label = "Exterior surface (avg relief)"
     else:
-        r_inner = np.maximum(1.0, r_base - avg_d)
+        border_relief = np.where(z < float(base_z), displacement, relief_preview)
+        r_inner = np.maximum(1.0, r_base - border_relief)
+        if demold_cut_enabled and demold_cut_radius > 0:
+            if demold_cut_apply == "Full height":
+                cut_mask = np.ones_like(z, dtype=bool)
+            elif demold_cut_apply == "Base border only":
+                cut_mask = z < float(base_z)
+            else:
+                meets = np.where(r_base >= float(demold_cut_radius))[0]
+                transition_cut_top_z = float(z[meets[0]]) if len(meets) else float(height)
+                cut_mask = z <= max(float(base_z), transition_cut_top_z)
+            r_inner = np.where(cut_mask, np.maximum(r_inner, float(demold_cut_radius)), r_inner)
         r_outer = r_base + wall_mm
         inner_label = "Interior surface (avg relief)"
         outer_label = "Exterior surface (smooth)"
@@ -787,12 +927,33 @@ def make_profile_preview(profile_fn, height, wall_mm,
     # Draw midpoint reference lines
     if midpoints:
         for i, (z_frac, r_mid) in enumerate(midpoints):
-            z_pos = z_frac * height
+            z_pos = float(base_z) + z_frac * float(profile_height or height)
             fig.add_hline(y=z_pos,
                           line=dict(color="#6699cc", width=1, dash="dot"),
                           annotation_text=f"  MP{i+1}  {z_pos:.0f}mm  r={r_mid:.0f}mm",
                           annotation_position="right",
                           annotation_font=dict(size=10, color="#6699cc"))
+
+    if base_z > 0:
+        fig.add_hline(
+            y=float(base_z),
+            line=dict(color="#888888", width=1, dash="dash"),
+            annotation_text=f"  Base border {base_z:.0f}mm",
+            annotation_position="left",
+            annotation_font=dict(size=10, color="#666666"),
+        )
+    if placement == "inside" and demold_cut_enabled and demold_cut_radius > 0:
+        fig.add_vline(
+            x=float(demold_cut_radius),
+            line=dict(color="#cc5555", width=1, dash="dash"),
+            annotation_text=f"  cutter r={demold_cut_radius:.0f}mm",
+            annotation_position="top right",
+            annotation_font=dict(size=10, color="#aa3333"),
+        )
+        fig.add_vline(
+            x=-float(demold_cut_radius),
+            line=dict(color="#cc5555", width=1, dash="dash"),
+        )
 
     fig.update_layout(
         title="Profile cross-section",
@@ -833,6 +994,13 @@ VESSEL_DEFAULTS = {
     "vessel_cross_section": "Circle",
     "vessel_oval_x_scale": 1.0,
     "vessel_oval_y_scale": 1.0,
+    "vessel_add_base_border": False,
+    "vessel_base_border_mode": "No border",
+    "vessel_base_z": 0.0,
+    "vessel_demold_cut_enabled": False,
+    "vessel_demold_cut_radius": 0.0,
+    "vessel_demold_cut_apply": "Base transition",
+    "vessel_demold_cut_shape": "Match vessel cross-section",
     "vessel_n_mid": 1,
     "vessel_wall_mm": 3.0,
     "vessel_displacement": 2.0,
@@ -909,6 +1077,10 @@ def load_vessel_setup_into_state(row) -> None:
         "cross_section": "vessel_cross_section",
         "oval_x_scale": "vessel_oval_x_scale",
         "oval_y_scale": "vessel_oval_y_scale",
+        "base_z": "vessel_base_z",
+        "demold_cut_radius": "vessel_demold_cut_radius",
+        "demold_cut_apply": "vessel_demold_cut_apply",
+        "demold_cut_shape": "vessel_demold_cut_shape",
         "n_mid": "vessel_n_mid",
         "wall_mm": "vessel_wall_mm",
         "displacement": "vessel_displacement",
@@ -931,10 +1103,17 @@ def load_vessel_setup_into_state(row) -> None:
         "invert_relief": "vessel_invert_relief",
         "tile_enabled": "vessel_tile_enabled",
         "mirror_tiles": "vessel_mirror_tiles",
+        "add_base_border": "vessel_add_base_border",
+        "demold_cut_enabled": "vessel_demold_cut_enabled",
         "add_lip": "vessel_add_lip",
         "override": "vessel_override",
     }.items():
         st.session_state[key] = bool(row[column]) if column in row.keys() and row[column] is not None else False
+    st.session_state["vessel_base_border_mode"] = (
+        "Add base border"
+        if st.session_state.get("vessel_add_base_border", False)
+        else "No border"
+    )
     if "tone_mapping" not in row.keys() or not row["tone_mapping"]:
         st.session_state["vessel_tone_mapping"] = "Negative" if st.session_state["vessel_invert_relief"] else "Positive"
     st.session_state["vessel_invert_relief"] = st.session_state["vessel_tone_mapping"] == "Negative"
@@ -969,6 +1148,12 @@ def vessel_generation_signature(
     cross_section,
     oval_x_scale,
     oval_y_scale,
+    add_base_border,
+    base_z,
+    demold_cut_enabled,
+    demold_cut_radius,
+    demold_cut_apply,
+    demold_cut_shape,
     midpoints,
     wall_mm,
     displacement,
@@ -995,6 +1180,12 @@ def vessel_generation_signature(
         "cross_section": cross_section,
         "oval_x_scale": round(float(oval_x_scale), 4),
         "oval_y_scale": round(float(oval_y_scale), 4),
+        "add_base_border": bool(add_base_border),
+        "base_z": round(float(base_z), 4),
+        "demold_cut_enabled": bool(demold_cut_enabled),
+        "demold_cut_radius": round(float(demold_cut_radius), 4),
+        "demold_cut_apply": demold_cut_apply,
+        "demold_cut_shape": demold_cut_shape,
         "midpoints": [(round(float(z), 6), round(float(r), 4)) for z, r in midpoints],
         "wall_mm": round(float(wall_mm), 4),
         "displacement": round(float(displacement), 4),
@@ -1047,11 +1238,11 @@ with tool_right:
         st.divider()
         bc1, bc2 = st.columns(2)
         with bc1:
-            if st.button(tr("worksheet.actions.new", "+ New"), key="vessel_new_setup", use_container_width=True):
+            if st.button(tr("worksheet.actions.new", "+ New"), key="vessel_new_setup", width="stretch"):
                 reset_vessel_defaults()
                 st.rerun()
         with bc2:
-            if st.button(tr("worksheet.actions.reset", "Reset"), key="vessel_reset_setup", use_container_width=True):
+            if st.button(tr("worksheet.actions.reset", "Reset"), key="vessel_reset_setup", width="stretch"):
                 reset_vessel_defaults()
                 st.rerun()
 
@@ -1129,6 +1320,32 @@ with left:
     else:
         oval_x_scale = 1.0
         oval_y_scale = 1.0
+
+    base_border_mode = st.radio(
+        tr("page.vessel.fields.base_border", "Base border"),
+        ["No border", "Add base border"],
+        horizontal=True,
+        key="vessel_base_border_mode",
+        help=tr(
+            "page.vessel.help.base_border",
+            "Adds a blank vertical section below the vessel profile at the base radius.",
+        ),
+    )
+    add_base_border = base_border_mode == "Add base border"
+    st.session_state["vessel_add_base_border"] = add_base_border
+    if add_base_border:
+        base_z = st.number_input(
+            tr("page.vessel.fields.base_z", "Base Z amount (mm)"),
+            min_value=0.0,
+            max_value=30.0,
+            step=1.0,
+            key="vessel_base_z",
+            help=tr("page.vessel.help.base_z", "Length of the blank vertical base section below the profile."),
+        )
+    else:
+        base_z = 0.0
+        st.session_state["vessel_base_z"] = 0.0
+    output_height = float(height) + float(base_z)
 
     st.caption(tr("page.vessel.caption.midpoints", "Add midpoints to curve the profile (optional)"))
     n_mid = st.slider(tr("page.vessel.fields.num_midpoints", "Number of midpoints"), 0, 4, key="vessel_n_mid")
@@ -1212,6 +1429,50 @@ with left:
         format_func=vessel_placement_label,
     )
     placement_key = "outside" if placement.startswith("Outside") else "inside"
+    demold_cut_enabled = st.checkbox(
+        tr("page.vessel.fields.demold_cut", "Demold clearance cut"),
+        key="vessel_demold_cut_enabled",
+        disabled=placement_key != "inside",
+        help=tr(
+            "page.vessel.help.demold_cut",
+            "For carved interiors, keeps the void at or beyond a cutter radius to reduce undercuts for alginate demolding.",
+        ),
+    )
+    if placement_key != "inside":
+        demold_cut_enabled = False
+
+    if demold_cut_enabled:
+        demold_cols = st.columns(3)
+        with demold_cols[0]:
+            demold_cut_diameter = st.number_input(
+                tr("page.vessel.fields.demold_cut_diameter", "Cutter diameter (mm)"),
+                min_value=1.0,
+                max_value=300.0,
+                step=1.0,
+                value=max(1.0, float(st.session_state.get("vessel_demold_cut_radius", base_r)) * 2.0),
+                help=tr("page.vessel.help.demold_cut_diameter", "Diameter of the cylinder or oval used as the minimum demolding void."),
+            )
+            demold_cut_radius = demold_cut_diameter / 2.0
+            st.session_state["vessel_demold_cut_radius"] = demold_cut_radius
+        with demold_cols[1]:
+            demold_cut_apply = st.selectbox(
+                tr("page.vessel.fields.demold_cut_apply", "Apply to"),
+                ["Base transition", "Base border only", "Full height"],
+                key="vessel_demold_cut_apply",
+                help=tr("page.vessel.help.demold_cut_apply", "Controls how far the cutter envelope is applied upward."),
+            )
+        with demold_cols[2]:
+            demold_cut_shape = st.selectbox(
+                tr("page.vessel.fields.demold_cut_shape", "Cutter shape"),
+                ["Match vessel cross-section", "Circular cutter"],
+                key="vessel_demold_cut_shape",
+                help=tr("page.vessel.help.demold_cut_shape", "For oval vessels, match the oval profile or use a true circular cutter."),
+            )
+    else:
+        demold_cut_radius = 0.0
+        demold_cut_apply = st.session_state.get("vessel_demold_cut_apply", "Base transition")
+        demold_cut_shape = st.session_state.get("vessel_demold_cut_shape", "Match vessel cross-section")
+
     tone_mapping = st.radio(
         tr("page.vessel.fields.tone_mapping", "Tone mapping"),
         ["Positive", "Negative"],
@@ -1332,7 +1593,9 @@ with left:
         format_func=vessel_quality_label,
     )
     n_theta, mm_per_ring = QUALITY_PRESETS[quality]
-    n_z = max(20, int(round(height / mm_per_ring)))
+    n_z = max(20, int(round(output_height / mm_per_ring)))
+    profile_n_z = max(20, int(round(height / mm_per_ring)))
+    base_n_z = max(0, n_z - profile_n_z)
 
     st.caption(
         tr(
@@ -1357,7 +1620,9 @@ with left:
                                            step=0.1,
                                            help=tr("page.vessel.help.vertical_spacing", "Smaller = more rings = finer vertical detail"),
                                            key="vessel_ov_z")
-            n_z = max(20, int(round(height / mm_per_ring)))
+            n_z = max(20, int(round(output_height / mm_per_ring)))
+            profile_n_z = max(20, int(round(height / mm_per_ring)))
+            base_n_z = max(0, n_z - profile_n_z)
 
     current_signature = vessel_generation_signature(
         base_r=base_r,
@@ -1366,6 +1631,12 @@ with left:
         cross_section=cross_section,
         oval_x_scale=oval_x_scale,
         oval_y_scale=oval_y_scale,
+        add_base_border=add_base_border,
+        base_z=base_z,
+        demold_cut_enabled=demold_cut_enabled,
+        demold_cut_radius=demold_cut_radius,
+        demold_cut_apply=demold_cut_apply,
+        demold_cut_shape=demold_cut_shape,
         midpoints=midpoints,
         wall_mm=wall_mm,
         displacement=displacement,
@@ -1400,7 +1671,7 @@ with left:
         if st.session_state.get("vessel_loaded_id")
         else tr("page.vessel.actions.save_setup", "Save Setup")
     )
-    save_setup = st.button(save_label, key="vessel_save_setup", use_container_width=True, type="secondary")
+    save_setup = st.button(save_label, key="vessel_save_setup", width="stretch", type="secondary")
     if save_setup:
         title = st.session_state["vessel_title"].strip()
         if not title:
@@ -1419,6 +1690,12 @@ with left:
                 "cross_section": cross_section,
                 "oval_x_scale": float(oval_x_scale),
                 "oval_y_scale": float(oval_y_scale),
+                "add_base_border": int(bool(add_base_border)),
+                "base_z": float(base_z),
+                "demold_cut_enabled": int(bool(demold_cut_enabled)),
+                "demold_cut_radius": float(demold_cut_radius),
+                "demold_cut_apply": demold_cut_apply,
+                "demold_cut_shape": demold_cut_shape,
                 "n_mid": int(n_mid),
                 "midpoints_json": json.dumps([
                     {"z_frac": float(z_frac), "radius": float(radius)}
@@ -1462,7 +1739,7 @@ with left:
             data=st.session_state["vessel_zip_bytes"] or b"",
             file_name=st.session_state["vessel_zip_name"],
             mime="application/zip",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             disabled=not bool(st.session_state["vessel_zip_bytes"]),
             key="vessel_download_bundle_primary",
@@ -1470,14 +1747,14 @@ with left:
     else:
         generate = action_col1.button(
             f"⚙️ {tr('page.vessel.actions.generate', 'Generate')}",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             disabled=is_building,
             key="vessel_generate_mesh",
         )
     reset = action_col2.button(
         tr("page.vessel.actions.reset", "Reset Defaults"),
-        use_container_width=True,
+        width="stretch",
         disabled=is_building,
         key="vessel_reset_defaults_action",
     )
@@ -1501,17 +1778,30 @@ with left:
 with right:
     # Always show profile preview
     profile_fn = build_profile(base_r, top_r, height, midpoints)
-    st.plotly_chart(make_profile_preview(profile_fn, height, wall_mm,
-                                          displacement, placement_key,
-                                          midpoints),
-)
+    output_profile_fn = add_base_border_to_profile(profile_fn, base_r, height, base_z)
+    st.plotly_chart(
+        make_profile_preview(
+            output_profile_fn,
+            output_height,
+            wall_mm,
+            displacement,
+            placement_key,
+            midpoints,
+            base_z=base_z,
+            profile_height=height,
+            demold_cut_enabled=demold_cut_enabled,
+            demold_cut_radius=demold_cut_radius,
+            demold_cut_apply=demold_cut_apply,
+        ),
+        width="stretch",
+    )
 
     bore_volume_mm3 = None
     bore_note = None
     if placement_key == "outside":
         bore_volume_mm3 = estimate_internal_bore_volume_mm3(
-            profile_fn,
-            height,
+            output_profile_fn,
+            output_height,
             wall_mm,
             displacement,
             placement=placement_key,
@@ -1519,14 +1809,27 @@ with right:
             n_z=n_z,
             oval_x_scale=oval_x_scale,
             oval_y_scale=oval_y_scale,
+            base_z=base_z,
+            demold_cut_enabled=demold_cut_enabled,
+            demold_cut_radius=demold_cut_radius,
+            demold_cut_apply=demold_cut_apply,
+            demold_cut_shape=demold_cut_shape,
         )
     elif uploaded_bytes is not None:
-        hmap_for_volume = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count, image_orientation, fit_mode, mirror_tiles)
-        if invert_relief:
-            hmap_for_volume = 1.0 - hmap_for_volume
+        hmap_for_volume = load_heightmap_for_output(
+            uploaded_bytes,
+            n_theta,
+            profile_n_z,
+            base_n_z,
+            image_orientation,
+            fit_mode,
+            tile_count,
+            mirror_tiles,
+            invert_relief,
+        )
         bore_volume_mm3 = estimate_internal_bore_volume_mm3(
-            profile_fn,
-            height,
+            output_profile_fn,
+            output_height,
             wall_mm,
             displacement,
             placement=placement_key,
@@ -1535,13 +1838,18 @@ with right:
             heightmap=hmap_for_volume,
             oval_x_scale=oval_x_scale,
             oval_y_scale=oval_y_scale,
+            base_z=base_z,
+            demold_cut_enabled=demold_cut_enabled,
+            demold_cut_radius=demold_cut_radius,
+            demold_cut_apply=demold_cut_apply,
+            demold_cut_shape=demold_cut_shape,
         )
     else:
         bore_note = tr("page.vessel.messages.bore_note", "Upload a heightmap image to calculate internal bore volume for carved interior.")
 
     metric_cols = st.columns(2)
     with metric_cols[0]:
-        st.metric(tr("page.vessel.metrics.output_height", "Output height"), f"{height:.1f} mm")
+        st.metric(tr("page.vessel.metrics.output_height", "Output height"), f"{output_height:.1f} mm")
     with metric_cols[1]:
         if bore_volume_mm3 is not None:
             st.metric(tr("page.vessel.metrics.bore_volume", "Internal bore volume"), f"{bore_volume_mm3 / 1000.0:,.2f} cm³")
@@ -1556,7 +1864,17 @@ with right:
         else:
             try:
                 build_feedback.info(tr("page.vessel.messages.loading_heightmap", "Loading heightmap..."))
-                hmap = load_heightmap_cached(uploaded_bytes, n_theta, n_z, tile_count, image_orientation, fit_mode, mirror_tiles)
+                hmap = load_heightmap_for_output(
+                    uploaded_bytes,
+                    n_theta,
+                    profile_n_z,
+                    base_n_z,
+                    image_orientation,
+                    fit_mode,
+                    tile_count,
+                    mirror_tiles,
+                    invert_relief,
+                )
 
                 build_feedback.info(
                     tr(
@@ -1566,10 +1884,8 @@ with right:
                         vertical=n_z,
                     )
                 )
-                if invert_relief:
-                    hmap = 1.0 - hmap
                 tris = build_vase_mesh(
-                    profile_fn, height, displacement,
+                    output_profile_fn, output_height, displacement,
                     hmap,
                     n_theta,
                     n_z,
@@ -1580,11 +1896,16 @@ with right:
                     n_rim=n_lip,
                     oval_x_scale=oval_x_scale,
                     oval_y_scale=oval_y_scale,
+                    base_z=base_z,
+                    demold_cut_enabled=demold_cut_enabled,
+                    demold_cut_radius=demold_cut_radius,
+                    demold_cut_apply=demold_cut_apply,
+                    demold_cut_shape=demold_cut_shape,
                 )
 
                 generated_bore_volume_mm3 = estimate_internal_bore_volume_mm3(
-                    profile_fn,
-                    height,
+                    output_profile_fn,
+                    output_height,
                     wall_mm,
                     displacement,
                     placement=placement_key,
@@ -1593,6 +1914,11 @@ with right:
                     heightmap=hmap if placement_key == "inside" else None,
                     oval_x_scale=oval_x_scale,
                     oval_y_scale=oval_y_scale,
+                    base_z=base_z,
+                    demold_cut_enabled=demold_cut_enabled,
+                    demold_cut_radius=demold_cut_radius,
+                    demold_cut_apply=demold_cut_apply,
+                    demold_cut_shape=demold_cut_shape,
                 )
                 stl_bytes = write_stl(tris)
                 source_image_name = uploaded.name if uploaded is not None else "source_heightmap"
@@ -1601,9 +1927,16 @@ with right:
                         "base_r": float(base_r),
                         "top_r": float(top_r),
                         "height": float(height),
+                        "output_height": float(output_height),
                         "cross_section": cross_section,
                         "oval_x_scale": float(oval_x_scale),
                         "oval_y_scale": float(oval_y_scale),
+                        "add_base_border": bool(add_base_border),
+                        "base_z": float(base_z),
+                        "demold_cut_enabled": bool(demold_cut_enabled),
+                        "demold_cut_radius": float(demold_cut_radius),
+                        "demold_cut_apply": demold_cut_apply,
+                        "demold_cut_shape": demold_cut_shape,
                         "midpoints": [(float(z_frac), float(radius)) for z_frac, radius in midpoints],
                         "wall_mm": float(wall_mm),
                         "displacement": float(displacement),

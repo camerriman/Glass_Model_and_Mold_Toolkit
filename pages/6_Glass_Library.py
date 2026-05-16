@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 from i18n import render_app_sidebar, t, translate_element_name, translate_family_name, translate_mode_name
 
@@ -519,7 +518,7 @@ def render_detail_panel(
 
 
 def scroll_to_row(anchor_id: str, offset: int = 90) -> None:
-    components.html(
+    st.iframe(
         f"""
         <script>
         const anchorId = {json.dumps(anchor_id)};
@@ -534,7 +533,7 @@ def scroll_to_row(anchor_id: str, offset: int = 90) -> None:
         window.parent.requestAnimationFrame(() => setTimeout(scrollNow, 40));
         </script>
         """,
-        height=0,
+        height=1,
     )
 
 

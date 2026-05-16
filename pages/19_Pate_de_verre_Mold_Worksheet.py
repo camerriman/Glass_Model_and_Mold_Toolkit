@@ -118,37 +118,50 @@ def load_pate_project(record_id: int):
 init_pate_db()
 
 
+NUMBER_PATTERN = r"([0-9][0-9,]*(?:\.[0-9]+)?)"
+
+
+def parse_number_token(value: str) -> float:
+    return float(value.replace(",", "").strip())
+
+
 def parse_float(pattern: str, text: str) -> float | None:
     match = re.search(pattern, text, re.IGNORECASE)
     if not match:
         return None
     try:
-        return float(match.group(1))
+        return parse_number_token(match.group(1))
     except (TypeError, ValueError):
         return None
 
 
 def parse_vessel_settings(text: str) -> dict:
-    base_radius = parse_float(r"Base radius \(mm\):\s*([0-9.]+)", text)
-    top_radius = parse_float(r"Top radius \(mm\):\s*([0-9.]+)", text)
-    height = parse_float(r"Height \(mm\):\s*([0-9.]+)", text)
-    oval_x_scale = parse_float(r"Oval width scale:\s*([0-9.]+)", text) or 1.0
-    oval_y_scale = parse_float(r"Oval depth scale:\s*([0-9.]+)", text) or 1.0
-    bore_volume = parse_float(r"Estimated internal bore volume:\s*([0-9.]+)\s*cm", text)
+    base_radius = parse_float(rf"Base radius \(mm\):\s*{NUMBER_PATTERN}", text)
+    top_radius = parse_float(rf"Top radius \(mm\):\s*{NUMBER_PATTERN}", text)
+    height = parse_float(rf"Height \(mm\):\s*{NUMBER_PATTERN}", text)
+    oval_x_scale = parse_float(rf"Oval width scale:\s*{NUMBER_PATTERN}", text) or 1.0
+    oval_y_scale = parse_float(rf"Oval depth scale:\s*{NUMBER_PATTERN}", text) or 1.0
+    base_z = parse_float(rf"Base Z \(mm\):\s*{NUMBER_PATTERN}", text) or 0.0
+    bore_volume = parse_float(
+        rf"Estimated internal bore volume:\s*{NUMBER_PATTERN}\s*cm(?:³|3|\^3)?",
+        text,
+    )
     source_match = re.search(r"Source image:\s*(.+)", text, re.IGNORECASE)
     source_image = source_match.group(1).strip() if source_match else ""
 
     points: list[tuple[float, float]] = []
     if base_radius is not None:
         points.append((0.0, base_radius))
+        if base_z > 0:
+            points.append((base_z, base_radius))
     for match in re.finditer(
-        r"Midpoint\s+\d+:\s*height\s*([0-9.]+)\s*mm,\s*radius\s*([0-9.]+)\s*mm",
+        rf"Midpoint\s+\d+:\s*height\s*{NUMBER_PATTERN}\s*mm,\s*radius\s*{NUMBER_PATTERN}\s*mm",
         text,
         re.IGNORECASE,
     ):
-        points.append((float(match.group(1)), float(match.group(2))))
+        points.append((base_z + parse_number_token(match.group(1)), parse_number_token(match.group(2))))
     if height is not None and top_radius is not None:
-        points.append((height, top_radius))
+        points.append((base_z + height, top_radius))
 
     points = sorted({(round(z, 4), round(r, 4)) for z, r in points})
     return {
@@ -157,6 +170,7 @@ def parse_vessel_settings(text: str) -> dict:
         "height": height,
         "oval_x_scale": oval_x_scale,
         "oval_y_scale": oval_y_scale,
+        "base_z": base_z,
         "bore_volume": bore_volume,
         "source_image": source_image,
         "points": points,
@@ -398,7 +412,7 @@ def render_pate_batch_actions(title: str, job_date, sections: list[tuple[str, li
         data=pdf_bytes,
         file_name=f"{safe_filename}_batch_sheet.pdf",
         mime="application/pdf",
-        use_container_width=True,
+        width="stretch",
         disabled=not enabled,
     )
 
@@ -425,6 +439,7 @@ for key, value in PATE_DEFAULTS.items():
 def reset_pate_state() -> None:
     for key, value in PATE_DEFAULTS.items():
         st.session_state[key] = value
+    st.session_state.pop("pate_bore_source_text", None)
     st.session_state["pate_mold_upload_nonce"] = st.session_state.get("pate_mold_upload_nonce", 0) + 1
 
 
@@ -442,6 +457,7 @@ def load_pate_project_into_state(row) -> None:
         st.session_state["pate_mold_date"] = date.today()
     st.session_state["pate_settings_text"] = row["settings_text"] or ""
     st.session_state["pate_bore_volume_cm3"] = float(row["bore_volume_cm3"] or 0.0)
+    st.session_state["pate_bore_source_text"] = st.session_state["pate_settings_text"]
     st.session_state["pate_face_thickness_mm"] = float(row["face_thickness_mm"] or PATE_DEFAULTS["pate_face_thickness_mm"])
     st.session_state["pate_jacket_thickness_mm"] = float(row["jacket_thickness_mm"] or PATE_DEFAULTS["pate_jacket_thickness_mm"])
     st.session_state["pate_overage_pct"] = float(row["overage_pct"] or PATE_DEFAULTS["pate_overage_pct"])
@@ -536,11 +552,11 @@ with st.expander(t("page.pate_mold.records.title", "Saved Vessel Mold Projects")
     st.divider()
     new_col, reset_col = st.columns(2)
     with new_col:
-        if st.button(t("worksheet.actions.new", "+ New"), key="pate_new_project", use_container_width=True):
+        if st.button(t("worksheet.actions.new", "+ New"), key="pate_new_project", width="stretch"):
             st.session_state["pate_pending_reset"] = True
             st.rerun()
     with reset_col:
-        if st.button(t("worksheet.actions.reset", "Reset"), key="pate_reset_project", use_container_width=True):
+        if st.button(t("worksheet.actions.reset", "Reset"), key="pate_reset_project", width="stretch"):
             st.session_state["pate_pending_reset"] = True
             st.rerun()
 
@@ -558,9 +574,14 @@ if uploaded is not None:
         uploaded_parsed = parse_vessel_settings(settings_text)
         if uploaded_parsed["bore_volume"] is not None:
             st.session_state["pate_bore_volume_cm3"] = float(uploaded_parsed["bore_volume"])
+            st.session_state["pate_bore_source_text"] = settings_text
         st.rerun()
 
 parsed: dict = parse_vessel_settings(st.session_state.get("pate_settings_text", "")) if st.session_state.get("pate_settings_text") else {"points": []}
+settings_source = st.session_state.get("pate_settings_text", "")
+if parsed.get("bore_volume") is not None and st.session_state.get("pate_bore_source_text") != settings_source:
+    st.session_state["pate_bore_volume_cm3"] = float(parsed["bore_volume"])
+    st.session_state["pate_bore_source_text"] = settings_source
 if st.session_state.get("pate_settings_text"):
     if parsed["points"]:
         st.success(
@@ -861,7 +882,7 @@ save_label = (
     else t("page.pate_mold.actions.save", "Save Project")
 )
 with action_col:
-    save_clicked = st.button(save_label, type="primary", use_container_width=True)
+    save_clicked = st.button(save_label, type="primary", width="stretch")
 
 if save_clicked:
     rec = current_pate_record()
