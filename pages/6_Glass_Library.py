@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
@@ -162,6 +163,27 @@ def switch_to_page(target: str) -> bool:
         except Exception:
             continue
     return False
+
+
+def datasheet_url(glass_id: str, family_name: str) -> str:
+    return (
+        "Glass_Detail"
+        f"?cat_id={quote(str(glass_id), safe='')}"
+        f"&return_page={quote('pages/6_Glass_Library.py', safe='')}"
+        f"&return_label={quote(t('library.title', 'Glass Library'), safe='')}"
+        f"&return_family={quote(str(family_name), safe='')}"
+    )
+
+
+def datasheet_link_markup(glass_id: str, family_name: str) -> str:
+    return f"""
+    <a class="glass-datasheet-link"
+       href="{html.escape(datasheet_url(glass_id, family_name), quote=True)}"
+       target="_self"
+       title="{html.escape(t('library.detail.open_datasheet', 'Open full datasheet'), quote=True)}">
+        {html.escape(str(glass_id))}
+    </a>
+    """
 
 
 @st.cache_data
@@ -444,79 +466,6 @@ def note_markup(raw_text: str | None) -> str:
     """
 
 
-def render_detail_panel(
-    base_row: pd.Series,
-    row_r: pd.Series | None,
-    row_t: pd.Series | None,
-    selected_glass_id: str,
-    family_name: str,
-    selected_prefix: str,
-) -> None:
-    title = str(base_row.get("color_name") or "").strip()
-    st.subheader(
-        f"{selected_glass_id}  {title}" if title else str(selected_glass_id)
-    )
-
-    st.markdown(
-        striker_badge_markup(safe_int(base_row.get("is_striker"), 0) == 1),
-        unsafe_allow_html=True,
-    )
-
-    if current_detail_target():
-        if st.button(
-            t("library.detail.open_datasheet", "Open full datasheet"),
-            key=f"open_datasheet_{selected_glass_id}",
-            width="content",
-        ):
-            st.session_state["detail_glass_id"] = str(selected_glass_id)
-            st.session_state["detail_return_page"] = "pages/6_Glass_Library.py"
-            st.session_state["detail_return_label_key"] = "library.title"
-            st.session_state["detail_return_family"] = family_name
-            if not switch_to_page(DETAIL_PAGE):
-                st.warning(t("library.messages.open_datasheet_failed", "Could not navigate to the full datasheet page."))
-
-    image_cols = st.columns(2, gap="large")
-    for column, mode in zip(image_cols, ("R", "T")):
-        measurement = row_r if mode == "R" else row_t
-        with column:
-            st.markdown(f"### {mode_label(mode)}")
-            image = full_path(str(selected_glass_id), selected_prefix, mode)
-            if image is not None:
-                st.image(str(image), width="content")
-            elif MISSING_FULL.exists():
-                st.image(str(MISSING_FULL), width="content")
-            elif MISSING_ICON.exists():
-                st.image(str(MISSING_ICON), width="content")
-
-            if measurement is None:
-                st.write(t("library.messages.no_measurement_mode", "No measurement data for this mode."))
-            else:
-                st.markdown(
-                    "\n".join(
-                        [
-                            f"**RGB:** ({measurement.get('r')}, {measurement.get('g')}, {measurement.get('b')})  ",
-                            f"**HSB:** ({measurement.get('h')}, {measurement.get('s')}, {measurement.get('v')})  ",
-                            f"**{t('editor.fields.thickness', 'Thickness (mm)').replace(' (mm)', '')}:** {measurement.get('thickness_mm') or '-'} mm",
-                        ]
-                    )
-                )
-
-    st.markdown(f"### {t('shared.sections.elements_present', 'Elements Present')}")
-    st.markdown(
-        badge_markup(element_labels(base_row)),
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(f"### {t('shared.sections.reactive_potential', 'Reactive Potential')}")
-    st.markdown(
-        badge_markup(reactive_labels(base_row), muted=True),
-        unsafe_allow_html=True,
-    )
-
-    render_notes(t("shared.sections.cold_characteristics", "Cold Characteristics"), base_row.get("cold_characteristics"))
-    render_notes(t("shared.sections.working_notes", "Working Notes"), base_row.get("working_notes"))
-
-
 def scroll_to_row(anchor_id: str, offset: int = 90) -> None:
     st.iframe(
         f"""
@@ -559,14 +508,23 @@ measurements["mode"] = measurements["mode"].astype(str).str.upper()
 
 st.sidebar.header(t("library.sidebar.title", "Browse"))
 
-return_family = st.session_state.pop("detail_return_family", None)
 family_names = families["name"].tolist()
 family_options = ["All"] + family_names
+query_return_family = st.query_params.get("return_family")
+return_family = query_return_family or st.session_state.pop("detail_return_family", None)
+if query_return_family in family_options:
+    st.session_state["library_family_name"] = str(query_return_family)
+    st.query_params.clear()
+    st.rerun()
+
 default_index = family_options.index(return_family) if return_family in family_options else 0
+if return_family in family_options:
+    st.session_state["library_family_name"] = return_family
 family_name = st.sidebar.selectbox(
     t("editor.fields.glass_family", "Glass family"),
     family_options,
     index=default_index,
+    key="library_family_name",
     format_func=lambda value: translate_family_name(None, value),
 )
 
@@ -646,6 +604,35 @@ if selected_element_cols:
 filtered = apply_sort(filtered, measurements, preview_mode, sort_label)
 
 st.title(t("library.title", "Glass Library"))
+st.markdown(
+    """
+    <style>
+      .glass-datasheet-link {
+        align-items: center;
+        border-radius: 0.5rem;
+        border: 1px solid rgba(49, 51, 63, 0.2);
+        display: inline-flex;
+        font-family: sans-serif;
+        font-size: 0.95rem;
+        font-weight: 600;
+        justify-content: center;
+        line-height: 1.4;
+        min-height: 2.35rem;
+        padding: 0.38rem 0.75rem;
+        text-decoration: none !important;
+      }
+      .glass-datasheet-link {
+        background: #ffffff;
+        color: #31333f !important;
+      }
+      .glass-datasheet-link:hover {
+        border-color: rgba(49, 51, 63, 0.45);
+        color: #31333f !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.caption(
     t(
         "library.caption.summary",
@@ -712,24 +699,14 @@ elif selected_glass_id not in valid_ids:
     selected_glass_id = valid_ids[0]
     st.session_state["selected_glass_id"] = selected_glass_id
 
-selected_row = filtered[filtered["glass_id"] == str(selected_glass_id)]
-if selected_row.empty:
-    st.info(t("library.messages.pick_one", "Select a glass sample to see details."))
-    st.stop()
-
-base_row = selected_row.iloc[0]
-selected_prefix = row_prefix(base_row)
-row_r = measurement_row(measurements, selected_glass_id, "R")
-row_t = measurement_row(measurements, selected_glass_id, "T")
 pending_scroll_id = st.session_state.pop("_library_scroll_to", None)
 
 for start in range(0, len(filtered), cols_per_row):
     row_slice = filtered.iloc[start : start + cols_per_row]
     row_ids = row_slice["glass_id"].astype(str).tolist()
-    show_detail = str(selected_glass_id) in row_ids
     row_anchor_id = f"library-row-{start}"
 
-    if show_detail:
+    if str(selected_glass_id) in row_ids:
         st.markdown(
             f'<div id="{row_anchor_id}" style="height:1px;"></div>',
             unsafe_allow_html=True,
@@ -737,69 +714,50 @@ for start in range(0, len(filtered), cols_per_row):
         if pending_scroll_id == str(selected_glass_id):
             scroll_to_row(row_anchor_id)
 
-    left, right = st.columns([0.58, 0.42], gap="large")
-    with left:
-        cols = st.columns(cols_per_row)
-        for idx, row in enumerate(row_slice.itertuples(index=False)):
-            glass_id = str(row.glass_id)
-            is_comparing = glass_id in compare_ids
-            compare_key = f"compare_{selected_family_code}_{preview_mode}_{glass_id}"
-            with cols[idx]:
-                with st.container(border=True):
-                    item_prefix = row_prefix(pd.Series(row._asdict()))
-                    icon = first_existing_icon(glass_id, item_prefix, preview_mode)
-                    if icon is not None:
-                        st.image(str(icon), width="content")
-                    elif MISSING_ICON.exists():
-                        st.image(str(MISSING_ICON), width="content")
+    cols = st.columns(cols_per_row)
+    for idx, row in enumerate(row_slice.itertuples(index=False)):
+        glass_id = str(row.glass_id)
+        is_comparing = glass_id in compare_ids
+        compare_key = f"compare_{selected_family_code}_{preview_mode}_{glass_id}"
+        with cols[idx]:
+            with st.container(border=True):
+                item_prefix = row_prefix(pd.Series(row._asdict()))
+                icon = first_existing_icon(glass_id, item_prefix, preview_mode)
+                if icon is not None:
+                    st.image(str(icon), width="content")
+                elif MISSING_ICON.exists():
+                    st.image(str(MISSING_ICON), width="content")
 
-                    st.caption((row.color_name or "").strip() or t("library.messages.unnamed_sample", "Unnamed sample"))
-                    button_type = "primary" if glass_id == selected_glass_id else "secondary"
-                    if st.button(
-                        glass_id,
-                        key=f"pick_{selected_family_code}_{preview_mode}_{glass_id}",
-                        width="content",
-                        type=button_type,
-                    ):
-                        st.session_state["selected_glass_id"] = glass_id
-                        st.session_state["_library_scroll_to"] = glass_id
-                        st.rerun()
+                st.caption((row.color_name or "").strip() or t("library.messages.unnamed_sample", "Unnamed sample"))
+                st.markdown(
+                    datasheet_link_markup(glass_id, family_name),
+                    unsafe_allow_html=True,
+                )
 
-                    if st.session_state.get(compare_key) != is_comparing:
-                        st.session_state[compare_key] = is_comparing
-                    compare_toggle_col, compare_label_col = st.columns([0.22, 0.78], gap="small")
-                    with compare_toggle_col:
-                        st.checkbox(
-                            t("library.detail.compare", "Compare"),
-                            key=compare_key,
-                            label_visibility="collapsed",
-                            disabled=(not is_comparing and len(compare_ids) >= MAX_COMPARE),
-                            on_change=toggle_compare_selection,
-                            args=(glass_id, compare_key),
-                        )
-                    with compare_label_col:
-                        st.markdown(
-                            f"""
-                            <div style="
-                                font-family:sans-serif;
-                                font-size:12px;
-                                color:#555;
-                                line-height:1.2;
-                                padding-top:0.28rem;
-                            ">
-                                {html.escape(t("library.detail.compare", "Compare"))}
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-
-    with right:
-        if show_detail:
-            render_detail_panel(
-                base_row=base_row,
-                row_r=row_r,
-                row_t=row_t,
-                selected_glass_id=str(selected_glass_id),
-                family_name=family_name,
-                selected_prefix=selected_prefix,
-            )
+                if st.session_state.get(compare_key) != is_comparing:
+                    st.session_state[compare_key] = is_comparing
+                compare_toggle_col, compare_label_col = st.columns([0.22, 0.78], gap="small")
+                with compare_toggle_col:
+                    st.checkbox(
+                        t("library.detail.compare", "Compare"),
+                        key=compare_key,
+                        label_visibility="collapsed",
+                        disabled=(not is_comparing and len(compare_ids) >= MAX_COMPARE),
+                        on_change=toggle_compare_selection,
+                        args=(glass_id, compare_key),
+                    )
+                with compare_label_col:
+                    st.markdown(
+                        f"""
+                        <div style="
+                            font-family:sans-serif;
+                            font-size:12px;
+                            color:#555;
+                            line-height:1.2;
+                            padding-top:0.28rem;
+                        ">
+                            {html.escape(t("library.detail.compare", "Compare"))}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )

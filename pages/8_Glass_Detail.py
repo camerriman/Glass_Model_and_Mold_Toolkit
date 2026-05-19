@@ -11,6 +11,7 @@ import re
 import sqlite3
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -95,6 +96,24 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 .glass-report-caption {
     color: #666;
     font-size: 0.95rem;
+}
+.glass-detail-back-link {
+    align-items: center;
+    border: 1px solid rgba(49, 51, 63, 0.2);
+    border-radius: 0.5rem;
+    color: #31333f !important;
+    display: inline-flex;
+    font-family: sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+    min-height: 2.35rem;
+    padding: 0.38rem 0.75rem;
+    text-decoration: none !important;
+}
+.glass-detail-back-link:hover {
+    border-color: rgba(49, 51, 63, 0.45);
+    color: #31333f !important;
 }
 .glass-depth-report {
     font-family: Arial, sans-serif;
@@ -529,11 +548,33 @@ def black_point_label(measurement: dict | None) -> str:
 glass_id = st.query_params.get("cat_id") or st.session_state.get("detail_glass_id")
 query_return_page = st.query_params.get("return_page")
 query_return_label = st.query_params.get("return_label")
+query_return_family = st.query_params.get("return_family")
 
 if query_return_page:
     st.session_state["detail_return_page"] = str(query_return_page)
 if query_return_label:
     st.session_state["detail_return_label"] = str(query_return_label)
+if query_return_family:
+    st.session_state["detail_return_family"] = str(query_return_family)
+
+
+def detail_back_url() -> str | None:
+    if not query_return_family:
+        return None
+    target = detail_return_page or query_return_page
+    if target not in {"pages/6_Glass_Library.py", "6_Glass_Library.py", "Glass_Library"}:
+        return None
+    return f"Glass_Library?return_family={quote(str(query_return_family), safe='')}"
+
+
+def detail_back_link_markup(label: str, url: str) -> str:
+    return f"""
+    <a class="glass-detail-back-link"
+       href="{html.escape(url, quote=True)}"
+       target="_self">
+        &larr; {html.escape(label)}
+    </a>
+    """
 
 if not glass_id:
     st.info(
@@ -601,7 +642,13 @@ detail_return_label = (
 col_back, col_title, col_print = st.columns([0.12, 0.72, 0.16])
 with col_back:
     st.markdown("&nbsp;", unsafe_allow_html=True)
-    if st.button(f"\u2190 {detail_return_label}", key="detail_back", width="content"):
+    back_url = detail_back_url()
+    if back_url:
+        st.markdown(
+            detail_back_link_markup(str(detail_return_label), back_url),
+            unsafe_allow_html=True,
+        )
+    elif st.button(f"\u2190 {detail_return_label}", key="detail_back", width="content"):
         target = detail_return_page or "pages/6_Glass_Library.py"
         if not switch_to_page(target):
             st.warning(t("detail.messages.return_failed", "Could not return to the previous page."))
