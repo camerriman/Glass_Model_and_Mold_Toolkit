@@ -929,6 +929,15 @@ def render_optical_response_caption() -> None:
     )
 
 
+def render_opal_glass_note() -> None:
+    st.info(
+        t(
+            "detail.messages.opal_glass_note",
+            "**About opal glass color:** Opal and opalescent glasses can look very different in reflected and transmitted light. Their appearance is shaped by absorption, internal scattering, thickness, layering, surface finish, and the direction and color temperature of the light source. A glass that appears pale, white, blue, or milky in reflected light may appear warmer, darker, amber, gray, or more translucent when backlit.",
+        )
+    )
+
+
 def render_curve_tables(
     section_title: str,
     measurement: dict,
@@ -1098,6 +1107,9 @@ with top_col2:
         transmitted_full_image,
         show_thickness=True,
     )
+
+if family_code == "1" and (meas_r or meas_t):
+    render_opal_glass_note()
 
 if meas_r or meas_t:
     render_optical_response_caption()

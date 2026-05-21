@@ -509,13 +509,12 @@ project_col, date_col = st.columns([2, 1])
 with project_col:
     st.text_input(
         t("page.pate_mold.fields.project_title", "Project title"),
-        placeholder=t("page.pate_mold.placeholders.project_title", "e.g. Pate-de-verre test mold #1"),
+        placeholder=t("page.pate_mold.placeholders.project_title", "e.g. Vessel Mold"),
         key="pate_mold_project_title",
     )
 with date_col:
     st.date_input(
         t("page.pate_mold.fields.date", "Date"),
-        value=date.today(),
         format="YYYY/MM/DD",
         key="pate_mold_date",
     )
