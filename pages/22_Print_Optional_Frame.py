@@ -27,6 +27,10 @@ from i18n import render_app_sidebar, t
 st.set_page_config(page_title=t("page.print_frame.title", "Print Frame Fabrication"), layout="wide")
 render_app_sidebar()
 
+
+def pf(key: str, fallback: str, **kwargs) -> str:
+    return t(f"page.print_frame.{key}", fallback, **kwargs)
+
 st.markdown(
     """
     <style>
@@ -209,23 +213,23 @@ def apply_imported_settings(parsed: dict[str, float | str]) -> list[str]:
     filled: list[str] = []
     if image_name := str(parsed.get("image_name", "")).strip():
         st.session_state["pf_title"] = Path(image_name).stem
-        filled.append("title")
+        filled.append(pf("fields.title", "title").lower())
     if "max_mold_height_mm" in parsed:
         st.session_state["pf_max_mold_height_mm"] = float(parsed["max_mold_height_mm"])
-        filled.append("print Z length")
+        filled.append(pf("fields.print_z_length", "print Z length").lower())
     if "mold_x_mm" in parsed:
         mold_x = float(parsed["mold_x_mm"])
         st.session_state["pf_mold_x_mm"] = mold_x
         st.session_state["pf_frame_border_x_mm"] = DEFAULT_FRAME_BORDER_MM
-        filled.append("mold X")
+        filled.append(pf("fields.mold_x", "mold X").lower())
     if "mold_y_mm" in parsed:
         mold_y = float(parsed["mold_y_mm"])
         st.session_state["pf_mold_y_mm"] = mold_y
         st.session_state["pf_frame_border_y_mm"] = DEFAULT_FRAME_BORDER_MM
-        filled.append("mold Y")
+        filled.append(pf("fields.mold_y", "mold Y").lower())
     if "relief_fill_g" in parsed:
         st.session_state["pf_relief_fill_g"] = float(parsed["relief_fill_g"])
-        filled.append("relief fill glass")
+        filled.append(pf("fields.relief_fill_glass", "relief fill glass").lower())
     if "relief_fill_volume_cm3" in parsed:
         st.session_state["pf_relief_fill_volume_cm3"] = float(parsed["relief_fill_volume_cm3"])
     return filled
@@ -358,87 +362,99 @@ def fmt(value: float, digits: int = 1) -> str:
 
 def worksheet_rows(c: dict[str, float]) -> list[dict[str, str]]:
     density = fmt(c["glass_density_g_per_cm3"], 2)
+    glass = pf("sections.glass", "Glass")
+    frame_height = pf("sections.frame_height", "Frame Height")
+    side_x = pf("sections.side_x", "Side X")
+    side_y = pf("sections.side_y", "Side Y")
+    frame = pf("sections.frame", "Frame")
+    relief_fill = pf("sections.relief_fill", "Relief Fill")
+    backing = pf("sections.backing", "Backing")
     return [
-        {"Section": "Glass", "Item": "Manufacturer", "Value": str(c["glass_manufacturer"]), "Unit": "", "Formula": "Selected glass source"},
-        {"Section": "Glass", "Item": "Specific gravity", "Value": density, "Unit": "g/cm³", "Formula": "Glass density used for weight calculations"},
-        {"Section": "Frame Height", "Item": "Print Z length (height)", "Value": fmt(c["max_mold_height_mm"]), "Unit": "mm", "Formula": "Print Z"},
-        {"Section": "Frame Height", "Item": "Fiber paper thickness", "Value": fmt(c["fiber_paper_thickness_mm"]), "Unit": "mm", "Formula": "Measured fiber paper sheet"},
-        {"Section": "Frame Height", "Item": "Fiber paper layers", "Value": fmt(c["fiber_paper_layers"], 0), "Unit": "", "Formula": "1 layer, or 2 when doubled"},
-        {"Section": "Frame Height", "Item": "Fiber paper glass displacement", "Value": fmt(c["fiber_paper_displacement_mm"]), "Unit": "mm", "Formula": "Thickness x layers"},
-        {"Section": "Frame Height", "Item": "Relief frame height", "Value": fmt(c["relief_frame_height_mm"]), "Unit": "mm", "Formula": "Print Z length - fiber paper displacement"},
-        {"Section": "Frame Height", "Item": "Relief background layer", "Value": fmt(c["relief_background_layer_mm"]), "Unit": "mm", "Formula": "Additional field layer over print"},
-        {"Section": "Frame Height", "Item": "Frame glass height", "Value": fmt(c["frame_height_mm"]), "Unit": "mm", "Formula": "Relief frame height + relief background layer"},
-        {"Section": "Side X", "Item": "Side X length", "Value": fmt(c["side_x_mm"]), "Unit": "mm", "Formula": "Outside X length"},
-        {"Section": "Side X", "Item": "Print X length", "Value": fmt(c["mold_x_mm"]), "Unit": "mm", "Formula": "Known 3D print dimension"},
-        {"Section": "Side X", "Item": "Frame width", "Value": fmt(c["frame_width_x_mm"]), "Unit": "mm", "Formula": "(Side X - Print X) / 2"},
-        {"Section": "Side X", "Item": "Fiber paper length", "Value": fmt(c["fiber_x_length_mm"]), "Unit": "mm", "Formula": "Side X - frame width"},
-        {"Section": "Side X", "Item": "Fiber paper width", "Value": fmt(c["fiber_x_width_mm"]), "Unit": "mm", "Formula": "Frame width"},
-        {"Section": "Side X", "Item": "Side-wall fiber size", "Value": f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_x_length_mm'])}", "Unit": "mm", "Formula": "Full side height x (outside X + 16)"},
-        {"Section": "Side X", "Item": "Glass area", "Value": fmt(c["x_area_cm2"]), "Unit": "cm²", "Formula": "Length x width / 100"},
-        {"Section": "Side X", "Item": "Glass per mm", "Value": fmt(c["x_g_per_mm"]), "Unit": "g/mm", "Formula": f"Area x 0.1 x {density}"},
-        {"Section": "Side X", "Item": "One side", "Value": fmt(c["side_x_g"]), "Unit": "g", "Formula": "Glass per mm x frame height"},
-        {"Section": "Side X", "Item": "Total side X", "Value": fmt(c["total_side_x_g"]), "Unit": "g", "Formula": "One side x 2"},
-        {"Section": "Side Y", "Item": "Side Y length", "Value": fmt(c["side_y_mm"]), "Unit": "mm", "Formula": "Outside Y length"},
-        {"Section": "Side Y", "Item": "Print Y length", "Value": fmt(c["mold_y_mm"]), "Unit": "mm", "Formula": "Known 3D print dimension"},
-        {"Section": "Side Y", "Item": "Frame width", "Value": fmt(c["frame_width_y_mm"]), "Unit": "mm", "Formula": "(Side Y - Print Y) / 2"},
-        {"Section": "Side Y", "Item": "Fiber paper length", "Value": fmt(c["fiber_y_length_mm"]), "Unit": "mm", "Formula": "Side Y - frame width"},
-        {"Section": "Side Y", "Item": "Fiber paper width", "Value": fmt(c["fiber_y_width_mm"]), "Unit": "mm", "Formula": "Frame width"},
-        {"Section": "Side Y", "Item": "Side-wall fiber size", "Value": f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_y_length_mm'])}", "Unit": "mm", "Formula": "Full side height x (outside Y + 16)"},
-        {"Section": "Side Y", "Item": "Glass area", "Value": fmt(c["y_area_cm2"]), "Unit": "cm²", "Formula": "Length x width / 100"},
-        {"Section": "Side Y", "Item": "Glass per mm", "Value": fmt(c["y_g_per_mm"]), "Unit": "g/mm", "Formula": f"Area x 0.1 x {density}"},
-        {"Section": "Side Y", "Item": "One side", "Value": fmt(c["side_y_g"]), "Unit": "g", "Formula": "Glass per mm x frame height"},
-        {"Section": "Side Y", "Item": "Total side Y", "Value": fmt(c["total_side_y_g"]), "Unit": "g", "Formula": "One side x 2"},
-        {"Section": "Frame", "Item": "Total frame", "Value": fmt(c["total_frame_g"]), "Unit": "g", "Formula": "Total side X + total side Y"},
-        {"Section": "Relief Fill", "Item": "Relief fill glass", "Value": fmt(c["relief_fill_g"]), "Unit": "g", "Formula": "Rectangular output volume - exported model volume"},
-        {"Section": "Relief Fill", "Item": "Print field fill rate", "Value": fmt(c["art_space_g_per_mm"]), "Unit": "g/mm", "Formula": f"Print X x Print Y / 1000 x {density}"},
-        {"Section": "Relief Fill", "Item": "Relief background glass", "Value": fmt(c["relief_background_g"]), "Unit": "g", "Formula": "Print field fill rate x background layer"},
-        {"Section": "Backing", "Item": "Backing area", "Value": fmt(c["side_area_cm2"]), "Unit": "cm²", "Formula": "Side X x Side Y / 100"},
-        {"Section": "Backing", "Item": "Backing glass per mm", "Value": fmt(c["backing_g_per_mm"]), "Unit": "g/mm", "Formula": f"Backing area x 0.1 x {density}"},
-        {"Section": "Backing", "Item": "Frame glass per mm", "Value": fmt(c["frame_g_per_mm"]), "Unit": "g/mm", "Formula": "Total frame / frame height"},
-        {"Section": "Backing", "Item": "Backing layer", "Value": fmt(c["backing_layer_mm"]), "Unit": "mm", "Formula": "Additional full-footprint layer"},
-        {"Section": "Backing", "Item": "Backing glass", "Value": fmt(c["backing_g"]), "Unit": "g", "Formula": "Backing glass per mm x backing layer"},
-        {"Section": "Backing", "Item": "Backing + relief layers", "Value": fmt(c["backing_plus_relief_g"]), "Unit": "g", "Formula": "Backing + relief background + relief fill"},
-        {"Section": "Backing", "Item": "Full side height", "Value": fmt(c["full_side_height_mm"]), "Unit": "mm", "Formula": "Print Z + relief background + backing layer"},
-        {"Section": "Backing", "Item": "Total thickness Z", "Value": fmt(c["total_thickness_z_mm"]), "Unit": "mm", "Formula": "Print Z - fiber thickness + relief background + backing layer"},
+        {"Section": glass, "Item": pf("items.manufacturer", "Manufacturer"), "Value": str(c["glass_manufacturer"]), "Unit": "", "Formula": pf("formulas.selected_glass_source", "Selected glass source")},
+        {"Section": glass, "Item": pf("items.specific_gravity", "Specific gravity"), "Value": density, "Unit": "g/cm³", "Formula": pf("formulas.glass_density", "Glass density used for weight calculations")},
+        {"Section": frame_height, "Item": pf("items.print_z_height", "Print Z length (height)"), "Value": fmt(c["max_mold_height_mm"]), "Unit": "mm", "Formula": pf("formulas.print_z", "Print Z")},
+        {"Section": frame_height, "Item": pf("items.fiber_paper_thickness", "Fiber paper thickness"), "Value": fmt(c["fiber_paper_thickness_mm"]), "Unit": "mm", "Formula": pf("formulas.measured_fiber_sheet", "Measured fiber paper sheet")},
+        {"Section": frame_height, "Item": pf("items.fiber_paper_layers", "Fiber paper layers"), "Value": fmt(c["fiber_paper_layers"], 0), "Unit": "", "Formula": pf("formulas.fiber_layers", "1 layer, or 2 when doubled")},
+        {"Section": frame_height, "Item": pf("items.fiber_displacement", "Fiber paper glass displacement"), "Value": fmt(c["fiber_paper_displacement_mm"]), "Unit": "mm", "Formula": pf("formulas.thickness_x_layers", "Thickness x layers")},
+        {"Section": frame_height, "Item": pf("items.relief_frame_height", "Relief frame height"), "Value": fmt(c["relief_frame_height_mm"]), "Unit": "mm", "Formula": pf("formulas.print_z_minus_fiber", "Print Z length - fiber paper displacement")},
+        {"Section": frame_height, "Item": pf("items.relief_background_layer", "Relief background layer"), "Value": fmt(c["relief_background_layer_mm"]), "Unit": "mm", "Formula": pf("formulas.field_layer_over_print", "Additional field layer over print")},
+        {"Section": frame_height, "Item": pf("items.frame_glass_height", "Frame glass height"), "Value": fmt(c["frame_height_mm"]), "Unit": "mm", "Formula": pf("formulas.frame_height", "Relief frame height + relief background layer")},
+        {"Section": side_x, "Item": pf("items.side_x_length", "Side X length"), "Value": fmt(c["side_x_mm"]), "Unit": "mm", "Formula": pf("formulas.outside_x", "Outside X length")},
+        {"Section": side_x, "Item": pf("items.print_x_length", "Print X length"), "Value": fmt(c["mold_x_mm"]), "Unit": "mm", "Formula": pf("formulas.known_3d_print_dimension", "Known 3D print dimension")},
+        {"Section": side_x, "Item": pf("items.frame_width", "Frame width"), "Value": fmt(c["frame_width_x_mm"]), "Unit": "mm", "Formula": pf("formulas.side_x_minus_print_x", "(Side X - Print X) / 2")},
+        {"Section": side_x, "Item": pf("items.fiber_paper_length", "Fiber paper length"), "Value": fmt(c["fiber_x_length_mm"]), "Unit": "mm", "Formula": pf("formulas.side_x_minus_frame_width", "Side X - frame width")},
+        {"Section": side_x, "Item": pf("items.fiber_paper_width", "Fiber paper width"), "Value": fmt(c["fiber_x_width_mm"]), "Unit": "mm", "Formula": pf("formulas.frame_width_value", "Frame width")},
+        {"Section": side_x, "Item": pf("items.side_wall_fiber_size", "Side-wall fiber size"), "Value": f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_x_length_mm'])}", "Unit": "mm", "Formula": pf("formulas.side_wall_x", "Full side height x (outside X + 16)")},
+        {"Section": side_x, "Item": pf("items.glass_area", "Glass area"), "Value": fmt(c["x_area_cm2"]), "Unit": "cm²", "Formula": pf("formulas.length_width_100", "Length x width / 100")},
+        {"Section": side_x, "Item": pf("items.glass_per_mm", "Glass per mm"), "Value": fmt(c["x_g_per_mm"]), "Unit": "g/mm", "Formula": pf("formulas.area_density", "Area x 0.1 x {density}", density=density)},
+        {"Section": side_x, "Item": pf("items.one_side", "One side"), "Value": fmt(c["side_x_g"]), "Unit": "g", "Formula": pf("formulas.glass_per_mm_frame_height", "Glass per mm x frame height")},
+        {"Section": side_x, "Item": pf("items.total_side_x", "Total side X"), "Value": fmt(c["total_side_x_g"]), "Unit": "g", "Formula": pf("formulas.one_side_x_2", "One side x 2")},
+        {"Section": side_y, "Item": pf("items.side_y_length", "Side Y length"), "Value": fmt(c["side_y_mm"]), "Unit": "mm", "Formula": pf("formulas.outside_y", "Outside Y length")},
+        {"Section": side_y, "Item": pf("items.print_y_length", "Print Y length"), "Value": fmt(c["mold_y_mm"]), "Unit": "mm", "Formula": pf("formulas.known_3d_print_dimension", "Known 3D print dimension")},
+        {"Section": side_y, "Item": pf("items.frame_width", "Frame width"), "Value": fmt(c["frame_width_y_mm"]), "Unit": "mm", "Formula": pf("formulas.side_y_minus_print_y", "(Side Y - Print Y) / 2")},
+        {"Section": side_y, "Item": pf("items.fiber_paper_length", "Fiber paper length"), "Value": fmt(c["fiber_y_length_mm"]), "Unit": "mm", "Formula": pf("formulas.side_y_minus_frame_width", "Side Y - frame width")},
+        {"Section": side_y, "Item": pf("items.fiber_paper_width", "Fiber paper width"), "Value": fmt(c["fiber_y_width_mm"]), "Unit": "mm", "Formula": pf("formulas.frame_width_value", "Frame width")},
+        {"Section": side_y, "Item": pf("items.side_wall_fiber_size", "Side-wall fiber size"), "Value": f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_y_length_mm'])}", "Unit": "mm", "Formula": pf("formulas.side_wall_y", "Full side height x (outside Y + 16)")},
+        {"Section": side_y, "Item": pf("items.glass_area", "Glass area"), "Value": fmt(c["y_area_cm2"]), "Unit": "cm²", "Formula": pf("formulas.length_width_100", "Length x width / 100")},
+        {"Section": side_y, "Item": pf("items.glass_per_mm", "Glass per mm"), "Value": fmt(c["y_g_per_mm"]), "Unit": "g/mm", "Formula": pf("formulas.area_density", "Area x 0.1 x {density}", density=density)},
+        {"Section": side_y, "Item": pf("items.one_side", "One side"), "Value": fmt(c["side_y_g"]), "Unit": "g", "Formula": pf("formulas.glass_per_mm_frame_height", "Glass per mm x frame height")},
+        {"Section": side_y, "Item": pf("items.total_side_y", "Total side Y"), "Value": fmt(c["total_side_y_g"]), "Unit": "g", "Formula": pf("formulas.one_side_x_2", "One side x 2")},
+        {"Section": frame, "Item": pf("items.total_frame", "Total frame"), "Value": fmt(c["total_frame_g"]), "Unit": "g", "Formula": pf("formulas.total_side_x_y", "Total side X + total side Y")},
+        {"Section": relief_fill, "Item": pf("items.relief_fill_glass", "Relief fill glass"), "Value": fmt(c["relief_fill_g"]), "Unit": "g", "Formula": pf("formulas.rectangular_minus_model", "Rectangular output volume - exported model volume")},
+        {"Section": relief_fill, "Item": pf("items.print_field_fill_rate", "Print field fill rate"), "Value": fmt(c["art_space_g_per_mm"]), "Unit": "g/mm", "Formula": pf("formulas.print_xy_density", "Print X x Print Y / 1000 x {density}", density=density)},
+        {"Section": relief_fill, "Item": pf("items.relief_background_glass", "Relief background glass"), "Value": fmt(c["relief_background_g"]), "Unit": "g", "Formula": pf("formulas.fill_rate_background", "Print field fill rate x background layer")},
+        {"Section": backing, "Item": pf("items.backing_area", "Backing area"), "Value": fmt(c["side_area_cm2"]), "Unit": "cm²", "Formula": pf("formulas.side_x_y_100", "Side X x Side Y / 100")},
+        {"Section": backing, "Item": pf("items.backing_glass_per_mm", "Backing glass per mm"), "Value": fmt(c["backing_g_per_mm"]), "Unit": "g/mm", "Formula": pf("formulas.backing_area_density", "Backing area x 0.1 x {density}", density=density)},
+        {"Section": backing, "Item": pf("items.frame_glass_per_mm", "Frame glass per mm"), "Value": fmt(c["frame_g_per_mm"]), "Unit": "g/mm", "Formula": pf("formulas.total_frame_frame_height", "Total frame / frame height")},
+        {"Section": backing, "Item": pf("items.backing_layer", "Backing layer"), "Value": fmt(c["backing_layer_mm"]), "Unit": "mm", "Formula": pf("formulas.full_footprint_layer", "Additional full-footprint layer")},
+        {"Section": backing, "Item": pf("items.backing_glass", "Backing glass"), "Value": fmt(c["backing_g"]), "Unit": "g", "Formula": pf("formulas.backing_per_mm_layer", "Backing glass per mm x backing layer")},
+        {"Section": backing, "Item": pf("items.backing_relief_layers", "Backing + relief layers"), "Value": fmt(c["backing_plus_relief_g"]), "Unit": "g", "Formula": pf("formulas.backing_background_fill", "Backing + relief background + relief fill")},
+        {"Section": backing, "Item": pf("items.full_side_height", "Full side height"), "Value": fmt(c["full_side_height_mm"]), "Unit": "mm", "Formula": pf("formulas.print_z_background_backing", "Print Z + relief background + backing layer")},
+        {"Section": backing, "Item": pf("items.total_thickness_z", "Total thickness Z"), "Value": fmt(c["total_thickness_z_mm"]), "Unit": "mm", "Formula": pf("formulas.print_z_minus_fiber_background_backing", "Print Z - fiber thickness + relief background + backing layer")},
     ]
 
 
 def weight_summary_rows(c: dict[str, float]) -> list[dict[str, float | str]]:
+    region = pf("columns.region", "Region")
+    footprint = pf("columns.footprint", "Footprint")
+    area = pf("columns.area_cm2", "Area (cm²)")
+    height = pf("columns.height_mm", "Height (mm)")
+    glass_g = pf("columns.glass_g", "Glass (g)")
     return [
         {
-            "Region": "Relief fill",
-            "Footprint": "Print field",
-            "Area (cm²)": c["mold_area_cm2"],
-            "Height (mm)": c["max_mold_height_mm"],
-            "Glass (g)": c["relief_fill_g"],
+            region: pf("regions.relief_fill", "Relief fill"),
+            footprint: pf("footprints.print_field", "Print field"),
+            area: c["mold_area_cm2"],
+            height: c["max_mold_height_mm"],
+            glass_g: c["relief_fill_g"],
         },
         {
-            "Region": "Relief background",
-            "Footprint": "Print field",
-            "Area (cm²)": c["mold_area_cm2"],
-            "Height (mm)": c["relief_background_layer_mm"],
-            "Glass (g)": c["relief_background_g"],
+            region: pf("regions.relief_background", "Relief background"),
+            footprint: pf("footprints.print_field", "Print field"),
+            area: c["mold_area_cm2"],
+            height: c["relief_background_layer_mm"],
+            glass_g: c["relief_background_g"],
         },
         {
-            "Region": "X frame strips",
-            "Footprint": "2 X strips",
-            "Area (cm²)": c["x_area_cm2"] * 2.0,
-            "Height (mm)": c["frame_height_mm"],
-            "Glass (g)": c["total_side_x_g"],
+            region: pf("regions.x_frame_strips", "X frame strips"),
+            footprint: pf("footprints.two_x_strips", "2 X strips"),
+            area: c["x_area_cm2"] * 2.0,
+            height: c["frame_height_mm"],
+            glass_g: c["total_side_x_g"],
         },
         {
-            "Region": "Y frame strips",
-            "Footprint": "2 Y strips",
-            "Area (cm²)": c["y_area_cm2"] * 2.0,
-            "Height (mm)": c["frame_height_mm"],
-            "Glass (g)": c["total_side_y_g"],
+            region: pf("regions.y_frame_strips", "Y frame strips"),
+            footprint: pf("footprints.two_y_strips", "2 Y strips"),
+            area: c["y_area_cm2"] * 2.0,
+            height: c["frame_height_mm"],
+            glass_g: c["total_side_y_g"],
         },
         {
-            "Region": "Backing with frame",
-            "Footprint": "Side X x Side Y",
-            "Area (cm²)": c["side_area_cm2"],
-            "Height (mm)": c["backing_layer_mm"],
-            "Glass (g)": c["backing_g"],
+            region: pf("regions.backing_with_frame", "Backing with frame"),
+            footprint: pf("footprints.side_x_y", "Side X x Side Y"),
+            area: c["side_area_cm2"],
+            height: c["backing_layer_mm"],
+            glass_g: c["backing_g"],
         },
     ]
 
@@ -468,7 +484,7 @@ def top_view_svg(c: dict[str, float]) -> str:
     side_label_x = left - 38
     frame_dim_y = bottom + 34
     return f"""
-    <svg viewBox="0 0 680 520" width="100%" role="img" aria-label="Top footprint preview">
+    <svg viewBox="0 0 680 520" width="100%" role="img" aria-label="{pf('aria.top_footprint_preview', 'Top footprint preview')}">
       <defs>
         <marker id="topArrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
           <path d="M0,0 L8,4 L0,8 z" fill="#222"/>
@@ -481,7 +497,7 @@ def top_view_svg(c: dict[str, float]) -> str:
         .dim {{ stroke:#222; stroke-width:1.7; marker-start:url(#topArrow); marker-end:url(#topArrow); }}
         .guide {{ stroke:#222; stroke-width:2.2; stroke-dasharray:4 5; }}
       </style>
-      <text x="340" y="32" text-anchor="middle" class="title">Top View</text>
+      <text x="340" y="32" text-anchor="middle" class="title">{pf('svg.top_view', 'Top View')}</text>
 
       <rect x="{left:.1f}" y="{top:.1f}" width="{side_w - frame_x_px:.1f}" height="{frame_y_px:.1f}" fill="#8ee6ee" stroke="#222" stroke-width="2"/>
       <rect x="{left:.1f}" y="{mold_top:.1f}" width="{frame_x_px:.1f}" height="{side_h - frame_y_px:.1f}" fill="#c6fb85" stroke="#222" stroke-width="2"/>
@@ -490,23 +506,23 @@ def top_view_svg(c: dict[str, float]) -> str:
       <rect x="{mold_left:.1f}" y="{mold_top:.1f}" width="{mold_w:.1f}" height="{mold_h:.1f}" fill="#e985b6" stroke="#222" stroke-width="2"/>
 
       <line x1="{left:.1f}" y1="{top - 14:.1f}" x2="{right:.1f}" y2="{top - 14:.1f}" class="dim"/>
-      <text x="{left + side_w / 2:.1f}" y="{top - 27:.1f}" text-anchor="middle" class="label">Side X</text>
+      <text x="{left + side_w / 2:.1f}" y="{top - 27:.1f}" text-anchor="middle" class="label">{pf('svg.side_x', 'Side X')}</text>
       <line x1="{left:.1f}" y1="{top - 58:.1f}" x2="{left:.1f}" y2="{top:.1f}" class="guide"/>
       <line x1="{right:.1f}" y1="{top - 58:.1f}" x2="{right:.1f}" y2="{top:.1f}" class="guide"/>
 
       <line x1="{left - 12:.1f}" y1="{top:.1f}" x2="{left - 12:.1f}" y2="{bottom:.1f}" class="dim"/>
-      <text x="{side_label_x:.1f}" y="{top + side_h / 2:.1f}" transform="rotate(90 {side_label_x:.1f},{top + side_h / 2:.1f})" text-anchor="middle" class="label">Side Y</text>
+      <text x="{side_label_x:.1f}" y="{top + side_h / 2:.1f}" transform="rotate(90 {side_label_x:.1f},{top + side_h / 2:.1f})" text-anchor="middle" class="label">{pf('svg.side_y', 'Side Y')}</text>
       <line x1="{left - 58:.1f}" y1="{top:.1f}" x2="{left:.1f}" y2="{top:.1f}" class="guide"/>
       <line x1="{left - 58:.1f}" y1="{bottom:.1f}" x2="{left:.1f}" y2="{bottom:.1f}" class="guide"/>
 
       <line x1="{mold_left:.1f}" y1="{mold_top + 36:.1f}" x2="{mold_right:.1f}" y2="{mold_top + 36:.1f}" class="dim"/>
-      <text x="{mold_left + mold_w / 2:.1f}" y="{mold_top + 25:.1f}" text-anchor="middle" class="label">Mold X Length</text>
+      <text x="{mold_left + mold_w / 2:.1f}" y="{mold_top + 25:.1f}" text-anchor="middle" class="label">{pf('svg.mold_x_length', 'Mold X Length')}</text>
 
       <line x1="{mold_left + 30:.1f}" y1="{mold_top:.1f}" x2="{mold_left + 30:.1f}" y2="{mold_bottom:.1f}" class="dim"/>
-      <text x="{mold_left + 47:.1f}" y="{mold_top + mold_h / 2:.1f}" transform="rotate(90 {mold_left + 47:.1f},{mold_top + mold_h / 2:.1f})" text-anchor="middle" class="label">Mold Y Length</text>
+      <text x="{mold_left + 47:.1f}" y="{mold_top + mold_h / 2:.1f}" transform="rotate(90 {mold_left + 47:.1f},{mold_top + mold_h / 2:.1f})" text-anchor="middle" class="label">{pf('svg.mold_y_length', 'Mold Y Length')}</text>
 
       <line x1="{left:.1f}" y1="{frame_dim_y:.1f}" x2="{mold_left:.1f}" y2="{frame_dim_y:.1f}" class="dim"/>
-      <text x="{mold_left + 24:.1f}" y="{frame_dim_y + 5:.1f}" class="label">Frame Width</text>
+      <text x="{mold_left + 24:.1f}" y="{frame_dim_y + 5:.1f}" class="label">{pf('svg.frame_width', 'Frame Width')}</text>
       <line x1="{left:.1f}" y1="{bottom:.1f}" x2="{left:.1f}" y2="{frame_dim_y + 22:.1f}" class="guide"/>
       <line x1="{mold_left:.1f}" y1="{mold_top:.1f}" x2="{mold_left:.1f}" y2="{frame_dim_y + 22:.1f}" class="guide"/>
     </svg>
@@ -562,7 +578,7 @@ def profile_view_svg(c: dict[str, float]) -> str:
         )
 
     return f"""
-    <svg viewBox="0 0 680 400" width="100%" role="img" aria-label="Fabrication profile preview">
+    <svg viewBox="0 0 680 400" width="100%" role="img" aria-label="{pf('aria.fabrication_profile_preview', 'Fabrication profile preview')}">
       <defs>
         <marker id="profileArrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
           <path d="M0,0 L8,4 L0,8 z" fill="#222"/>
@@ -577,16 +593,16 @@ def profile_view_svg(c: dict[str, float]) -> str:
         .dim {{ stroke:#222; stroke-width:1.5; marker-start:url(#profileArrow); marker-end:url(#profileArrow); }}
         .guide {{ stroke:#222; stroke-width:1.4; stroke-dasharray:4 5; }}
       </style>
-      <text x="340" y="32" text-anchor="middle" class="title">Fabrication Profile</text>
-      <text x="340" y="51" text-anchor="middle" class="subtitle">Side view across X - proportional scale</text>
-      {legend_item(92, 76, "#f3aebe", "#222", "Frame/backing glass")}
-      {legend_item(244, 76, "#fff6d8", "#222", "Relief background")}
-      {legend_item(388, 76, "#e4e0f8", "#222", "Refractory mold")}
-      {legend_item(218, 96, "#f1eeee", "#222", "Fiber paper")}
-      {legend_item(330, 96, "#e9e2c6", "#8f8a78", "Kiln shelf")}
+      <text x="340" y="32" text-anchor="middle" class="title">{pf('svg.fabrication_profile', 'Fabrication Profile')}</text>
+      <text x="340" y="51" text-anchor="middle" class="subtitle">{pf('svg.profile_subtitle', 'Side view across X - proportional scale')}</text>
+      {legend_item(92, 76, "#f3aebe", "#222", pf("svg.frame_backing_glass", "Frame/backing glass"))}
+      {legend_item(244, 76, "#fff6d8", "#222", pf("svg.relief_background", "Relief background"))}
+      {legend_item(388, 76, "#e4e0f8", "#222", pf("svg.refractory_mold", "Refractory mold"))}
+      {legend_item(218, 96, "#f1eeee", "#222", pf("svg.fiber_paper", "Fiber paper"))}
+      {legend_item(330, 96, "#e9e2c6", "#8f8a78", pf("svg.kiln_shelf", "Kiln shelf"))}
 
       <rect x="{left - 24:.1f}" y="{shelf_top:.1f}" width="{side_w + 48:.1f}" height="{shelf_h:.1f}" fill="#e9e2c6" stroke="#8f8a78" stroke-width="1.2"/>
-      <text x="{left + side_w / 2:.1f}" y="{shelf_top + shelf_h / 2 + 4:.1f}" text-anchor="middle" class="small">Kiln shelf</text>
+      <text x="{left + side_w / 2:.1f}" y="{shelf_top + shelf_h / 2 + 4:.1f}" text-anchor="middle" class="small">{pf('svg.kiln_shelf', 'Kiln shelf')}</text>
 
       <rect x="{content_left:.1f}" y="{mold_y:.1f}" width="{mold_w_px:.1f}" height="{print_h_px:.1f}" fill="#e4e0f8" stroke="#222" stroke-width="2"/>
       <rect x="{content_left:.1f}" y="{relief_bg_y:.1f}" width="{mold_w_px:.1f}" height="{relief_bg_h_px:.1f}" fill="#fff6d8" stroke="#222" stroke-width="2"/>
@@ -596,22 +612,22 @@ def profile_view_svg(c: dict[str, float]) -> str:
       <rect x="{right_frame_x:.1f}" y="{frame_y:.1f}" width="{frame_w_px:.1f}" height="{frame_glass_h_px:.1f}" fill="#f3aebe" stroke="#222" stroke-width="2"/>
       <rect x="{left:.1f}" y="{backing_y:.1f}" width="{side_w:.1f}" height="{backing_h_px:.1f}" fill="#f3aebe" stroke="#222" stroke-width="2"/>
 
-      {center_label(content_left, mold_y, mold_w_px, print_h_px, "Refractory mold")}
+      {center_label(content_left, mold_y, mold_w_px, print_h_px, pf("svg.refractory_mold", "Refractory mold"))}
 
       <line x1="{dim_x:.1f}" y1="{profile_top:.1f}" x2="{dim_x:.1f}" y2="{shelf_top:.1f}" class="dim"/>
-      <text x="{dim_x + 18:.1f}" y="{profile_top + (shelf_top - profile_top) / 2:.1f}" transform="rotate(90 {dim_x + 18:.1f},{profile_top + (shelf_top - profile_top) / 2:.1f})" text-anchor="middle" class="small">full side height {fmt(visual_h)} mm</text>
+      <text x="{dim_x + 18:.1f}" y="{profile_top + (shelf_top - profile_top) / 2:.1f}" transform="rotate(90 {dim_x + 18:.1f},{profile_top + (shelf_top - profile_top) / 2:.1f})" text-anchor="middle" class="small">{pf('svg.full_side_height', 'full side height')} {fmt(visual_h)} mm</text>
       <line x1="{right:.1f}" y1="{profile_top:.1f}" x2="{dim_x - 8:.1f}" y2="{profile_top:.1f}" class="guide"/>
       <line x1="{right:.1f}" y1="{shelf_top:.1f}" x2="{dim_x - 8:.1f}" y2="{shelf_top:.1f}" class="guide"/>
 
       <line x1="{left:.1f}" y1="{shelf_top + 38:.1f}" x2="{right:.1f}" y2="{shelf_top + 38:.1f}" class="dim"/>
-      <text x="{left + side_w / 2:.1f}" y="{shelf_top + 62:.1f}" text-anchor="middle" class="small">Outside X {fmt(side_x)} mm</text>
+      <text x="{left + side_w / 2:.1f}" y="{shelf_top + 62:.1f}" text-anchor="middle" class="small">{pf('svg.outside_x', 'Outside X')} {fmt(side_x)} mm</text>
       <line x1="{left:.1f}" y1="{shelf_top:.1f}" x2="{left:.1f}" y2="{shelf_top + 46:.1f}" class="guide"/>
       <line x1="{right:.1f}" y1="{shelf_top:.1f}" x2="{right:.1f}" y2="{shelf_top + 46:.1f}" class="guide"/>
 
       <line x1="{content_left:.1f}" y1="{shelf_top + 84:.1f}" x2="{content_right:.1f}" y2="{shelf_top + 84:.1f}" class="dim"/>
-      <text x="{content_left + mold_w_px / 2:.1f}" y="{shelf_top + 108:.1f}" text-anchor="middle" class="small">Print X {fmt(mold_x)} mm</text>
+      <text x="{content_left + mold_w_px / 2:.1f}" y="{shelf_top + 108:.1f}" text-anchor="middle" class="small">{pf('svg.print_x', 'Print X')} {fmt(mold_x)} mm</text>
 
-      <text x="{left:.1f}" y="372" class="small">Frame glass {fmt(frame_w)} mm wide x {fmt(relief_h + relief_bg_h)} mm high | Fiber displacement {fmt(fiber_h)} mm | Relief background {fmt(relief_bg_h)} mm | Backing {fmt(backing_h)} mm</text>
+      <text x="{left:.1f}" y="372" class="small">{pf('svg.profile_summary', 'Frame glass {frame_w} mm wide x {frame_h} mm high | Fiber displacement {fiber_h} mm | Relief background {relief_bg_h} mm | Backing {backing_h} mm', frame_w=fmt(frame_w), frame_h=fmt(relief_h + relief_bg_h), fiber_h=fmt(fiber_h), relief_bg_h=fmt(relief_bg_h), backing_h=fmt(backing_h))}</text>
     </svg>
     """
 
@@ -621,95 +637,114 @@ def render_svg(svg: str) -> None:
 
 
 def weight_summary_frame(c: dict[str, float]) -> pd.DataFrame:
+    region_col = pf("columns.region", "Region")
+    glass_col = pf("columns.glass_g", "Glass (g)")
     return pd.DataFrame(weight_summary_rows(c)).loc[
-        lambda df: df["Region"].isin(["Relief fill", "Relief background", "X frame strips", "Y frame strips", "Backing with frame"])
-    ][["Region", "Glass (g)"]]
+        lambda df: df[region_col].isin(
+            [
+                pf("regions.relief_fill", "Relief fill"),
+                pf("regions.relief_background", "Relief background"),
+                pf("regions.x_frame_strips", "X frame strips"),
+                pf("regions.y_frame_strips", "Y frame strips"),
+                pf("regions.backing_with_frame", "Backing with frame"),
+            ]
+        )
+    ][[region_col, glass_col]]
 
 
 def checklist_frames(c: dict[str, float]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    task_col = pf("columns.task", "Task")
+    count_col = pf("columns.count", "Count")
+    size_col = pf("columns.size_mm", "Size (mm)")
+    each_col = pf("columns.each_g", "Each (g)")
+    total_col = pf("columns.total_g", "Total (g)")
+    strip_col = pf("columns.strip", "Strip")
+    thickness_col = pf("columns.thickness_mm", "Thickness (mm)")
+    item_col = pf("columns.item", "Item")
+    value_col = pf("columns.value", "Value")
     glass_to_weigh_df = pd.DataFrame(
         [
             {
-                "Task": "X frame glass",
-                "Count": 2,
-                "Size (mm)": f"{fmt(c['fiber_x_length_mm'])} x {fmt(c['fiber_x_width_mm'])}",
-                "Each (g)": fmt(c["side_x_g"]),
-                "Total (g)": fmt(c["total_side_x_g"]),
+                task_col: pf("tasks.x_frame_glass", "X frame glass"),
+                count_col: 2,
+                size_col: f"{fmt(c['fiber_x_length_mm'])} x {fmt(c['fiber_x_width_mm'])}",
+                each_col: fmt(c["side_x_g"]),
+                total_col: fmt(c["total_side_x_g"]),
             },
             {
-                "Task": "Y frame glass",
-                "Count": 2,
-                "Size (mm)": f"{fmt(c['fiber_y_length_mm'])} x {fmt(c['fiber_y_width_mm'])}",
-                "Each (g)": fmt(c["side_y_g"]),
-                "Total (g)": fmt(c["total_side_y_g"]),
+                task_col: pf("tasks.y_frame_glass", "Y frame glass"),
+                count_col: 2,
+                size_col: f"{fmt(c['fiber_y_length_mm'])} x {fmt(c['fiber_y_width_mm'])}",
+                each_col: fmt(c["side_y_g"]),
+                total_col: fmt(c["total_side_y_g"]),
             },
             {
-                "Task": "Backing glass",
-                "Count": 1,
-                "Size (mm)": f"{fmt(c['side_x_mm'])} x {fmt(c['side_y_mm'])}",
-                "Each (g)": fmt(c["backing_g"]),
-                "Total (g)": fmt(c["backing_g"]),
+                task_col: pf("tasks.backing_glass", "Backing glass"),
+                count_col: 1,
+                size_col: f"{fmt(c['side_x_mm'])} x {fmt(c['side_y_mm'])}",
+                each_col: fmt(c["backing_g"]),
+                total_col: fmt(c["backing_g"]),
             },
             {
-                "Task": "Relief background glass",
-                "Count": 1,
-                "Size (mm)": f"{fmt(c['mold_x_mm'])} x {fmt(c['mold_y_mm'])}",
-                "Each (g)": fmt(c["relief_background_g"]),
-                "Total (g)": fmt(c["relief_background_g"]),
+                task_col: pf("tasks.relief_background_glass", "Relief background glass"),
+                count_col: 1,
+                size_col: f"{fmt(c['mold_x_mm'])} x {fmt(c['mold_y_mm'])}",
+                each_col: fmt(c["relief_background_g"]),
+                total_col: fmt(c["relief_background_g"]),
             },
             {
-                "Task": "Relief fill glass",
-                "Count": 1,
-                "Size (mm)": f"{fmt(c['mold_x_mm'])} x {fmt(c['mold_y_mm'])}",
-                "Each (g)": fmt(c["relief_fill_g"]),
-                "Total (g)": fmt(c["relief_fill_g"]),
+                task_col: pf("tasks.relief_fill_glass", "Relief fill glass"),
+                count_col: 1,
+                size_col: f"{fmt(c['mold_x_mm'])} x {fmt(c['mold_y_mm'])}",
+                each_col: fmt(c["relief_fill_g"]),
+                total_col: fmt(c["relief_fill_g"]),
             },
         ]
     )
     fiber_paper_df = pd.DataFrame(
         [
             {
-                "Strip": "X frame fiber",
-                "Count": int(c["fiber_paper_layers"]) * 2,
-                "Size (mm)": f"{fmt(c['fiber_x_length_mm'])} x {fmt(c['fiber_x_width_mm'])}",
-                "Thickness (mm)": fmt(c["fiber_paper_thickness_mm"]),
+                strip_col: pf("strips.x_frame_fiber", "X frame fiber"),
+                count_col: int(c["fiber_paper_layers"]) * 2,
+                size_col: f"{fmt(c['fiber_x_length_mm'])} x {fmt(c['fiber_x_width_mm'])}",
+                thickness_col: fmt(c["fiber_paper_thickness_mm"]),
             },
             {
-                "Strip": "Y frame fiber",
-                "Count": int(c["fiber_paper_layers"]) * 2,
-                "Size (mm)": f"{fmt(c['fiber_y_length_mm'])} x {fmt(c['fiber_y_width_mm'])}",
-                "Thickness (mm)": fmt(c["fiber_paper_thickness_mm"]),
+                strip_col: pf("strips.y_frame_fiber", "Y frame fiber"),
+                count_col: int(c["fiber_paper_layers"]) * 2,
+                size_col: f"{fmt(c['fiber_y_length_mm'])} x {fmt(c['fiber_y_width_mm'])}",
+                thickness_col: fmt(c["fiber_paper_thickness_mm"]),
             },
             {
-                "Strip": "X side-wall fiber",
-                "Count": 2,
-                "Size (mm)": f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_x_length_mm'])}",
-                "Thickness (mm)": fmt(c["fiber_paper_thickness_mm"]),
+                strip_col: pf("strips.x_side_wall_fiber", "X side-wall fiber"),
+                count_col: 2,
+                size_col: f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_x_length_mm'])}",
+                thickness_col: fmt(c["fiber_paper_thickness_mm"]),
             },
             {
-                "Strip": "Y side-wall fiber",
-                "Count": 2,
-                "Size (mm)": f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_y_length_mm'])}",
-                "Thickness (mm)": fmt(c["fiber_paper_thickness_mm"]),
+                strip_col: pf("strips.y_side_wall_fiber", "Y side-wall fiber"),
+                count_col: 2,
+                size_col: f"{fmt(c['side_wall_fiber_height_mm'])} x {fmt(c['side_wall_fiber_y_length_mm'])}",
+                thickness_col: fmt(c["fiber_paper_thickness_mm"]),
             },
         ]
     )
     setup_df = pd.DataFrame(
         [
-            {"Item": "Glass manufacturer", "Value": str(c["glass_manufacturer"])},
-            {"Item": "Specific gravity", "Value": f"{fmt(c['glass_density_g_per_cm3'], 2)} g/cm³"},
-            {"Item": "Outside footprint", "Value": f"{fmt(c['side_x_mm'])} x {fmt(c['side_y_mm'])} mm"},
-            {"Item": "Print field", "Value": f"{fmt(c['mold_x_mm'])} x {fmt(c['mold_y_mm'])} mm"},
-            {"Item": "Frame border", "Value": f"{fmt(c['frame_width_x_mm'])} / {fmt(c['frame_width_y_mm'])} mm"},
-            {"Item": "Fiber paper", "Value": f"{fmt(c['fiber_paper_thickness_mm'])} mm x {fmt(c['fiber_paper_layers'], 0)} layer(s)"},
-            {"Item": "Fiber displacement", "Value": f"{fmt(c['fiber_paper_displacement_mm'])} mm"},
-            {"Item": "Relief frame height", "Value": f"{fmt(c['relief_frame_height_mm'])} mm"},
-            {"Item": "Relief background layer", "Value": f"{fmt(c['relief_background_layer_mm'])} mm"},
-            {"Item": "Frame glass height", "Value": f"{fmt(c['frame_height_mm'])} mm"},
-            {"Item": "Backing layer", "Value": f"{fmt(c['backing_layer_mm'])} mm"},
-            {"Item": "Full side height", "Value": f"{fmt(c['full_side_height_mm'])} mm"},
-            {"Item": "Fabrication stack height", "Value": f"{fmt(c['total_thickness_z_mm'])} mm"},
-            {"Item": "Fabrication total", "Value": f"{fmt(c['fabrication_total_g'])} g"},
+            {item_col: pf("items.glass_manufacturer", "Glass manufacturer"), value_col: str(c["glass_manufacturer"])},
+            {item_col: pf("items.specific_gravity", "Specific gravity"), value_col: f"{fmt(c['glass_density_g_per_cm3'], 2)} g/cm³"},
+            {item_col: pf("items.outside_footprint", "Outside footprint"), value_col: f"{fmt(c['side_x_mm'])} x {fmt(c['side_y_mm'])} mm"},
+            {item_col: pf("items.print_field", "Print field"), value_col: f"{fmt(c['mold_x_mm'])} x {fmt(c['mold_y_mm'])} mm"},
+            {item_col: pf("items.frame_border", "Frame border"), value_col: f"{fmt(c['frame_width_x_mm'])} / {fmt(c['frame_width_y_mm'])} mm"},
+            {item_col: pf("items.fiber_paper", "Fiber paper"), value_col: f"{fmt(c['fiber_paper_thickness_mm'])} mm x {fmt(c['fiber_paper_layers'], 0)} {pf('labels.layers', 'layer(s)')}"},
+            {item_col: pf("items.fiber_displacement_short", "Fiber displacement"), value_col: f"{fmt(c['fiber_paper_displacement_mm'])} mm"},
+            {item_col: pf("items.relief_frame_height", "Relief frame height"), value_col: f"{fmt(c['relief_frame_height_mm'])} mm"},
+            {item_col: pf("items.relief_background_layer", "Relief background layer"), value_col: f"{fmt(c['relief_background_layer_mm'])} mm"},
+            {item_col: pf("items.frame_glass_height", "Frame glass height"), value_col: f"{fmt(c['frame_height_mm'])} mm"},
+            {item_col: pf("items.backing_layer", "Backing layer"), value_col: f"{fmt(c['backing_layer_mm'])} mm"},
+            {item_col: pf("items.full_side_height", "Full side height"), value_col: f"{fmt(c['full_side_height_mm'])} mm"},
+            {item_col: pf("items.fabrication_stack_height", "Fabrication stack height"), value_col: f"{fmt(c['total_thickness_z_mm'])} mm"},
+            {item_col: pf("items.fabrication_total", "Fabrication total"), value_col: f"{fmt(c['fabrication_total_g'])} g"},
         ]
     )
     return glass_to_weigh_df, fiber_paper_df, setup_df
@@ -759,18 +794,18 @@ def checklist_pdf(inputs: FrameInputs, glass_df: pd.DataFrame, fiber_df: pd.Data
     heading_style.fontSize = 14
     heading_style.leading = 18
     normal_style = styles["Normal"]
-    title_text = escape(inputs.title.strip() or "Untitled")
+    title_text = escape(inputs.title.strip() or pf("labels.untitled", "Untitled"))
     story = [
-        Paragraph("Fabrication checklist", title_style),
+        Paragraph(pf("sections.fabrication_checklist", "Fabrication checklist"), title_style),
         Paragraph(f"{title_text} | {inputs.job_date}", normal_style),
         Spacer(1, 0.18 * inch),
-        Paragraph("Setup dimensions", heading_style),
+        Paragraph(pf("sections.setup_dimensions", "Setup dimensions"), heading_style),
         pdf_table(setup_df, [2.7 * inch, 2.7 * inch]),
         Spacer(1, 0.2 * inch),
-        Paragraph("Glass to weigh", heading_style),
+        Paragraph(pf("sections.glass_to_weigh", "Glass to weigh"), heading_style),
         pdf_table(glass_df, [2.15 * inch, 0.58 * inch, 1.25 * inch, 0.82 * inch, 0.88 * inch]),
         Spacer(1, 0.2 * inch),
-        Paragraph("Fiber paper to cut", heading_style),
+        Paragraph(pf("sections.fiber_paper_to_cut", "Fiber paper to cut"), heading_style),
         pdf_table(fiber_df, [2.1 * inch, 0.6 * inch, 1.65 * inch, 1.05 * inch]),
     ]
     doc.build(story)
@@ -897,7 +932,7 @@ def load_record(record_id: int) -> sqlite3.Row | None:
 
 def format_record_date(value: str | None) -> str:
     if not value:
-        return "no date"
+        return pf("labels.no_date", "no date")
     try:
         return date.fromisoformat(value).strftime("%-m/%-d/%y")
     except ValueError:
@@ -948,7 +983,7 @@ init_db()
 
 def record_payload() -> dict[str, float | str]:
     now = datetime.now().isoformat(timespec="seconds")
-    title = str(st.session_state.get("pf_title", "")).strip() or "Untitled fabrication"
+    title = str(st.session_state.get("pf_title", "")).strip() or pf("labels.untitled_fabrication", "Untitled fabrication")
     job_date_value = st.session_state.get("pf_job_date", date.today())
     if isinstance(job_date_value, date):
         job_date_text = job_date_value.isoformat()
@@ -1007,13 +1042,13 @@ def reset_record_state() -> None:
         st.session_state[field_key] = default_value
     st.session_state["pf_loaded_id"] = None
 
-with st.expander("Import from settings.txt", expanded=False):
+with st.expander(pf("sections.import_settings", "Import from settings.txt"), expanded=False):
     import_left, import_right = st.columns([1, 1.4])
     with import_left:
-        uploaded_settings = st.file_uploader("Drop a .txt export", type=["txt"], key="pf_settings_upload")
+        uploaded_settings = st.file_uploader(pf("fields.drop_txt_export", "Drop a .txt export"), type=["txt"], key="pf_settings_upload")
     with import_right:
-        pasted_settings = st.text_area("...or paste export text", height=120, key="pf_settings_paste")
-    if st.button("Parse & pre-fill", width="stretch"):
+        pasted_settings = st.text_area(pf("fields.paste_export_text", "...or paste export text"), height=120, key="pf_settings_paste")
+    if st.button(pf("actions.parse_prefill", "Parse & pre-fill"), width="stretch"):
         raw_settings = ""
         if uploaded_settings is not None:
             raw_settings = uploaded_settings.read().decode("utf-8", errors="replace")
@@ -1023,66 +1058,67 @@ with st.expander("Import from settings.txt", expanded=False):
             imported = parse_settings_txt(raw_settings, selected_density())
             filled = apply_imported_settings(imported)
             if filled:
-                st.success("Pre-filled: " + ", ".join(filled))
+                st.success(pf("messages.prefilled", "Pre-filled: {fields}", fields=", ".join(filled)))
             else:
-                st.warning("No recognized fields found in that export.")
+                st.warning(pf("messages.no_recognized_fields", "No recognized fields found in that export."))
         else:
-            st.warning("Nothing to parse.")
+            st.warning(pf("messages.nothing_to_parse", "Nothing to parse."))
 
-with st.expander("Fabrication records", expanded=False):
+with st.expander(pf("sections.fabrication_records", "Fabrication records"), expanded=False):
     loaded_id = st.session_state.get("pf_loaded_id")
-    save_label = "Update current record" if loaded_id else "Save current setup"
+    save_label = pf("actions.update_current_record", "Update current record") if loaded_id else pf("actions.save_current_setup", "Save current setup")
     action_cols = st.columns([1.2, 1])
     with action_cols[0]:
         if st.button(save_label, type="primary", width="stretch"):
             rec = record_payload()
             if loaded_id:
                 update_record(int(loaded_id), rec)
-                st.success(f"Updated record: {rec['title']}")
+                st.success(pf("messages.updated_record", "Updated record: {title}", title=rec["title"]))
             else:
                 st.session_state["pf_loaded_id"] = save_record(rec)
-                st.success(f"Saved record: {rec['title']}")
+                st.success(pf("messages.saved_record", "Saved record: {title}", title=rec["title"]))
     with action_cols[1]:
-        if st.button("+ New setup", width="stretch"):
+        if st.button(pf("actions.new_setup", "+ New setup"), width="stretch"):
             reset_record_state()
             st.rerun()
 
     records = list_records()
     if not records:
-        st.info("No saved fabrication records yet.")
+        st.info(pf("messages.no_saved_records", "No saved fabrication records yet."))
     else:
         st.divider()
         for row in records:
             record_cols = st.columns([4, 1, 1])
             with record_cols[0]:
-                active_marker = " (loaded)" if st.session_state.get("pf_loaded_id") == row["id"] else ""
+                active_marker = f" {pf('labels.loaded_marker', '(loaded)')}" if st.session_state.get("pf_loaded_id") == row["id"] else ""
                 st.markdown(f"**{row['title']}**{active_marker} - {format_record_date(row['job_date'])}")
-                st.caption(f"Updated {format_record_timestamp(row['updated_at'])}")
+                st.caption(pf("labels.updated_timestamp", "Updated {timestamp}", timestamp=format_record_timestamp(row["updated_at"])))
             with record_cols[1]:
-                if st.button("Load", key=f"pf_load_{row['id']}", width="stretch"):
+                if st.button(pf("actions.load", "Load"), key=f"pf_load_{row['id']}", width="stretch"):
                     load_record_into_state(load_record(row["id"]))
                     st.rerun()
             with record_cols[2]:
-                if st.button("Delete", key=f"pf_delete_{row['id']}", width="stretch"):
+                if st.button(pf("actions.delete", "Delete"), key=f"pf_delete_{row['id']}", width="stretch"):
                     delete_record(int(row["id"]))
                     if st.session_state.get("pf_loaded_id") == row["id"]:
                         reset_record_state()
                     st.rerun()
 
-st.markdown("### Fabrication Setup")
+st.markdown(f"### {pf('sections.fabrication_setup', 'Fabrication Setup')}")
 meta_col, print_col, frame_col, consumables_col = st.columns([1.05, 1.15, 1, 1])
 with meta_col:
-    title = st.text_input("Title", key="pf_title")
-    job_date = st.date_input("Date", key="pf_job_date")
-    st.markdown("**Glass source**")
+    title = st.text_input(pf("fields.title", "Title"), key="pf_title")
+    job_date = st.date_input(pf("fields.date", "Date"), key="pf_job_date")
+    st.markdown(f"**{pf('sections.glass_source', 'Glass source')}**")
     glass_manufacturer = st.selectbox(
-        "Glass manufacturer",
+        pf("fields.glass_manufacturer", "Glass manufacturer"),
         list(GLASS_MANUFACTURERS.keys()),
         key="pf_glass_manufacturer",
         on_change=update_density_from_manufacturer,
+        format_func=lambda value: pf("manufacturer.custom", "Custom") if value == "Custom" else value,
     )
     glass_density_g_per_cm3 = st.number_input(
-        "Specific gravity (g/cm³)",
+        pf("fields.specific_gravity", "Specific gravity (g/cm³)"),
         min_value=0.01,
         step=0.01,
         format="%.2f",
@@ -1090,74 +1126,78 @@ with meta_col:
         on_change=update_custom_density,
     )
 with print_col:
-    st.markdown("**3D print dimensions**")
+    st.markdown(f"**{pf('sections.print_dimensions', '3D print dimensions')}**")
     mold_x_mm = st.number_input(
-        "Print X length (mm)",
+        pf("fields.print_x_length_mm", "Print X length (mm)"),
         min_value=0.0,
         step=1.0,
         key="pf_mold_x_mm",
     )
     mold_y_mm = st.number_input(
-        "Print Y length (mm)",
+        pf("fields.print_y_length_mm", "Print Y length (mm)"),
         min_value=0.0,
         step=1.0,
         key="pf_mold_y_mm",
     )
     max_mold_height_mm = st.number_input(
-        "Print Z length (height) (mm)",
+        pf("fields.print_z_length_height_mm", "Print Z length (height) (mm)"),
         min_value=0.0,
         step=0.5,
         key="pf_max_mold_height_mm",
     )
     relief_fill_g = st.number_input(
-        "Relief fill glass (g)",
+        pf("fields.relief_fill_glass_g", "Relief fill glass (g)"),
         min_value=0.0,
         step=1.0,
         key="pf_relief_fill_g",
         on_change=sync_relief_fill_volume_from_weight,
     )
 with frame_col:
-    st.markdown("**Intended frame**")
+    st.markdown(f"**{pf('sections.intended_frame', 'Intended frame')}**")
     frame_border_x_mm = st.number_input(
-        "Frame border X (mm)",
+        pf("fields.frame_border_x_mm", "Frame border X (mm)"),
         min_value=0.0,
         step=1.0,
         key="pf_frame_border_x_mm",
     )
     frame_border_y_mm = st.number_input(
-        "Frame border Y (mm)",
+        pf("fields.frame_border_y_mm", "Frame border Y (mm)"),
         min_value=0.0,
         step=1.0,
         key="pf_frame_border_y_mm",
     )
 with consumables_col:
-    st.markdown("**Fabrication layers**")
+    st.markdown(f"**{pf('sections.fabrication_layers', 'Fabrication layers')}**")
     fiber_paper_thickness_mm = st.number_input(
-        "Fiber paper thickness (mm)",
+        pf("fields.fiber_paper_thickness_mm", "Fiber paper thickness (mm)"),
         min_value=0.5,
         max_value=5.0,
         step=0.5,
         key="pf_fiber_paper_thickness_mm",
     )
     fiber_paper_layers = st.selectbox(
-        "Fiber paper strips",
+        pf("fields.fiber_paper_strips", "Fiber paper strips"),
         [1, 2],
         key="pf_fiber_paper_layers",
-        format_func=lambda value: "Single layer" if value == 1 else "Double layer",
+        format_func=lambda value: pf("labels.single_layer", "Single layer") if value == 1 else pf("labels.double_layer", "Double layer"),
     )
     fiber_paper_height_mm = fiber_paper_thickness_mm * fiber_paper_layers
     st.caption(
-        f"Glass displacement: {fmt(fiber_paper_height_mm)} mm. "
-        f"Fabrication stack uses {fmt(fiber_paper_thickness_mm)} mm."
+        pf(
+            "caption.glass_displacement",
+            "Glass displacement: {displacement} mm. Fabrication stack uses {thickness} mm.",
+            displacement=fmt(fiber_paper_height_mm),
+            thickness=fmt(fiber_paper_thickness_mm),
+        )
     )
     relief_background_layer_mm = st.number_input(
-        "Relief background layer (mm)",
+        pf("fields.relief_background_layer_mm", "Relief background layer (mm)"),
         min_value=0.0,
         step=0.5,
         key="pf_relief_background_layer_mm",
     )
     backing_layer_mm = st.number_input(
-        "Backing layer (mm)",
+        pf("fields.backing_layer_mm", "Backing layer (mm)"),
         min_value=0.0,
         step=0.5,
         key="pf_backing_layer_mm",
@@ -1183,9 +1223,15 @@ inputs = FrameInputs(
 calc = calc_frame(inputs)
 
 if fiber_paper_height_mm > max_mold_height_mm:
-    st.warning("Fiber paper glass displacement is greater than print Z length, so relief frame height is clamped to 0 mm.")
+    st.warning(pf("messages.fiber_displacement_too_high", "Fiber paper glass displacement is greater than print Z length, so relief frame height is clamped to 0 mm."))
 
-tab_worksheet, tab_diagram, tab_export = st.tabs(["Worksheet", "Diagrams", "Download"])
+tab_worksheet, tab_diagram, tab_export = st.tabs(
+    [
+        pf("tabs.worksheet", "Worksheet"),
+        pf("tabs.diagrams", "Diagrams"),
+        pf("tabs.download", "Download"),
+    ]
+)
 
 with tab_worksheet:
     left, right = st.columns([1.35, 1])
@@ -1193,57 +1239,65 @@ with tab_worksheet:
         rows = worksheet_rows(calc)
         df = pd.DataFrame(rows)
         for section, band_class in [
-            ("Glass", "band-orange"),
-            ("Frame Height", "band-purple"),
-            ("Side X", "band-blue"),
-            ("Side Y", "band-green"),
-            ("Frame", "band-purple"),
-            ("Relief Fill", "band-pink"),
-            ("Backing", "band-orange"),
+            (pf("sections.glass", "Glass"), "band-orange"),
+            (pf("sections.frame_height", "Frame Height"), "band-purple"),
+            (pf("sections.side_x", "Side X"), "band-blue"),
+            (pf("sections.side_y", "Side Y"), "band-green"),
+            (pf("sections.frame", "Frame"), "band-purple"),
+            (pf("sections.relief_fill", "Relief Fill"), "band-pink"),
+            (pf("sections.backing", "Backing"), "band-orange"),
         ]:
             st.markdown(f'<div class="section-band {band_class}">{section}</div>', unsafe_allow_html=True)
-            section_df = df[df["Section"] == section][["Item", "Value", "Unit", "Formula"]]
+            section_df = df[df["Section"] == section][["Item", "Value", "Unit", "Formula"]].rename(
+                columns={
+                    "Item": pf("columns.item", "Item"),
+                    "Value": pf("columns.value", "Value"),
+                    "Unit": pf("columns.unit", "Unit"),
+                    "Formula": pf("columns.formula", "Formula"),
+                }
+            )
             st.markdown(
                 section_df.to_html(index=False, classes="worksheet-table", border=0),
                 unsafe_allow_html=True,
             )
     with right:
-        st.subheader("Fabrication checklist")
+        st.subheader(pf("sections.fabrication_checklist", "Fabrication checklist"))
         glass_to_weigh_df, fiber_paper_df, setup_df = checklist_frames(calc)
-        st.markdown("**Setup dimensions**")
+        st.markdown(f"**{pf('sections.setup_dimensions', 'Setup dimensions')}**")
         st.markdown(setup_df.to_html(index=False, classes="checklist-table", border=0), unsafe_allow_html=True)
-        st.markdown("**Glass to weigh**")
+        st.markdown(f"**{pf('sections.glass_to_weigh', 'Glass to weigh')}**")
         st.markdown(glass_to_weigh_df.to_html(index=False, classes="checklist-table", border=0), unsafe_allow_html=True)
-        st.markdown("**Fiber paper to cut**")
+        st.markdown(f"**{pf('sections.fiber_paper_to_cut', 'Fiber paper to cut')}**")
         st.markdown(fiber_paper_df.to_html(index=False, classes="checklist-table", border=0), unsafe_allow_html=True)
 
 with tab_diagram:
-    st.subheader("Pre-visualization")
+    st.subheader(pf("sections.pre_visualization", "Pre-visualization"))
     top_col, weight_col = st.columns([1.1, 1])
     with top_col:
         render_svg(top_view_svg(calc))
         render_svg(profile_view_svg(calc))
     with weight_col:
-        st.markdown("#### Weight Summary")
-        st.caption(f"{calc['glass_manufacturer']} specific gravity: {fmt(calc['glass_density_g_per_cm3'], 2)} g/cm³")
+        st.markdown(f"#### {pf('sections.weight_summary', 'Weight Summary')}")
+        st.caption(pf("caption.specific_gravity", "{manufacturer} specific gravity: {density} g/cm³", manufacturer=calc["glass_manufacturer"], density=fmt(calc["glass_density_g_per_cm3"], 2)))
         weight_metric_cols = st.columns(2)
-        weight_metric_cols[0].metric("Frame + layers", f"{fmt(calc['total_frame_g'] + calc['relief_background_g'] + calc['backing_g'])} g")
-        weight_metric_cols[1].metric("Fabrication total", f"{fmt(calc['fabrication_total_g'])} g")
+        weight_metric_cols[0].metric(pf("metrics.frame_layers", "Frame + layers"), f"{fmt(calc['total_frame_g'] + calc['relief_background_g'] + calc['backing_g'])} g")
+        weight_metric_cols[1].metric(pf("metrics.fabrication_total", "Fabrication total"), f"{fmt(calc['fabrication_total_g'])} g")
         chart_df = weight_summary_frame(calc)
+        glass_col = pf("columns.glass_g", "Glass (g)")
         st.dataframe(
-            chart_df.style.bar(subset=["Glass (g)"], color="#8ee6ee").format({"Glass (g)": "{:.1f}"}),
+            chart_df.style.bar(subset=[glass_col], color="#8ee6ee").format({glass_col: "{:.1f}"}),
             hide_index=True,
             width="stretch",
             height=210,
         )
 
-    st.subheader("Weight data")
+    st.subheader(pf("sections.weight_data", "Weight data"))
     st.dataframe(
         pd.DataFrame(weight_summary_rows(calc)).style.format(
             {
-                "Area (cm²)": "{:.1f}",
-                "Height (mm)": "{:.1f}",
-                "Glass (g)": "{:.1f}",
+                pf("columns.area_cm2", "Area (cm²)"): "{:.1f}",
+                pf("columns.height_mm", "Height (mm)"): "{:.1f}",
+                pf("columns.glass_g", "Glass (g)"): "{:.1f}",
             }
         ),
         hide_index=True,
@@ -1253,17 +1307,17 @@ with tab_diagram:
 with tab_export:
     glass_to_weigh_df, fiber_paper_df, setup_df = checklist_frames(calc)
     checklist_pdf_file = checklist_pdf(inputs, glass_to_weigh_df, fiber_paper_df, setup_df)
-    st.subheader("Fabrication checklist")
+    st.subheader(pf("sections.fabrication_checklist", "Fabrication checklist"))
     st.download_button(
-        "Download printable checklist PDF",
+        pf("actions.download_checklist_pdf", "Download printable checklist PDF"),
         data=checklist_pdf_file,
         file_name=f"{inputs.title.replace(' ', '_')}_fabrication_checklist.pdf",
         mime="application/pdf",
         width="stretch",
     )
-    st.markdown("**Setup dimensions**")
+    st.markdown(f"**{pf('sections.setup_dimensions', 'Setup dimensions')}**")
     st.markdown(setup_df.to_html(index=False, classes="checklist-table", border=0), unsafe_allow_html=True)
-    st.markdown("**Glass to weigh**")
+    st.markdown(f"**{pf('sections.glass_to_weigh', 'Glass to weigh')}**")
     st.markdown(glass_to_weigh_df.to_html(index=False, classes="checklist-table", border=0), unsafe_allow_html=True)
-    st.markdown("**Fiber paper to cut**")
+    st.markdown(f"**{pf('sections.fiber_paper_to_cut', 'Fiber paper to cut')}**")
     st.markdown(fiber_paper_df.to_html(index=False, classes="checklist-table", border=0), unsafe_allow_html=True)
