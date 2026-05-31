@@ -1,4 +1,15 @@
+# macOS
 .DS_Store
 **/.DS_Store
-.DS_Store
-.DS_Store
+
+# Python bytecode/cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local virtual environments
+.venv/
+venv/
+
+# Local scratch/output folders
+tmp/
