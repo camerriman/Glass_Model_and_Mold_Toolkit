@@ -501,8 +501,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "library.fields.grid_columns": "Columnas de la cuadrilla",
         "library.actions.compare_selected": "Comparar seleccionados",
         "library.actions.clear_compare": "Limpiar comparacion",
-        "library.messages.compare_set": "**Conjunto de comparacion:** {items}",
+        "library.messages.compare_set": "Conjunto de comparacion: {items}",
         "library.messages.compare_hint": "Selecciona 2-4 muestras para compararlas en una pagina dedicada.",
+        "library.messages.detail_page_hint": "Haz clic en un ID de catalogo para abrir su ficha tecnica completa en una pagina de detalle dedicada.",
         "library.messages.empty": "No hay muestras de vidrio que coincidan con los filtros actuales.",
         "library.messages.pick_one": "Selecciona una muestra de vidrio para ver los detalles.",
         "library.messages.family_table_empty": "La tabla glass_families esta vacia.",
@@ -868,7 +869,8 @@ ITALIAN_TRANSLATIONS = {
     "library.fields.striking_only": "Solo striker",
     "library.messages.compare_hint": "Seleziona 2-4 campioni per confrontarli in una pagina dedicata.",
     "library.messages.compare_navigation_failed": "Impossibile aprire la pagina di confronto.",
-    "library.messages.compare_set": "**Set di confronto:** {items}",
+    "library.messages.compare_set": "Set di confronto: {items}",
+    "library.messages.detail_page_hint": "Fai clic su un ID catalogo per aprire la scheda tecnica completa in una pagina di dettaglio dedicata.",
     "library.messages.empty": "Nessun campione di vetro corrisponde ai filtri correnti.",
     "library.messages.family_table_empty": "La tabella glass_families e vuota.",
     "library.messages.no_measurement_mode": "Nessun dato di misurazione per questa modalita.",
@@ -1421,7 +1423,8 @@ GERMAN_TRANSLATIONS = {
     "library.fields.striking_only": "Nur Striker",
     "library.messages.compare_hint": "Waehle 2-4 Proben aus, um sie auf einer eigenen Seite zu vergleichen.",
     "library.messages.compare_navigation_failed": "Die Vergleichsseite konnte nicht geoeffnet werden.",
-    "library.messages.compare_set": "**Vergleichsset:** {items}",
+    "library.messages.compare_set": "Vergleichsset: {items}",
+    "library.messages.detail_page_hint": "Klicke auf eine Katalog-ID, um das vollstaendige Datenblatt auf einer eigenen Detailseite zu oeffnen.",
     "library.messages.empty": "Keine Glasproben entsprechen den aktuellen Filtern.",
     "library.messages.family_table_empty": "Die Tabelle glass_families ist leer.",
     "library.messages.no_measurement_mode": "Keine Messdaten fuer diesen Modus vorhanden.",
@@ -1975,7 +1978,8 @@ FRENCH_TRANSLATIONS = {
     "library.fields.striking_only": "Striker uniquement",
     "library.messages.compare_hint": "Selectionnez 2 a 4 echantillons pour les comparer sur une page dediee.",
     "library.messages.compare_navigation_failed": "Impossible d'ouvrir la page de comparaison.",
-    "library.messages.compare_set": "**Ensemble de comparaison:** {items}",
+    "library.messages.compare_set": "Ensemble de comparaison: {items}",
+    "library.messages.detail_page_hint": "Cliquez sur un ID catalogue pour ouvrir sa fiche technique complete dans une page de detail dediee.",
     "library.messages.empty": "Aucun echantillon de verre ne correspond aux filtres actuels.",
     "library.messages.family_table_empty": "La table glass_families est vide.",
     "library.messages.no_measurement_mode": "Aucune donnee de mesure pour ce mode.",
@@ -4173,6 +4177,7 @@ for _lang, _values in {
 
 TRANSLATIONS["en"].update(
     {
+        "library.messages.detail_page_hint": "Click a catalog ID to open its full datasheet on a dedicated detail page.",
         "errors.editor.db_missing": "Missing database: {path}",
         "shared.sort.hue": "Hue (H)",
         "shared.sort.product_id": "Product ID",
@@ -4284,6 +4289,55 @@ TRANSLATIONS["fr"].update(
         "depth_view.empty": "Aucun verre mesure ne correspond aux filtres actuels.",
     }
 )
+
+for _lang, _values in {
+    "en": {
+        "page.vessel.cross_section.circle": "Circle",
+        "page.vessel.cross_section.oval": "Oval",
+        "page.vessel.cross_section.triangle": "3 sides - triangle",
+        "page.vessel.cross_section.square": "4 sides - square",
+        "page.vessel.cross_section.pentagon": "5 sides",
+        "page.vessel.cross_section.hexagon": "6 sides",
+        "page.vessel.help.cross_section": "Choose a round/oval section, or select a regular polygon by number of sides.",
+    },
+    "es": {
+        "page.vessel.cross_section.circle": "Circulo",
+        "page.vessel.cross_section.oval": "Ovalo",
+        "page.vessel.cross_section.triangle": "3 lados - triangulo",
+        "page.vessel.cross_section.square": "4 lados - cuadrado",
+        "page.vessel.cross_section.pentagon": "5 lados",
+        "page.vessel.cross_section.hexagon": "6 lados",
+        "page.vessel.help.cross_section": "Elige una seccion redonda/ovalada, o selecciona un poligono regular por numero de lados.",
+    },
+    "it": {
+        "page.vessel.cross_section.circle": "Cerchio",
+        "page.vessel.cross_section.oval": "Ovale",
+        "page.vessel.cross_section.triangle": "3 lati - triangolo",
+        "page.vessel.cross_section.square": "4 lati - quadrato",
+        "page.vessel.cross_section.pentagon": "5 lati",
+        "page.vessel.cross_section.hexagon": "6 lati",
+        "page.vessel.help.cross_section": "Scegli una sezione rotonda/ovale, oppure seleziona un poligono regolare per numero di lati.",
+    },
+    "de": {
+        "page.vessel.cross_section.circle": "Kreis",
+        "page.vessel.cross_section.oval": "Oval",
+        "page.vessel.cross_section.triangle": "3 Seiten - Dreieck",
+        "page.vessel.cross_section.square": "4 Seiten - Quadrat",
+        "page.vessel.cross_section.pentagon": "5 Seiten",
+        "page.vessel.cross_section.hexagon": "6 Seiten",
+        "page.vessel.help.cross_section": "Waehle einen runden/ovalen Querschnitt oder ein regelmaessiges Polygon nach Seitenzahl.",
+    },
+    "fr": {
+        "page.vessel.cross_section.circle": "Cercle",
+        "page.vessel.cross_section.oval": "Ovale",
+        "page.vessel.cross_section.triangle": "3 cotes - triangle",
+        "page.vessel.cross_section.square": "4 cotes - carre",
+        "page.vessel.cross_section.pentagon": "5 cotes",
+        "page.vessel.cross_section.hexagon": "6 cotes",
+        "page.vessel.help.cross_section": "Choisissez une section ronde/ovale, ou selectionnez un polygone regulier par nombre de cotes.",
+    },
+}.items():
+    TRANSLATIONS[_lang].update(_values)
 
 MONTH_NAMES = {
     "en": {

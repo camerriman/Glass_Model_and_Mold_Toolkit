@@ -614,7 +614,7 @@ st.markdown(
         display: inline-flex;
         font-family: sans-serif;
         font-size: 0.95rem;
-        font-weight: 600;
+        font-weight: 400;
         justify-content: center;
         line-height: 1.4;
         min-height: 2.35rem;
@@ -671,15 +671,22 @@ with clear_col:
         st.rerun()
 with note_col:
     if compare_ids:
-        st.markdown(
+        st.caption(
             t(
                 "library.messages.compare_set",
-                "**Compare set:** {items}",
+                "Compare set: {items}",
                 items=" · ".join(html.escape(glass_id) for glass_id in compare_ids),
             )
         )
     else:
         st.caption(t("library.messages.compare_hint", "Select 2-4 samples to compare on a dedicated page."))
+
+st.caption(
+    t(
+        "library.messages.detail_page_hint",
+        "Click a catalog ID to open its full datasheet on a dedicated detail page.",
+    )
+)
 
 if filtered.empty:
     st.info(t("library.messages.empty", "No glass samples match the current filters."))

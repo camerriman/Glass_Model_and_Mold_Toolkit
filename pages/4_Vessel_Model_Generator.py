@@ -201,9 +201,19 @@ def format_vessel_settings(settings: dict) -> str:
         "Vessel Mold Model Generator Settings",
         "",
         "Profile",
-        f"Cross-section: {settings['cross_section']}",
-        f"Oval width scale: {settings['oval_x_scale']:.2f}",
-        f"Oval depth scale: {settings['oval_y_scale']:.2f}",
+        f"Cross-section: {cross_section_label(settings['cross_section'])}",
+    ]
+    if settings["cross_section"] == "Oval":
+        lines.extend(
+            [
+                f"Oval width scale: {settings['oval_x_scale']:.2f}",
+                f"Oval depth scale: {settings['oval_y_scale']:.2f}",
+            ]
+        )
+    if polygon_sides_for_cross_section(settings["cross_section"]):
+        lines.append(f"Sides: {polygon_sides_for_cross_section(settings['cross_section'])}")
+    lines.extend(
+        [
         f"Base radius (mm): {settings['base_r']:.1f}",
         f"Top radius (mm): {settings['top_r']:.1f}",
         f"Profile height (mm): {settings['height']:.1f}",
@@ -217,7 +227,8 @@ def format_vessel_settings(settings: dict) -> str:
         f"Demold cutter shape: {settings['demold_cut_shape']}",
         "",
         "Midpoints",
-    ]
+        ]
+    )
     if settings["midpoints"]:
         for idx, (z_frac, radius) in enumerate(settings["midpoints"], start=1):
             lines.append(
@@ -344,6 +355,66 @@ def add_base_border_to_profile(profile_fn, base_r: float, profile_height: float,
     return profile_with_border
 
 
+POLYGON_CROSS_SECTIONS = {
+    "3 sides": 3,
+    "4 sides": 4,
+    "5 sides": 5,
+    "6 sides": 6,
+}
+
+
+def cross_section_options() -> list[str]:
+    return ["Circle", "Oval", *POLYGON_CROSS_SECTIONS.keys()]
+
+
+def cross_section_label(value: str) -> str:
+    labels = {
+        "Circle": tr("page.vessel.cross_section.circle", "Circle"),
+        "Oval": tr("page.vessel.cross_section.oval", "Oval"),
+        "3 sides": tr("page.vessel.cross_section.triangle", "3 sides - triangle"),
+        "4 sides": tr("page.vessel.cross_section.square", "4 sides - square"),
+        "5 sides": tr("page.vessel.cross_section.pentagon", "5 sides"),
+        "6 sides": tr("page.vessel.cross_section.hexagon", "6 sides"),
+    }
+    return labels.get(value, str(value))
+
+
+def polygon_sides_for_cross_section(cross_section: str | None) -> int | None:
+    return POLYGON_CROSS_SECTIONS.get(str(cross_section or "").strip())
+
+
+def polygon_radius_scale(theta_value, sides: int):
+    theta_np = np.asarray(theta_value, dtype=np.float64)
+    sector = 2.0 * np.pi / float(sides)
+    delta = ((theta_np + sector / 2.0) % sector) - sector / 2.0
+    scale = np.cos(np.pi / float(sides)) / np.maximum(np.cos(delta), 1e-6)
+    if np.isscalar(theta_value):
+        return float(scale)
+    return scale
+
+
+def cross_section_radius_scale(theta_value, cross_section: str | None, oval_x_scale=1.0, oval_y_scale=1.0):
+    sides = polygon_sides_for_cross_section(cross_section)
+    if sides:
+        return polygon_radius_scale(theta_value, sides)
+    if str(cross_section or "") == "Oval":
+        theta_np = np.asarray(theta_value, dtype=np.float64)
+        scale = np.sqrt((float(oval_x_scale) * np.cos(theta_np)) ** 2 + (float(oval_y_scale) * np.sin(theta_np)) ** 2)
+        if np.isscalar(theta_value):
+            return float(scale)
+        return scale
+    if np.isscalar(theta_value):
+        return 1.0
+    return np.ones_like(np.asarray(theta_value, dtype=np.float64))
+
+
+def cross_section_area_factor(cross_section: str | None, oval_x_scale=1.0, oval_y_scale=1.0) -> float:
+    sides = polygon_sides_for_cross_section(cross_section)
+    if sides:
+        return float(sides * np.sin(2.0 * np.pi / sides) / (2.0 * np.pi))
+    return float(oval_x_scale) * float(oval_y_scale)
+
+
 def estimate_internal_bore_volume_mm3(
     profile_fn,
     height,
@@ -353,6 +424,7 @@ def estimate_internal_bore_volume_mm3(
     n_theta=180,
     n_z=120,
     heightmap=None,
+    cross_section="Circle",
     oval_x_scale=1.0,
     oval_y_scale=1.0,
     base_z=0.0,
@@ -390,7 +462,7 @@ def estimate_internal_bore_volume_mm3(
 
             if demold_cut_shape == "Circular cutter":
                 theta = np.linspace(0, 2 * np.pi, inner_r.shape[1], endpoint=False)
-                scale = np.sqrt((float(oval_x_scale) * np.cos(theta)) ** 2 + (float(oval_y_scale) * np.sin(theta)) ** 2)
+                scale = cross_section_radius_scale(theta, cross_section, oval_x_scale, oval_y_scale)
                 cutter = demold_cut_radius / np.maximum(scale, 1e-6)
             else:
                 cutter = np.full(inner_r.shape[1], demold_cut_radius, dtype=np.float64)
@@ -400,7 +472,7 @@ def estimate_internal_bore_volume_mm3(
         inner_r = np.maximum(1.0, r_base - float(wall_mm))
         area_mm2 = np.pi * (inner_r ** 2)
 
-    area_mm2 = area_mm2 * float(oval_x_scale) * float(oval_y_scale)
+    area_mm2 = area_mm2 * cross_section_area_factor(cross_section, oval_x_scale, oval_y_scale)
     return float(np.trapz(area_mm2, z_arr))
 
 
@@ -584,6 +656,7 @@ def build_vase_mesh(
     add_rim_channel=False,
     rim_radius=0.0,
     n_rim=24,
+    cross_section="Circle",
     oval_x_scale=1.0,
     oval_y_scale=1.0,
     base_z=0.0,
@@ -620,11 +693,14 @@ def build_vase_mesh(
         transition_cut_top_z = float(z_arr[meets[0]]) if len(meets) else float(height)
 
     def point_from_radius(r, t, z):
+        if polygon_sides_for_cross_section(cross_section):
+            scale = cross_section_radius_scale(t, cross_section, oval_x_scale, oval_y_scale)
+            return np.array([r * scale * np.cos(t), r * scale * np.sin(t), z], dtype=np.float32)
         return np.array([r * oval_x_scale * np.cos(t), r * oval_y_scale * np.sin(t), z], dtype=np.float32)
 
     def demold_radius_for_theta(t):
         if demold_cut_shape == "Circular cutter":
-            scale = np.sqrt((oval_x_scale * np.cos(t)) ** 2 + (oval_y_scale * np.sin(t)) ** 2)
+            scale = cross_section_radius_scale(t, cross_section, oval_x_scale, oval_y_scale)
             return demold_cut_radius / max(float(scale), 1e-6)
         return demold_cut_radius
 
@@ -1291,11 +1367,14 @@ with left:
             key="vessel_height",
         )
 
-    cross_section = st.radio(
+    if st.session_state.get("vessel_cross_section") not in cross_section_options():
+        st.session_state["vessel_cross_section"] = "Circle"
+    cross_section = st.selectbox(
         tr("page.vessel.fields.cross_section", "Cross-section"),
-        ["Circle", "Oval"],
-        horizontal=True,
+        cross_section_options(),
         key="vessel_cross_section",
+        format_func=cross_section_label,
+        help=tr("page.vessel.help.cross_section", "Choose a round/oval section, or select a regular polygon by number of sides."),
     )
     if cross_section == "Oval":
         oval_cols = st.columns(2)
@@ -1320,6 +1399,8 @@ with left:
     else:
         oval_x_scale = 1.0
         oval_y_scale = 1.0
+        st.session_state["vessel_oval_x_scale"] = 1.0
+        st.session_state["vessel_oval_y_scale"] = 1.0
 
     base_border_mode = st.radio(
         tr("page.vessel.fields.base_border", "Base border"),
@@ -1807,6 +1888,7 @@ with right:
             placement=placement_key,
             n_theta=n_theta,
             n_z=n_z,
+            cross_section=cross_section,
             oval_x_scale=oval_x_scale,
             oval_y_scale=oval_y_scale,
             base_z=base_z,
@@ -1836,6 +1918,7 @@ with right:
             n_theta=n_theta,
             n_z=n_z,
             heightmap=hmap_for_volume,
+            cross_section=cross_section,
             oval_x_scale=oval_x_scale,
             oval_y_scale=oval_y_scale,
             base_z=base_z,
@@ -1894,6 +1977,7 @@ with right:
                     add_rim_channel=add_lip,
                     rim_radius=lip_radius,
                     n_rim=n_lip,
+                    cross_section=cross_section,
                     oval_x_scale=oval_x_scale,
                     oval_y_scale=oval_y_scale,
                     base_z=base_z,
@@ -1912,6 +1996,7 @@ with right:
                     n_theta=n_theta,
                     n_z=n_z,
                     heightmap=hmap if placement_key == "inside" else None,
+                    cross_section=cross_section,
                     oval_x_scale=oval_x_scale,
                     oval_y_scale=oval_y_scale,
                     base_z=base_z,

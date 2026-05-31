@@ -105,7 +105,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     display: inline-flex;
     font-family: sans-serif;
     font-size: 0.95rem;
-    font-weight: 600;
+    font-weight: 400;
     line-height: 1.4;
     min-height: 2.35rem;
     padding: 0.38rem 0.75rem;
