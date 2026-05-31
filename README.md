@@ -25,8 +25,6 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 - `pages/8_Glass_Detail.py`: full glass datasheet with reflected/transmitted images, measurements, optical curves, depth side view, notes, and PDF export
 - `pages/7_Glass_Color_Wheel.py`: HSB color wheel, harmony overlay, selected sample details, and element/reactivity summaries
 - `pages/15_Glass_Compare.py`: side-by-side comparison for selected samples with reflected/transmitted overlays and difference summaries
-- `pages/12_Add_Glass_Sample.py`: add catalog records, measurements, notes, and images
-- `pages/13_Edit_Glass_Sample.py`: edit existing samples and manage associated data
 
 ### Reference Sheets
 
@@ -78,6 +76,7 @@ glass_model_and_mold_toolkit/
 │   ├── 2_Model_Tiles_Panels.py
 │   ├── ...
 │   └── 22_Print_Optional_Frame.py
+├── private_pages/
 ├── utilities/
 ├── data/
 │   ├── glass_library.sqlite
@@ -102,7 +101,7 @@ Notable dependencies:
 - `numpy`, `scipy`, `trimesh`, `manifold3d`, and `networkx` for geometry/model workflows
 - `plotly` and `matplotlib` for charts and visual analysis
 - `Pillow` and `opencv-python-headless` for image handling and mesh crop support
-- `streamlit-quill` for rich text fields on glass sample pages
+- `reportlab` for printable fabrication checklist PDFs
 - `lxml` and `vpype` for SVG processing
 
 ## Local Setup
@@ -143,6 +142,8 @@ Mold and fabrication worksheets use:
 - `data/fabrication_records.db`
 
 The app can still open if some assets are missing, but related library images, worksheets, or reference features will be incomplete.
+
+`private_pages/` contains local/admin-only glass sample editor tools. These files are intentionally kept outside Streamlit's `pages/` directory so they are not exposed in the public multipage app.
 
 ## Glass Library Notes
 

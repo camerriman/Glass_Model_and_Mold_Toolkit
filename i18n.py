@@ -4485,8 +4485,6 @@ NAVIGATION_SECTIONS = (
             ("pages/15_Glass_Compare.py", "home.nav.glass_compare", "Glass Compare"),
             ("pages/16_Layered_Glass_Predictor.py", "home.nav.layered_predictor", "Layered Glass Predictor"),
             ("pages/17_Frit_Mix_Explorer.py", "home.nav.frit_mix_explorer", "Frit Mix Explorer"),
-            ("pages/12_Add_Glass_Sample.py", "home.nav.add_glass_sample", "Add Glass Sample"),
-            ("pages/13_Edit_Glass_Sample.py", "home.nav.edit_glass_sample", "Edit Glass Sample"),
         ),
     ),
     (
