@@ -2,7 +2,7 @@
 
 A Streamlit multipage studio toolkit for kiln-glass design, Bullseye glass reference work, mold planning, 3D model generation, and printable fabrication documentation.
 
-The project has grown into three connected work areas:
+The app is organized around three connected work areas:
 
 - a searchable glass library with reflected/transmitted sample data, color tools, comparison views, and printable datasheets
 - glass prediction tools for layered sheet reads, frit mixes, depth views, opacity, and optical response
@@ -15,7 +15,7 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 ### Home and Documentation
 
 - `Home.py`: app entry point and custom navigation hub
-- `pages/14_Documentation.py`: studio workflow notes, materials references, glossary placeholders, and safety sections
+- `pages/14_Documentation.py`: studio workflow notes, materials references, glossary, and safety sections
 - `i18n.py`: shared localization, language selector, navigation labels, and date/time helpers
 
 ### Glass Library
@@ -116,9 +116,9 @@ The glass library depends on local SQLite data and image assets:
 - `images/full/`
 - `images/_placeholders/`
 
-Mold and fabrication pages use browser upload/download workflows instead of server-side saved records.
+Mold and fabrication pages can import and export setup files locally, without storing user records on the server.
 
-The app can still open if some assets are missing, but related library images, worksheets, or reference features will be incomplete.
+The bundled catalog database and image folders provide the glass library data, thumbnails, full sample images, and placeholder assets used throughout the reference pages.
 
 `private_pages/` contains local/admin-only glass sample editor tools. These files are intentionally kept outside Streamlit's `pages/` directory so they are not exposed in the public multipage app.
 
@@ -135,11 +135,11 @@ The app generates printer-ready PDFs for:
 - individual glass datasheets
 - opalescent, transparent, and tint reference sheets
 
-These generated PDFs are intended to avoid browser print layout inconsistencies and keep studio reference output stable for archiving, sample books, and shop use.
+PDF output keeps studio reference sheets and datasheets consistent for archiving, sample books, and shop use.
 
 ## Localization
 
-The app uses a key-based localization system rather than a gettext catalog workflow.
+The app uses a key-based localization system for interface text, navigation labels, dates, and formatting.
 
 Current UI languages:
 
@@ -177,11 +177,11 @@ Recommended settings:
 
 Deployment notes:
 
-- `requirements.txt` is prepared for Streamlit deployment.
-- `data/glass_library.sqlite` must be committed if hosted glass library data should be available.
+- `requirements.txt` lists the packages needed by the Streamlit app.
+- `data/glass_library.sqlite` provides the bundled glass catalog for hosted deployments.
 - The repository includes many image assets, so repository size can affect deployment and update time.
 - Mesh/model workflows use Python geometry libraries and default to the `manifold` path where applicable.
-- External tools such as Blender or OpenSCAD are not bundled and should be treated as optional local-only engines.
+- External tools such as Blender or OpenSCAD are optional local engines for workflows that need them.
 - UI localization is session-based and does not modify stored database content.
 
 ## STL and Mold Workflow
@@ -199,6 +199,6 @@ Typical use:
 
 FDM is generally useful for larger structural tooling, support plugs, frames, and draft models. Resin is generally useful for smaller pieces where surface detail and crisp relief matter more than build volume.
 
-## Repository Notes
+## Catalog Maintenance
 
-- Glass catalog and image updates should be tested locally before updating hosted data.
+Test glass catalog and image updates locally before publishing hosted data.
