@@ -2,11 +2,12 @@
 
 A Streamlit multipage studio toolkit for kiln-glass design, Bullseye glass reference work, mold planning, 3D model generation, and printable fabrication documentation.
 
-The app is organized around three connected work areas:
+The app is organized around four connected work areas:
 
 - a searchable glass library with reflected/transmitted sample data, color tools, comparison views, and printable datasheets
 - glass prediction tools for layered sheet reads, frit mixes, depth views, opacity, and optical response
 - model and mold utilities for cameo, vessel, frame, tile, panel, and crop workflows
+- kiln forming notes for firing schedules, annealing references, observations, photos, and studio record export
 
 The app also includes a lightweight localization layer for Streamlit UI text, sidebar navigation, forms, dashboards, reference pages, and locale-aware date/time display.
 
@@ -16,6 +17,7 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 
 - `Home.py`: app entry point and custom navigation hub
 - `pages/14_Documentation.py`: studio workflow notes, materials references, glossary, and safety sections
+- `pages/23_Kiln_Forming_Notes.py`: firing schedule notes, annealing references, observation logs, photo attachments, and downloadable note packages
 - `i18n.py`: shared localization, language selector, navigation labels, and date/time helpers
 
 ### Glass Library
@@ -48,6 +50,7 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 - `pages/3_Mold_Worksheet.py`: cameo mold worksheet and material calculations
 - `pages/19_Vessel_Mold_Worksheet.py`: vessel mold worksheet, volume estimates, and material planning
 - `pages/22_Print_Optional_Frame.py`: print frame fabrication planning, pre-visualization, weights, and checklist output
+- `utilities/kiln_notes/`: helper modules for kiln forming notes, schedule profiles, annealing estimates, image transfer, and PDF export
 
 ## Project Structure
 
@@ -60,9 +63,10 @@ glass_model_and_mold_toolkit/
 │   ├── 1_Cameo_Model_Generator.py
 │   ├── 2_Model_Tiles_Panels.py
 │   ├── ...
-│   └── 22_Print_Optional_Frame.py
+│   └── 23_Kiln_Forming_Notes.py
 ├── private_pages/
 ├── utilities/
+│   └── kiln_notes/
 ├── data/
 │   └── glass_library.sqlite
 └── images/
@@ -80,7 +84,7 @@ Notable dependencies:
 - `streamlit` for the multipage app shell
 - `pandas` and `sqlite3` for the bundled read-only glass catalog data
 - `numpy`, `scipy`, `trimesh`, `manifold3d`, and `networkx` for geometry/model workflows
-- `plotly` and `matplotlib` for charts and visual analysis
+- `plotly`, `altair`, and `matplotlib` for charts and visual analysis
 - `Pillow` and `opencv-python-headless` for image handling and mesh crop support
 - `reportlab` for printable fabrication checklist PDFs
 
@@ -116,7 +120,7 @@ The glass library depends on local SQLite data and image assets:
 - `images/full/`
 - `images/_placeholders/`
 
-Mold and fabrication pages can import and export setup files locally, without storing user records on the server.
+Mold, fabrication, and kiln note pages can import and export setup files locally, without storing user records on the server.
 
 The bundled catalog database and image folders provide the glass library data, thumbnails, full sample images, and placeholder assets used throughout the reference pages.
 

@@ -3411,6 +3411,12 @@ TRANSLATIONS["fr"].update(
     }
 )
 
+TRANSLATIONS["en"].update({"home.nav.kiln_forming_notes": "Kiln Forming Notes"})
+TRANSLATIONS["es"].update({"home.nav.kiln_forming_notes": "Notas de formado en horno"})
+TRANSLATIONS["it"].update({"home.nav.kiln_forming_notes": "Note di formatura in forno"})
+TRANSLATIONS["de"].update({"home.nav.kiln_forming_notes": "Ofenformungsnotizen"})
+TRANSLATIONS["fr"].update({"home.nav.kiln_forming_notes": "Notes de formage au four"})
+
 _PRINT_FRAME_TRANSLATIONS = {
     "es": {
         "title": "Fabricacion de marco de impresion",
@@ -4508,6 +4514,7 @@ NAVIGATION_SECTIONS = (
             ("pages/3_Mold_Worksheet.py", "home.nav.mold_worksheet", "Cameo Mold Worksheet"),
             ("pages/19_Vessel_Mold_Worksheet.py", "home.nav.pate_mold_worksheet", "Vessel Mold Worksheet"),
             ("pages/22_Print_Optional_Frame.py", "home.nav.print_optional_frame", "Print Frame Fabrication"),
+            ("pages/23_Kiln_Forming_Notes.py", "home.nav.kiln_forming_notes", "Kiln Forming Notes"),
             ("pages/5_Mesh_Crop.py", "home.nav.mesh_crop", "Mesh Crop"),
         ),
     ),
