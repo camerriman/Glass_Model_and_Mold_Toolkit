@@ -54,15 +54,6 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 
 - `pages/20_SVG_Tiles.py`: SVG tiling workflow with optional `vpype` processing
 - `pages/21_SVG_Crop.py`: SVG crop workflow
-- `svg/`: sample and working SVG assets
-
-### Utilities
-
-- `utilities/i18n_audit.py`: translation coverage checker
-- `utilities/flatten_images.py`: image flattening/preview helper
-- `utilities/pad_jpg_ids.py`, `utilities/rename_images_to_6digits.py`, `utilities/rename.py`: image naming and migration helpers
-- `utilities/migrate_to_two_table_schema.py`, `utilities/migrate_to_two_table_schema_v2.py`: database migration helpers
-- `utilities/model-slicer-app.py`: standalone/legacy model slicing utility
 
 ## Project Structure
 
@@ -80,12 +71,10 @@ glass_model_and_mold_toolkit/
 ├── utilities/
 ├── data/
 │   └── glass_library.sqlite
-├── images/
-│   ├── icons/
-│   ├── full/
-│   └── _placeholders/
-├── output/
-└── svg/
+└── images/
+    ├── icons/
+    ├── full/
+    └── _placeholders/
 ```
 
 ## Requirements
@@ -175,14 +164,6 @@ Localization responsibilities:
 - Units such as Fahrenheit/Celsius remain separate from language selection.
 - Stored database values remain canonical and are not rewritten for localization.
 
-Audit translation coverage for a language:
-
-```bash
-python3 utilities/i18n_audit.py fr
-```
-
-A completed language should report `Missing keys: 0`.
-
 To add another language:
 
 1. Add the language code to `SUPPORTED_LANGUAGES` in `i18n.py`.
@@ -190,7 +171,7 @@ To add another language:
 3. Add selector display names such as `language_name.fr`.
 4. Add month names if needed for localized date formatting.
 5. Add the translation dictionary in `i18n.py`.
-6. Run the audit helper until the language reports `Missing keys: 0`.
+6. Run the app and check the updated language in the sidebar navigation and affected pages.
 
 ## Streamlit Community Cloud Deployment
 
@@ -204,7 +185,7 @@ Recommended settings:
 Deployment notes:
 
 - `requirements.txt` is prepared for Streamlit deployment.
-- The SQLite databases must be committed if hosted glass/library/worksheet data should be available.
+- `data/glass_library.sqlite` must be committed if hosted glass library data should be available.
 - The repository includes many image assets, so repository size can affect deployment and update time.
 - SVG pages depend on `vpype`.
 - Mesh/model workflows use Python geometry libraries and default to the `manifold` path where applicable.
@@ -228,6 +209,4 @@ FDM is generally useful for larger structural tooling, support plugs, frames, an
 
 ## Repository Notes
 
-- Generated `__pycache__/` files and local OS metadata are not part of the app source and should generally stay out of commits.
-- `output/` is for generated artifacts such as PDFs and should be reviewed before committing.
-- Database and image migrations should be tested locally before updating hosted data.
+- Glass catalog and image updates should be tested locally before updating hosted data.
