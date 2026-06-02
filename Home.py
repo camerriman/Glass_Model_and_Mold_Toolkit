@@ -32,7 +32,7 @@ with col1:
     if st.button(t("home.nav.mold_worksheet", "Cameo Mold Worksheet"), width='stretch'):
         st.switch_page("pages/3_Mold_Worksheet.py")
     if st.button(t("home.nav.pate_mold_worksheet", "Vessel Mold Worksheet"), width='stretch'):
-        st.switch_page("pages/19_Pate_de_verre_Mold_Worksheet.py")
+        st.switch_page("pages/19_Vessel_Mold_Worksheet.py")
     if st.button(t("home.nav.print_optional_frame", "Print Frame Fabrication"), width='stretch'):
         st.switch_page("pages/22_Print_Optional_Frame.py")
 

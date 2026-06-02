@@ -9,10 +9,9 @@ Wrap a heightmap image around a user-defined vessel profile.
 import io
 import json
 import hashlib
-import sqlite3
 import struct
 import zipfile
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 import numpy as np
 import streamlit as st
@@ -27,147 +26,6 @@ st.title(tr("page.vessel.title", "Vessel Model Generator"))
 st.caption(tr("page.vessel.caption", "Define a vessel profile, upload a heightmap image, and generate a wrapped printable STL."))
 
 APP_ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = APP_ROOT / "data" / "mold_records.db"
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_vessel_db():
-    with get_conn() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS vessel_setups (
-                id                INTEGER PRIMARY KEY AUTOINCREMENT,
-                title             TEXT NOT NULL,
-                job_date          TEXT,
-                created_at        TEXT NOT NULL,
-                base_r            REAL,
-                top_r             REAL,
-                height            REAL,
-                cross_section     TEXT,
-                oval_x_scale      REAL,
-                oval_y_scale      REAL,
-                add_base_border   INTEGER,
-                base_z            REAL,
-                demold_cut_enabled INTEGER,
-                demold_cut_radius REAL,
-                demold_cut_apply  TEXT,
-                demold_cut_shape  TEXT,
-                n_mid             INTEGER,
-                midpoints_json    TEXT,
-                wall_mm           REAL,
-                displacement      REAL,
-                placement         TEXT,
-                invert_relief     INTEGER,
-                tone_mapping      TEXT,
-                image_orientation TEXT,
-                fit_mode          TEXT,
-                tile_enabled      INTEGER,
-                tile_count        INTEGER,
-                mirror_tiles      INTEGER,
-                add_lip           INTEGER,
-                lip_radius        REAL,
-                n_lip             INTEGER,
-                quality           TEXT,
-                override          INTEGER,
-                ov_theta          INTEGER,
-                ov_z              REAL,
-                source_image_name TEXT,
-                notes             TEXT
-            )
-            """
-        )
-        existing = {r[1] for r in conn.execute("PRAGMA table_info(vessel_setups)").fetchall()}
-        for col, col_type, dflt in [
-            ("tone_mapping", "TEXT", "'Positive'"),
-            ("image_orientation", "TEXT", "'Upright'"),
-            ("fit_mode", "TEXT", "'Stretch to tile'"),
-            ("mirror_tiles", "INTEGER", "0"),
-            ("cross_section", "TEXT", "'Circle'"),
-            ("oval_x_scale", "REAL", "1.0"),
-            ("oval_y_scale", "REAL", "1.0"),
-            ("add_base_border", "INTEGER", "0"),
-            ("base_z", "REAL", "0.0"),
-            ("demold_cut_enabled", "INTEGER", "0"),
-            ("demold_cut_radius", "REAL", "0.0"),
-            ("demold_cut_apply", "TEXT", "'Base transition'"),
-            ("demold_cut_shape", "TEXT", "'Match vessel cross-section'"),
-        ]:
-            if col not in existing:
-                conn.execute(f"ALTER TABLE vessel_setups ADD COLUMN {col} {col_type} DEFAULT {dflt}")
-
-
-init_vessel_db()
-
-
-def save_vessel_record(rec: dict) -> int:
-    with get_conn() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO vessel_setups
-                (title, job_date, created_at, base_r, top_r, height, cross_section, oval_x_scale, oval_y_scale,
-                 add_base_border, base_z, demold_cut_enabled, demold_cut_radius, demold_cut_apply, demold_cut_shape,
-                 n_mid, midpoints_json,
-                 wall_mm, displacement, placement, invert_relief, tone_mapping, image_orientation, fit_mode, tile_enabled, tile_count, mirror_tiles,
-                 add_lip, lip_radius, n_lip, quality, override, ov_theta, ov_z,
-                 source_image_name, notes)
-            VALUES
-                (:title, :job_date, :created_at, :base_r, :top_r, :height, :cross_section, :oval_x_scale, :oval_y_scale,
-                 :add_base_border, :base_z, :demold_cut_enabled, :demold_cut_radius, :demold_cut_apply, :demold_cut_shape,
-                 :n_mid, :midpoints_json,
-                 :wall_mm, :displacement, :placement, :invert_relief, :tone_mapping, :image_orientation, :fit_mode, :tile_enabled, :tile_count, :mirror_tiles,
-                 :add_lip, :lip_radius, :n_lip, :quality, :override, :ov_theta, :ov_z,
-                 :source_image_name, :notes)
-            """,
-            rec,
-        )
-        return cur.lastrowid
-
-
-def update_vessel_record(record_id: int, rec: dict) -> None:
-    rec["id"] = record_id
-    with get_conn() as conn:
-        conn.execute(
-            """
-            UPDATE vessel_setups SET
-                title=:title, job_date=:job_date, base_r=:base_r, top_r=:top_r, height=:height,
-                cross_section=:cross_section, oval_x_scale=:oval_x_scale, oval_y_scale=:oval_y_scale,
-                add_base_border=:add_base_border, base_z=:base_z,
-                demold_cut_enabled=:demold_cut_enabled, demold_cut_radius=:demold_cut_radius,
-                demold_cut_apply=:demold_cut_apply, demold_cut_shape=:demold_cut_shape,
-                n_mid=:n_mid, midpoints_json=:midpoints_json, wall_mm=:wall_mm,
-                displacement=:displacement, placement=:placement, invert_relief=:invert_relief,
-                tone_mapping=:tone_mapping, image_orientation=:image_orientation, fit_mode=:fit_mode,
-                tile_enabled=:tile_enabled, tile_count=:tile_count, mirror_tiles=:mirror_tiles, add_lip=:add_lip,
-                lip_radius=:lip_radius, n_lip=:n_lip, quality=:quality, override=:override,
-                ov_theta=:ov_theta, ov_z=:ov_z, source_image_name=:source_image_name,
-                notes=:notes
-            WHERE id=:id
-            """,
-            rec,
-        )
-
-
-def delete_vessel_record(record_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM vessel_setups WHERE id=?", (record_id,))
-
-
-def list_vessel_records():
-    with get_conn() as conn:
-        return conn.execute(
-            "SELECT id, title, job_date, created_at, source_image_name FROM vessel_setups ORDER BY created_at DESC"
-        ).fetchall()
-
-
-def load_vessel_record(record_id: int):
-    with get_conn() as conn:
-        return conn.execute("SELECT * FROM vessel_setups WHERE id=?", (record_id,)).fetchone()
 
 # ─────────────────────────────────────────
 # STL writer
@@ -301,6 +159,7 @@ def build_vessel_bundle(
     stl_bytes: bytes,
     stl_name: str,
     settings_text: str,
+    settings_json: bytes,
     source_name: str,
     source_bytes: bytes,
 ) -> bytes:
@@ -310,7 +169,9 @@ def build_vessel_bundle(
     with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(stl_member_name, stl_bytes)
         zf.writestr("vessel_settings.txt", settings_text)
-        zf.writestr(source_member_name, source_bytes)
+        zf.writestr("vessel_settings.json", settings_json)
+        if source_bytes:
+            zf.writestr(source_member_name, source_bytes)
     return bundle.getvalue()
 
 
@@ -1058,8 +919,9 @@ st.session_state.setdefault("vessel_settings_text", "")
 st.session_state.setdefault("vessel_upload_nonce", 0)
 st.session_state.setdefault("vessel_is_building", False)
 st.session_state.setdefault("vessel_reset_pending", False)
-st.session_state.setdefault("vessel_loaded_id", None)
 st.session_state.setdefault("vessel_generated_signature", None)
+st.session_state.setdefault("vessel_loaded_heightmap_bytes", None)
+st.session_state.setdefault("vessel_loaded_heightmap_name", "")
 
 VESSEL_DEFAULTS = {
     "vessel_title": "",
@@ -1119,8 +981,9 @@ def reset_vessel_defaults() -> None:
     st.session_state["vessel_settings_text"] = ""
     st.session_state["vessel_is_building"] = False
     st.session_state["vessel_reset_pending"] = False
-    st.session_state["vessel_loaded_id"] = None
     st.session_state["vessel_generated_signature"] = None
+    st.session_state["vessel_loaded_heightmap_bytes"] = None
+    st.session_state["vessel_loaded_heightmap_name"] = ""
 
 
 def clear_vessel_outputs() -> None:
@@ -1134,76 +997,79 @@ def clear_vessel_outputs() -> None:
     st.session_state["vessel_generated_signature"] = None
 
 
-def load_vessel_setup_into_state(row) -> None:
-    if not row:
-        return
-    st.session_state["vessel_title"] = row["title"] or ""
-    if row["job_date"]:
-        try:
-            st.session_state["vessel_job_date"] = date.fromisoformat(row["job_date"])
-        except ValueError:
-            st.session_state["vessel_job_date"] = date.today()
-    else:
-        st.session_state["vessel_job_date"] = date.today()
+def serialize_vessel_value(value):
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
-    mappings = {
-        "base_r": "vessel_base_r",
-        "top_r": "vessel_top_r",
-        "height": "vessel_height",
-        "cross_section": "vessel_cross_section",
-        "oval_x_scale": "vessel_oval_x_scale",
-        "oval_y_scale": "vessel_oval_y_scale",
-        "base_z": "vessel_base_z",
-        "demold_cut_radius": "vessel_demold_cut_radius",
-        "demold_cut_apply": "vessel_demold_cut_apply",
-        "demold_cut_shape": "vessel_demold_cut_shape",
-        "n_mid": "vessel_n_mid",
-        "wall_mm": "vessel_wall_mm",
-        "displacement": "vessel_displacement",
-        "placement": "vessel_placement",
-        "tone_mapping": "vessel_tone_mapping",
-        "image_orientation": "vessel_image_orientation",
-        "fit_mode": "vessel_fit_mode",
-        "lip_radius": "vessel_lip_radius",
-        "n_lip": "vessel_n_lip",
-        "quality": "vessel_quality",
-        "ov_theta": "vessel_ov_theta",
-        "ov_z": "vessel_ov_z",
-        "notes": "vessel_notes",
+
+def build_vessel_setup_payload(
+    source_image_name: str,
+    midpoints: list[tuple[float, float]],
+    bore_volume_mm3: float,
+) -> dict:
+    values = {
+        key: serialize_vessel_value(st.session_state.get(key, default))
+        for key, default in VESSEL_DEFAULTS.items()
     }
-    for column, key in mappings.items():
-        if column in row.keys() and row[column] is not None:
-            st.session_state[key] = row[column]
+    values["vessel_source_image_name"] = source_image_name or values.get("vessel_source_image_name", "")
+    values["vessel_bore_volume_mm3"] = float(bore_volume_mm3)
+    values["vessel_bore_volume_cm3"] = float(bore_volume_mm3) / 1000.0
+    return {
+        "schema": "glass-toolkit.vessel-setup",
+        "version": 1,
+        "values": values,
+        "midpoints": [
+            {"z_frac": float(z_frac), "radius": float(radius)}
+            for z_frac, radius in midpoints
+        ],
+    }
 
-    for column, key in {
-        "invert_relief": "vessel_invert_relief",
-        "tile_enabled": "vessel_tile_enabled",
-        "mirror_tiles": "vessel_mirror_tiles",
-        "add_base_border": "vessel_add_base_border",
-        "demold_cut_enabled": "vessel_demold_cut_enabled",
-        "add_lip": "vessel_add_lip",
-        "override": "vessel_override",
-    }.items():
-        st.session_state[key] = bool(row[column]) if column in row.keys() and row[column] is not None else False
+
+def build_vessel_setup_json(
+    source_image_name: str,
+    midpoints: list[tuple[float, float]],
+    bore_volume_mm3: float,
+) -> bytes:
+    payload = build_vessel_setup_payload(source_image_name, midpoints, bore_volume_mm3)
+    return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+
+
+def load_vessel_setup_into_state(payload: dict, source_bytes: bytes | None = None, source_name: str = "") -> None:
+    if not payload:
+        return
+    values = payload.get("values", payload)
+    for key, default in VESSEL_DEFAULTS.items():
+        if key not in values:
+            continue
+        value = values[key]
+        if key == "vessel_job_date" and isinstance(value, str):
+            try:
+                value = date.fromisoformat(value)
+            except ValueError:
+                value = default
+        st.session_state[key] = value
+
+    if not isinstance(st.session_state.get("vessel_job_date"), date):
+        try:
+            st.session_state["vessel_job_date"] = date.fromisoformat(str(st.session_state["vessel_job_date"]))
+        except (TypeError, ValueError):
+            st.session_state["vessel_job_date"] = date.today()
     st.session_state["vessel_base_border_mode"] = (
         "Add base border"
         if st.session_state.get("vessel_add_base_border", False)
         else "No border"
     )
-    if "tone_mapping" not in row.keys() or not row["tone_mapping"]:
+    if not st.session_state.get("vessel_tone_mapping"):
         st.session_state["vessel_tone_mapping"] = "Negative" if st.session_state["vessel_invert_relief"] else "Positive"
     st.session_state["vessel_invert_relief"] = st.session_state["vessel_tone_mapping"] == "Negative"
     st.session_state["vessel_max_thickness"] = float(st.session_state["vessel_wall_mm"]) + float(st.session_state["vessel_displacement"])
-    st.session_state["vessel_tile_count"] = int(row["tile_count"] or VESSEL_DEFAULTS["vessel_tile_count"])
-    st.session_state["vessel_source_image_name"] = row["source_image_name"] or ""
+    st.session_state["vessel_tile_count"] = int(st.session_state.get("vessel_tile_count") or VESSEL_DEFAULTS["vessel_tile_count"])
 
     for idx in range(4):
         st.session_state.pop(f"vessel_zf_{idx}", None)
         st.session_state.pop(f"vessel_rm_{idx}", None)
-    try:
-        midpoints_saved = json.loads(row["midpoints_json"] or "[]")
-    except json.JSONDecodeError:
-        midpoints_saved = []
+    midpoints_saved = payload.get("midpoints", [])
     st.session_state["vessel_n_mid"] = min(4, len(midpoints_saved))
     height_value = float(st.session_state["vessel_height"] or VESSEL_DEFAULTS["vessel_height"])
     for idx, item in enumerate(midpoints_saved[:4]):
@@ -1212,8 +1078,36 @@ def load_vessel_setup_into_state(row) -> None:
         st.session_state[f"vessel_zf_{idx}"] = max(1.0, min(height_value - 1, z_frac * height_value))
         st.session_state[f"vessel_rm_{idx}"] = radius
 
-    st.session_state["vessel_loaded_id"] = row["id"]
+    if source_bytes:
+        st.session_state["vessel_loaded_heightmap_bytes"] = source_bytes
+        st.session_state["vessel_loaded_heightmap_name"] = source_name or st.session_state.get("vessel_source_image_name", "")
+        st.session_state["vessel_source_image_name"] = st.session_state["vessel_loaded_heightmap_name"]
+        st.session_state["vessel_upload_nonce"] = st.session_state.get("vessel_upload_nonce", 0) + 1
+    else:
+        st.session_state["vessel_loaded_heightmap_bytes"] = None
+        st.session_state["vessel_loaded_heightmap_name"] = ""
     clear_vessel_outputs()
+
+
+def extract_vessel_setup_upload(uploaded_file) -> tuple[dict, bytes | None, str]:
+    file_bytes = uploaded_file.getvalue()
+    file_name = uploaded_file.name or ""
+    if file_name.lower().endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            try:
+                payload = json.loads(zf.read("vessel_settings.json").decode("utf-8"))
+            except KeyError as exc:
+                raise ValueError("Build bundle does not contain vessel_settings.json.") from exc
+            source_bytes = None
+            source_name = ""
+            for name in zf.namelist():
+                lower = name.lower()
+                if lower.endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff")):
+                    source_name = Path(name).name
+                    source_bytes = zf.read(name)
+                    break
+            return payload, source_bytes, source_name
+    return json.loads(file_bytes.decode("utf-8")), None, ""
 
 
 def vessel_generation_signature(
@@ -1287,30 +1181,35 @@ if st.session_state.get("vessel_reset_pending"):
     reset_vessel_defaults()
 
 tool_left, tool_right = st.columns([1, 1], gap="large")
-with tool_right:
-    with st.expander(tr("page.vessel.records.title", "Saved Vessel Setups"), expanded=False):
-        records = list_vessel_records()
-        if not records:
-            st.info(tr("page.vessel.records.empty", "No saved vessel setups yet."))
-        else:
-            for row in records:
-                saved_date = row["job_date"] or tr("page.vessel.records.no_date", "no date")
-                source_note = f" · {row['source_image_name']}" if row["source_image_name"] else ""
-                rc1, rc2, rc3 = st.columns([4, 1, 1])
-                with rc1:
-                    st.markdown(f"**{row['title']}** — {saved_date}{source_note}")
-                    st.caption(f"Saved {row['created_at']}")
-                with rc2:
-                    if st.button(tr("worksheet.actions.load", "Load"), key=f"vessel_load_{row['id']}"):
-                        load_vessel_setup_into_state(load_vessel_record(row["id"]))
-                        st.rerun()
-                with rc3:
-                    if st.button(tr("worksheet.actions.delete_help", "Delete"), key=f"vessel_del_{row['id']}"):
-                        delete_vessel_record(row["id"])
-                        if st.session_state["vessel_loaded_id"] == row["id"]:
-                            reset_vessel_defaults()
-                        st.rerun()
+with tool_left:
+    with st.expander(tr("page.vessel.files.load_title", "Load Vessel Setup File"), expanded=False):
+        setup_upload = st.file_uploader(
+            tr("page.vessel.fields.upload_setup", "Upload vessel_settings.json or a prior build ZIP"),
+            type=["json", "zip"],
+            key="vessel_setup_file_upload",
+        )
+        if st.button(
+            tr("page.vessel.actions.load_setup_file", "Load Setup File"),
+            key="vessel_load_setup_file",
+            width="stretch",
+            disabled=setup_upload is None,
+        ):
+            try:
+                setup_payload, setup_source_bytes, setup_source_name = extract_vessel_setup_upload(setup_upload)
+                load_vessel_setup_into_state(setup_payload, setup_source_bytes, setup_source_name)
+                st.success(tr("page.vessel.messages.setup_file_loaded", "Setup file loaded."))
+                st.rerun()
+            except Exception as exc:
+                st.error(tr("page.vessel.errors.setup_file_failed", "Could not load setup file: {error}", error=exc))
 
+with tool_right:
+    with st.expander(tr("page.vessel.files.actions_title", "Setup Actions"), expanded=False):
+        st.caption(
+            tr(
+                "page.vessel.files.public_storage_note",
+                "Setups are stored in your downloaded files, not in a shared server database.",
+            )
+        )
         st.divider()
         bc1, bc2 = st.columns(2)
         with bc1:
@@ -1652,6 +1551,13 @@ with left:
         st.image(uploaded, caption=tr("page.vessel.caption.heightmap_preview", "Heightmap preview"), width="content")
         uploaded_bytes = uploaded.getvalue()
         st.session_state["vessel_source_image_name"] = uploaded.name
+        st.session_state["vessel_loaded_heightmap_bytes"] = None
+        st.session_state["vessel_loaded_heightmap_name"] = ""
+    elif st.session_state.get("vessel_loaded_heightmap_bytes"):
+        uploaded_bytes = st.session_state["vessel_loaded_heightmap_bytes"]
+        loaded_name = st.session_state.get("vessel_loaded_heightmap_name", "loaded_heightmap")
+        st.image(io.BytesIO(uploaded_bytes), caption=tr("page.vessel.caption.loaded_heightmap_preview", "Loaded heightmap: {name}", name=loaded_name), width="content")
+        st.session_state["vessel_source_image_name"] = loaded_name
     else:
         uploaded_bytes = None
 
@@ -1747,68 +1653,6 @@ with left:
         height=80,
         placeholder=tr("page.vessel.fields.notes_placeholder", "Setup notes, source image notes, or firing/mold reminders..."),
     )
-    save_label = (
-        tr("page.vessel.actions.update_setup", "Update Setup")
-        if st.session_state.get("vessel_loaded_id")
-        else tr("page.vessel.actions.save_setup", "Save Setup")
-    )
-    save_setup = st.button(save_label, key="vessel_save_setup", width="stretch", type="secondary")
-    if save_setup:
-        title = st.session_state["vessel_title"].strip()
-        if not title:
-            st.error(tr("errors.worksheet.title_required", "Please enter a title before saving."))
-        else:
-            job_date_val = st.session_state["vessel_job_date"]
-            job_date_str = job_date_val.isoformat() if hasattr(job_date_val, "isoformat") else str(job_date_val)
-            source_image_name = uploaded.name if uploaded is not None else st.session_state.get("vessel_source_image_name", "")
-            rec = {
-                "title": title,
-                "job_date": job_date_str,
-                "created_at": datetime.now().isoformat(timespec="seconds"),
-                "base_r": float(base_r),
-                "top_r": float(top_r),
-                "height": float(height),
-                "cross_section": cross_section,
-                "oval_x_scale": float(oval_x_scale),
-                "oval_y_scale": float(oval_y_scale),
-                "add_base_border": int(bool(add_base_border)),
-                "base_z": float(base_z),
-                "demold_cut_enabled": int(bool(demold_cut_enabled)),
-                "demold_cut_radius": float(demold_cut_radius),
-                "demold_cut_apply": demold_cut_apply,
-                "demold_cut_shape": demold_cut_shape,
-                "n_mid": int(n_mid),
-                "midpoints_json": json.dumps([
-                    {"z_frac": float(z_frac), "radius": float(radius)}
-                    for z_frac, radius in midpoints
-                ]),
-                "wall_mm": float(wall_mm),
-                "displacement": float(displacement),
-                "placement": placement,
-                "invert_relief": int(bool(invert_relief)),
-                "tone_mapping": tone_mapping,
-                "image_orientation": image_orientation,
-                "fit_mode": fit_mode,
-                "tile_enabled": int(bool(tile_enabled)),
-                "tile_count": int(tile_count),
-                "mirror_tiles": int(bool(mirror_tiles)),
-                "add_lip": int(bool(add_lip)),
-                "lip_radius": float(lip_radius),
-                "n_lip": int(n_lip),
-                "quality": quality,
-                "override": int(bool(override)),
-                "ov_theta": int(n_theta),
-                "ov_z": float(mm_per_ring),
-                "source_image_name": source_image_name,
-                "notes": st.session_state["vessel_notes"],
-            }
-            if st.session_state.get("vessel_loaded_id"):
-                update_vessel_record(st.session_state["vessel_loaded_id"], rec)
-                st.success(tr("page.vessel.messages.setup_updated", "Setup updated: {title}", title=title))
-            else:
-                st.session_state["vessel_loaded_id"] = save_vessel_record(rec)
-                st.success(tr("page.vessel.messages.setup_saved", "Setup saved: {title}", title=title))
-            st.session_state["vessel_source_image_name"] = source_image_name
 
     downloads_ready = bool(st.session_state["stl_bytes"]) and st.session_state.get("vessel_generated_signature") == current_signature
     action_col1, action_col2 = st.columns(2)
@@ -2007,6 +1851,9 @@ with right:
                 )
                 stl_bytes = write_stl(tris)
                 source_image_name = uploaded.name if uploaded is not None else "source_heightmap"
+                if uploaded is None:
+                    source_image_name = st.session_state.get("vessel_source_image_name", source_image_name) or source_image_name
+                settings_json = build_vessel_setup_json(source_image_name, midpoints, generated_bore_volume_mm3)
                 settings_text = format_vessel_settings(
                     {
                         "base_r": float(base_r),
@@ -2057,6 +1904,7 @@ with right:
                     stl_bytes,
                     stl_name,
                     settings_text,
+                    settings_json,
                     source_image_name,
                     uploaded_bytes,
                 )

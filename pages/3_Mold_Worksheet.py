@@ -3,19 +3,19 @@
 Mold Calculator & Record Keeper
 - Parses settings.txt from the Cameo Mold Generator (App 1)
 - Live worksheet: 3D Print → Mold Geometry → tabbed mold type
-- Saves / loads records via local SQLite database
+- Saves / loads worksheet setup files locally
 """
 
 import html
+import json
 import re
-import sqlite3
 import io
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
-from i18n import format_date, format_datetime, render_app_sidebar, t
+from i18n import format_date, render_app_sidebar, t
 
 # ─────────────────────────────────────────
 # Config
@@ -46,112 +46,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-APP_ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = APP_ROOT / "data" / "mold_records.db"
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-# ─────────────────────────────────────────
-# Database
-# ─────────────────────────────────────────
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    with get_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS molds (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                title         TEXT NOT NULL,
-                job_date      TEXT,
-                created_at    TEXT NOT NULL,
-                mold_type     TEXT,
-                width_mm      REAL,
-                depth_mm      REAL,
-                base_mm       REAL,
-                height_mm     REAL,
-                stl_volume    REAL,
-                wall_mm       REAL,
-                alg_si_gap_mm REAL,
-                inv_gap_mm    REAL,
-                alg_adjust_zi REAL,
-                alg_mix_ratio REAL,
-                si_adjust_zi  REAL,
-                si_mix_ratio  REAL,
-                inv_adjust_zi REAL,
-                notes         TEXT
-            )
-        """)
-        existing = {r[1] for r in conn.execute("PRAGMA table_info(molds)").fetchall()}
-        for col, dflt in [
-            ("mold_type",     "'Alginate'"),
-            ("alg_si_gap_mm", "NULL"),
-            ("inv_gap_mm",    "NULL"),
-            ("alg_adjust_zi", "0.0"),
-            ("alg_mix_ratio", "1.0"),
-        ]:
-            if col not in existing:
-                col_type = "TEXT" if col == "mold_type" else "REAL"
-                conn.execute(f"ALTER TABLE molds ADD COLUMN {col} {col_type} DEFAULT {dflt}")
-                if col in {"alg_si_gap_mm", "inv_gap_mm"}:
-                    conn.execute(f"UPDATE molds SET {col}=wall_mm WHERE {col} IS NULL")
-        existing = {r[1] for r in conn.execute("PRAGMA table_info(molds)").fetchall()}
-        for col in ("alg_si_gap_mm", "inv_gap_mm"):
-            if col in existing:
-                conn.execute(f"UPDATE molds SET {col}=wall_mm WHERE {col} IS NULL")
-
-init_db()
-
-def save_record(rec: dict) -> int:
-    with get_conn() as conn:
-        cur = conn.execute("""
-            INSERT INTO molds
-                (title, job_date, created_at, mold_type,
-                 width_mm, depth_mm, base_mm, height_mm, stl_volume,
-                 wall_mm, alg_si_gap_mm, inv_gap_mm,
-                 alg_adjust_zi, alg_mix_ratio,
-                 si_adjust_zi,  si_mix_ratio,
-                 inv_adjust_zi, notes)
-            VALUES
-                (:title, :job_date, :created_at, :mold_type,
-                 :width_mm, :depth_mm, :base_mm, :height_mm, :stl_volume,
-                 :wall_mm, :alg_si_gap_mm, :inv_gap_mm,
-                 :alg_adjust_zi, :alg_mix_ratio,
-                 :si_adjust_zi,  :si_mix_ratio,
-                 :inv_adjust_zi, :notes)
-        """, rec)
-        return cur.lastrowid
-
-def update_record(record_id: int, rec: dict):
-    rec["id"] = record_id
-    with get_conn() as conn:
-        conn.execute("""
-            UPDATE molds SET
-                title=:title, job_date=:job_date, mold_type=:mold_type,
-                width_mm=:width_mm, depth_mm=:depth_mm, base_mm=:base_mm,
-                height_mm=:height_mm, stl_volume=:stl_volume,
-                wall_mm=:wall_mm, alg_si_gap_mm=:alg_si_gap_mm, inv_gap_mm=:inv_gap_mm,
-                alg_adjust_zi=:alg_adjust_zi, alg_mix_ratio=:alg_mix_ratio,
-                si_adjust_zi=:si_adjust_zi,   si_mix_ratio=:si_mix_ratio,
-                inv_adjust_zi=:inv_adjust_zi, notes=:notes
-            WHERE id=:id
-        """, rec)
-
-def delete_record(record_id: int):
-    with get_conn() as conn:
-        conn.execute("DELETE FROM molds WHERE id=?", (record_id,))
-
-def list_records():
-    with get_conn() as conn:
-        return conn.execute(
-            "SELECT id, title, job_date, created_at, mold_type FROM molds ORDER BY created_at DESC"
-        ).fetchall()
-
-def load_record(record_id: int):
-    with get_conn() as conn:
-        return conn.execute("SELECT * FROM molds WHERE id=?", (record_id,)).fetchone()
 
 # ─────────────────────────────────────────
 # Settings.txt parser
@@ -311,7 +205,6 @@ had_inv_gap = "ws_inv_gap_mm" in st.session_state
 legacy_session_gap = st.session_state.get("ws_wall_mm", 0.0)
 for k, v in FIELD_DEFAULTS.items():
     st.session_state.setdefault(f"ws_{k}", v)
-st.session_state.setdefault("ws_loaded_id", None)
 if not had_alg_si_gap:
     st.session_state["ws_alg_si_gap_mm"] = legacy_session_gap
 if not had_inv_gap:
@@ -320,10 +213,32 @@ if not had_inv_gap:
 
 FLOAT_FIELDS = {k for k, v in FIELD_DEFAULTS.items() if isinstance(v, float)}
 
-def _load_into_state(row):
+def _serialize_field_value(value):
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
+
+
+def _current_worksheet_payload() -> dict:
+    return {
+        "schema": "glass-toolkit.mold-worksheet",
+        "version": 1,
+        "values": {
+            key: _serialize_field_value(st.session_state.get(f"ws_{key}", default))
+            for key, default in FIELD_DEFAULTS.items()
+        },
+    }
+
+
+def _worksheet_json_bytes() -> bytes:
+    return json.dumps(_current_worksheet_payload(), indent=2, sort_keys=True).encode("utf-8")
+
+
+def _load_into_state(payload):
+    values = payload.get("values", payload) if isinstance(payload, dict) else {}
     for k in FIELD_DEFAULTS:
-        if k in row.keys() and row[k] is not None:
-            val = row[k]
+        if k in values and values[k] is not None:
+            val = values[k]
             if k == "job_date" and isinstance(val, str):
                 try:
                     val = date.fromisoformat(val)
@@ -335,10 +250,10 @@ def _load_into_state(row):
                 except (TypeError, ValueError):
                     val = FIELD_DEFAULTS[k]
             st.session_state[f"ws_{k}"] = val
-    legacy_gap = float(row["wall_mm"] or 0.0) if "wall_mm" in row.keys() else 0.0
-    if "alg_si_gap_mm" not in row.keys() or row["alg_si_gap_mm"] is None:
+    legacy_gap = float(values.get("wall_mm") or 0.0)
+    if values.get("alg_si_gap_mm") is None:
         st.session_state["ws_alg_si_gap_mm"] = legacy_gap
-    if "inv_gap_mm" not in row.keys() or row["inv_gap_mm"] is None:
+    if values.get("inv_gap_mm") is None:
         st.session_state["ws_inv_gap_mm"] = legacy_gap
     if st.session_state["ws_mold_type"] == "Alginate":
         st.session_state["ws_mold_type"] = "Alginate + Investment"
@@ -350,13 +265,11 @@ def _load_into_state(row):
     elif st.session_state["ws_mold_type"] == "Silicone + Investment":
         st.session_state["ws_alg_adjust_zi"] = FIELD_DEFAULTS["alg_adjust_zi"]
         st.session_state["ws_alg_mix_ratio"] = FIELD_DEFAULTS["alg_mix_ratio"]
-    st.session_state["ws_loaded_id"] = row["id"]
 
 
 def _reset_state():
     for k, v in FIELD_DEFAULTS.items():
         st.session_state[f"ws_{k}"] = v
-    st.session_state["ws_loaded_id"] = None
 
 
 def mold_type_label(value: str) -> str:
@@ -787,12 +700,6 @@ def render_batch_sheet_actions(
         st.caption(t("worksheet.actions.batch_sheet_disabled", "Enter print dimensions and STL volume to enable batch sheet export."))
 
 # ─────────────────────────────────────────
-# Worksheet controls
-# ─────────────────────────────────────────
-loaded_id = st.session_state.get("ws_loaded_id")
-save_label = t("worksheet.actions.update", "Update") if loaded_id else t("worksheet.actions.save", "Save")
-save_clicked = False
-
 tool_left, tool_right = st.columns([1, 1], gap="large")
 
 with tool_left:
@@ -843,35 +750,31 @@ with tool_left:
                 st.warning(t("worksheet.import.empty", "Nothing to parse."))
 
 with tool_right:
-    with st.expander(t("worksheet.records.title", "Saved Records"), expanded=False):
-        records = list_records()
-        if not records:
-            st.info(t("worksheet.records.empty", "No saved records yet."))
-        else:
-            for row in records:
-                mold_label = f"  ·  {mold_type_label(row['mold_type'])}" if row["mold_type"] else ""
-                job_date_text = format_date(row["job_date"]) if row["job_date"] else t("worksheet.records.no_date", "no date")
-                rc1, rc2, rc3 = st.columns([4, 1, 1])
-                with rc1:
-                    st.markdown(f"**{row['title']}**{mold_label}  —  {job_date_text}")
-                    st.caption(
-                        t(
-                            "worksheet.records.saved_at",
-                            "Saved {value}",
-                            value=format_datetime(row["created_at"]),
-                        )
-                    )
-                with rc2:
-                    if st.button(t("worksheet.actions.load", "Load"), key=f"load_{row['id']}"):
-                        _load_into_state(load_record(row["id"]))
-                        st.rerun()
-                with rc3:
-                    if st.button(t("worksheet.actions.delete_help", "Delete"), key=f"del_{row['id']}"):
-                        delete_record(row["id"])
-                        if st.session_state["ws_loaded_id"] == row["id"]:
-                            _reset_state()
-                        st.rerun()
-
+    with st.expander(t("worksheet.files.title", "Worksheet Files"), expanded=False):
+        setup_upload = st.file_uploader(
+            t("worksheet.files.upload", "Upload worksheet_settings.json"),
+            type=["json"],
+            key="worksheet_setup_upload",
+        )
+        if st.button(
+            t("worksheet.files.load", "Load Worksheet File"),
+            use_container_width=True,
+            disabled=setup_upload is None,
+            key="worksheet_load_setup_file",
+        ):
+            try:
+                payload = json.loads(setup_upload.getvalue().decode("utf-8"))
+                _load_into_state(payload)
+                st.success(t("worksheet.files.loaded", "Worksheet file loaded."))
+                st.rerun()
+            except Exception as exc:
+                st.error(t("worksheet.files.load_failed", "Could not load worksheet file: {error}", error=exc))
+        st.caption(
+            t(
+                "worksheet.files.public_storage_note",
+                "Worksheets are stored in your downloaded files, not in a shared server database.",
+            )
+        )
         st.divider()
         bc1, bc2 = st.columns(2)
         with bc1:
@@ -1050,7 +953,20 @@ with input_col:
         height=100,
         placeholder=t("worksheet.fields.notes_placeholder", "Any observations, adjustments, or special instructions..."),
     )
-    save_clicked = st.button(save_label, use_container_width=True, type="primary")
+    setup_filename = re.sub(
+        r"[^A-Za-z0-9_-]+",
+        "_",
+        st.session_state["ws_title"].strip() or "mold_worksheet",
+    ).strip("_")
+    st.download_button(
+        t("worksheet.actions.download_setup_json", "Download Worksheet JSON"),
+        data=_worksheet_json_bytes(),
+        file_name=f"{setup_filename}_worksheet_settings.json",
+        mime="application/json",
+        use_container_width=True,
+        type="primary",
+        key="worksheet_download_setup_json",
+    )
 
 # ─── All inputs are now rendered — read session state and calculate ───
 w   = st.session_state["ws_width_mm"]
@@ -1320,48 +1236,3 @@ After set, let the mold sit at least 1 hour before pattern removal. For curing a
             header_rows=batch_header_rows(mix_summary),
             enabled=worksheet_ready,
         )
-
-# ─────────────────────────────────────────
-# Save
-# ─────────────────────────────────────────
-if save_clicked:
-    title = st.session_state["ws_title"].strip()
-    if not title:
-        st.error(t("errors.worksheet.title_required", "Please enter a title before saving."))
-    else:
-        job_date_val = st.session_state["ws_job_date"]
-        job_date_str = job_date_val.isoformat() if hasattr(job_date_val, "isoformat") else str(job_date_val)
-        rec = dict(
-            title         = title,
-            job_date      = job_date_str,
-            created_at    = datetime.now().isoformat(timespec="seconds"),
-            mold_type     = st.session_state["ws_mold_type"],
-            width_mm      = st.session_state["ws_width_mm"],
-            depth_mm      = st.session_state["ws_depth_mm"],
-            base_mm       = st.session_state["ws_base_mm"],
-            height_mm     = st.session_state["ws_height_mm"],
-            stl_volume    = st.session_state["ws_stl_volume"],
-            wall_mm       = st.session_state["ws_alg_si_gap_mm"],
-            alg_si_gap_mm = st.session_state["ws_alg_si_gap_mm"],
-            inv_gap_mm    = st.session_state["ws_inv_gap_mm"],
-            alg_adjust_zi = st.session_state["ws_alg_adjust_zi"],
-            alg_mix_ratio = st.session_state["ws_alg_mix_ratio"],
-            si_adjust_zi  = st.session_state["ws_si_adjust_zi"],
-            si_mix_ratio  = st.session_state["ws_si_mix_ratio"],
-            inv_adjust_zi = st.session_state["ws_inv_adjust_zi"],
-            notes         = st.session_state["ws_notes"],
-        )
-        if rec["mold_type"] == "Alginate + Investment":
-            rec["si_adjust_zi"] = FIELD_DEFAULTS["si_adjust_zi"]
-            rec["si_mix_ratio"] = FIELD_DEFAULTS["si_mix_ratio"]
-        elif rec["mold_type"] == "Silicone + Investment":
-            rec["alg_adjust_zi"] = FIELD_DEFAULTS["alg_adjust_zi"]
-            rec["alg_mix_ratio"] = FIELD_DEFAULTS["alg_mix_ratio"]
-        if loaded_id:
-            update_record(loaded_id, rec)
-            st.success(t("messages.worksheet.record_updated", "Record updated: {title}", title=title))
-        else:
-            new_id = save_record(rec)
-            st.session_state["ws_loaded_id"] = new_id
-            st.success(t("messages.worksheet.record_saved", "Record saved: {title}", title=title))
-        st.rerun()

@@ -1,123 +1,28 @@
 """
-19_Pate_de_verre_Mold_Worksheet.py
+19_Vessel_Mold_Worksheet.py
 Planning worksheet for vessel mold material estimates.
 """
 
 from __future__ import annotations
 
 import html
+import hashlib
 import io
+import json
 import math
 import re
-import sqlite3
+import zipfile
 from datetime import date
-from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
-from i18n import format_date, format_datetime, render_app_sidebar, t
+from i18n import format_date, render_app_sidebar, t
 
 
 st.set_page_config(page_title=t("page.pate_mold.title", "Vessel Mold Worksheet"), layout="wide")
 render_app_sidebar()
-
-APP_ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = APP_ROOT / "data" / "mold_records.db"
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-
-def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_pate_db() -> None:
-    with get_conn() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS pate_mold_projects (
-                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                title               TEXT NOT NULL,
-                job_date            TEXT,
-                created_at          TEXT NOT NULL,
-                settings_text       TEXT,
-                bore_volume_cm3     REAL,
-                face_thickness_mm   REAL,
-                jacket_thickness_mm REAL,
-                overage_pct         REAL,
-                manual_face_cm3     REAL,
-                manual_jacket_cm3   REAL,
-                jacket_stiffener    TEXT,
-                notes               TEXT
-            )
-            """
-        )
-
-
-def save_pate_project(rec: dict) -> int:
-    with get_conn() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO pate_mold_projects
-                (title, job_date, created_at, settings_text, bore_volume_cm3,
-                 face_thickness_mm, jacket_thickness_mm, overage_pct,
-                 manual_face_cm3, manual_jacket_cm3, jacket_stiffener, notes)
-            VALUES
-                (:title, :job_date, :created_at, :settings_text, :bore_volume_cm3,
-                 :face_thickness_mm, :jacket_thickness_mm, :overage_pct,
-                 :manual_face_cm3, :manual_jacket_cm3, :jacket_stiffener, :notes)
-            """,
-            rec,
-        )
-        return cur.lastrowid
-
-
-def update_pate_project(record_id: int, rec: dict) -> None:
-    rec["id"] = record_id
-    with get_conn() as conn:
-        conn.execute(
-            """
-            UPDATE pate_mold_projects SET
-                title=:title,
-                job_date=:job_date,
-                settings_text=:settings_text,
-                bore_volume_cm3=:bore_volume_cm3,
-                face_thickness_mm=:face_thickness_mm,
-                jacket_thickness_mm=:jacket_thickness_mm,
-                overage_pct=:overage_pct,
-                manual_face_cm3=:manual_face_cm3,
-                manual_jacket_cm3=:manual_jacket_cm3,
-                jacket_stiffener=:jacket_stiffener,
-                notes=:notes
-            WHERE id=:id
-            """,
-            rec,
-        )
-
-
-def delete_pate_project(record_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM pate_mold_projects WHERE id=?", (record_id,))
-
-
-def list_pate_projects():
-    with get_conn() as conn:
-        return conn.execute(
-            "SELECT id, title, job_date, created_at, jacket_stiffener FROM pate_mold_projects ORDER BY created_at DESC"
-        ).fetchall()
-
-
-def load_pate_project(record_id: int):
-    with get_conn() as conn:
-        return conn.execute("SELECT * FROM pate_mold_projects WHERE id=?", (record_id,)).fetchone()
-
-
-init_pate_db()
-
-
 NUMBER_PATTERN = r"([0-9][0-9,]*(?:\.[0-9]+)?)"
 
 
@@ -175,6 +80,70 @@ def parse_vessel_settings(text: str) -> dict:
         "source_image": source_image,
         "points": points,
     }
+
+
+def parse_vessel_setup_json(payload: dict) -> dict:
+    values = payload.get("values", payload) if isinstance(payload, dict) else {}
+    base_radius = values.get("vessel_base_r")
+    top_radius = values.get("vessel_top_r")
+    height = values.get("vessel_height")
+    oval_x_scale = values.get("vessel_oval_x_scale") or 1.0
+    oval_y_scale = values.get("vessel_oval_y_scale") or 1.0
+    base_z = values.get("vessel_base_z") or 0.0
+    source_image = values.get("vessel_source_image_name") or ""
+    bore_volume = values.get("vessel_bore_volume_cm3")
+    if bore_volume is None and values.get("vessel_bore_volume_mm3") is not None:
+        bore_volume = float(values["vessel_bore_volume_mm3"]) / 1000.0
+    if bore_volume is None:
+        raise ValueError("Vessel settings JSON is missing vessel_bore_volume_cm3.")
+
+    points: list[tuple[float, float]] = []
+    if base_radius is not None:
+        base_radius = float(base_radius)
+        points.append((0.0, base_radius))
+        if float(base_z) > 0:
+            points.append((float(base_z), base_radius))
+    for item in payload.get("midpoints", []):
+        z_frac = float(item.get("z_frac", 0.0))
+        radius = float(item.get("radius", base_radius or 0.0))
+        if height is not None:
+            points.append((float(base_z) + z_frac * float(height), radius))
+    if height is not None and top_radius is not None:
+        points.append((float(base_z) + float(height), float(top_radius)))
+
+    points = sorted({(round(z, 4), round(r, 4)) for z, r in points})
+    return {
+        "base_radius": float(base_radius) if base_radius is not None else None,
+        "top_radius": float(top_radius) if top_radius is not None else None,
+        "height": float(height) if height is not None else None,
+        "oval_x_scale": float(oval_x_scale),
+        "oval_y_scale": float(oval_y_scale),
+        "base_z": float(base_z),
+        "bore_volume": float(bore_volume) if bore_volume is not None else None,
+        "source_image": source_image,
+        "points": points,
+    }
+
+
+def extract_vessel_generator_upload(uploaded_file) -> tuple[str, dict]:
+    file_bytes = uploaded_file.getvalue()
+    file_name = uploaded_file.name or ""
+    lower_name = file_name.lower()
+    if lower_name.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            names = set(zf.namelist())
+            if "vessel_settings.json" in names:
+                payload = json.loads(zf.read("vessel_settings.json").decode("utf-8"))
+                return "", parse_vessel_setup_json(payload)
+            if "vessel_settings.txt" in names:
+                text = zf.read("vessel_settings.txt").decode("utf-8", errors="replace")
+                return text, parse_vessel_settings(text)
+            raise ValueError("Build bundle does not contain vessel_settings.txt or vessel_settings.json.")
+    if lower_name.endswith(".json"):
+        payload = json.loads(file_bytes.decode("utf-8"))
+        return "", parse_vessel_setup_json(payload)
+    text = file_bytes.decode("utf-8", errors="replace")
+    return text, parse_vessel_settings(text)
 
 
 def frustum_profile_volume_cm3(
@@ -357,16 +326,16 @@ def build_pate_batch_pdf(title: str, job_date, sections: list[tuple[str, list[tu
 def render_pate_batch_actions(title: str, job_date, sections: list[tuple[str, list[tuple[str, str]]]], enabled: bool = True) -> None:
     export_html = build_pate_print_html(title, job_date, sections)
     pdf_bytes = build_pate_batch_pdf(title, job_date, sections)
-    safe_filename = re.sub(r"[^A-Za-z0-9_-]+", "_", title).strip("_") or "pate_de_verre_mold"
+    safe_filename = re.sub(r"[^A-Za-z0-9_-]+", "_", title).strip("_") or "vessel_mold"
     print_payload = html.escape(export_html, quote=True)
     disabled_attr = "" if enabled else "disabled"
     disabled_style = "" if enabled else "opacity: 0.45; cursor: not-allowed;"
     click_handler = (
         """
-                const oldFrame = document.getElementById('pate-batch-sheet-print-frame');
+                const oldFrame = document.getElementById('vessel-mold-batch-sheet-print-frame');
                 if (oldFrame) oldFrame.remove();
                 const frame = document.createElement('iframe');
-                frame.id = 'pate-batch-sheet-print-frame';
+                frame.id = 'vessel-mold-batch-sheet-print-frame';
                 frame.style.position = 'fixed';
                 frame.style.right = '0';
                 frame.style.bottom = '0';
@@ -429,7 +398,7 @@ PATE_DEFAULTS = {
     "pate_manual_jacket_volume_cm3": 0.0,
     "pate_jacket_stiffener": "Grog mix",
     "pate_mold_notes": "",
-    "pate_loaded_id": None,
+    "pate_imported_vessel_json": {"points": []},
 }
 
 for key, value in PATE_DEFAULTS.items():
@@ -440,58 +409,33 @@ def reset_pate_state() -> None:
     for key, value in PATE_DEFAULTS.items():
         st.session_state[key] = value
     st.session_state.pop("pate_bore_source_text", None)
+    st.session_state.pop("pate_last_vessel_upload_signature", None)
     st.session_state["pate_mold_upload_nonce"] = st.session_state.get("pate_mold_upload_nonce", 0) + 1
 
 
-def load_pate_project_into_state(row) -> None:
-    if not row:
-        return
-    st.session_state["pate_loaded_id"] = row["id"]
-    st.session_state["pate_mold_project_title"] = row["title"] or ""
-    if row["job_date"]:
-        try:
-            st.session_state["pate_mold_date"] = date.fromisoformat(row["job_date"])
-        except ValueError:
-            st.session_state["pate_mold_date"] = date.today()
-    else:
-        st.session_state["pate_mold_date"] = date.today()
-    st.session_state["pate_settings_text"] = row["settings_text"] or ""
-    st.session_state["pate_bore_volume_cm3"] = float(row["bore_volume_cm3"] or 0.0)
-    st.session_state["pate_bore_source_text"] = st.session_state["pate_settings_text"]
-    st.session_state["pate_face_thickness_mm"] = float(row["face_thickness_mm"] or PATE_DEFAULTS["pate_face_thickness_mm"])
-    st.session_state["pate_jacket_thickness_mm"] = float(row["jacket_thickness_mm"] or PATE_DEFAULTS["pate_jacket_thickness_mm"])
-    st.session_state["pate_overage_pct"] = float(row["overage_pct"] or PATE_DEFAULTS["pate_overage_pct"])
-    st.session_state["pate_manual_face_volume_cm3"] = float(row["manual_face_cm3"] or 0.0)
-    st.session_state["pate_manual_jacket_volume_cm3"] = float(row["manual_jacket_cm3"] or 0.0)
-    st.session_state["pate_jacket_stiffener"] = row["jacket_stiffener"] or PATE_DEFAULTS["pate_jacket_stiffener"]
-    st.session_state["pate_mold_notes"] = row["notes"] or ""
-    st.session_state["pate_mold_upload_nonce"] = st.session_state.get("pate_mold_upload_nonce", 0) + 1
+def serialize_pate_value(value):
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
 
-def current_pate_record() -> dict:
-    job_date = st.session_state["pate_mold_date"]
+def current_pate_payload() -> dict:
     return {
-        "title": st.session_state["pate_mold_project_title"].strip(),
-        "job_date": job_date.isoformat() if hasattr(job_date, "isoformat") else str(job_date),
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-        "settings_text": st.session_state.get("pate_settings_text", ""),
-        "bore_volume_cm3": st.session_state.get("pate_bore_volume_cm3", 0.0),
-        "face_thickness_mm": st.session_state.get("pate_face_thickness_mm", 15.0),
-        "jacket_thickness_mm": st.session_state.get("pate_jacket_thickness_mm", 15.0),
-        "overage_pct": st.session_state.get("pate_overage_pct", 15.0),
-        "manual_face_cm3": st.session_state.get("pate_manual_face_volume_cm3", 0.0),
-        "manual_jacket_cm3": st.session_state.get("pate_manual_jacket_volume_cm3", 0.0),
-        "jacket_stiffener": st.session_state.get("pate_jacket_stiffener", "Grog mix"),
-        "notes": st.session_state.get("pate_mold_notes", ""),
+        "schema": "glass-toolkit.vessel-mold-worksheet",
+        "version": 1,
+        "values": {
+            key: serialize_pate_value(st.session_state.get(key, default))
+            for key, default in PATE_DEFAULTS.items()
+        },
     }
+
+
+def current_pate_json_bytes() -> bytes:
+    return json.dumps(current_pate_payload(), indent=2, sort_keys=True).encode("utf-8")
 
 
 if st.session_state.pop("pate_pending_reset", False):
     reset_pate_state()
-
-pending_load_id = st.session_state.pop("pate_pending_load_id", None)
-if pending_load_id is not None:
-    load_pate_project_into_state(load_pate_project(pending_load_id))
 
 
 st.title(t("page.pate_mold.title", "Vessel Mold Worksheet"))
@@ -519,64 +463,50 @@ with date_col:
         key="pate_mold_date",
     )
 
-with st.expander(t("page.pate_mold.records.title", "Saved Vessel Mold Projects"), expanded=False):
-    projects = list_pate_projects()
-    if not projects:
-        st.info(t("page.pate_mold.records.empty", "No saved vessel mold projects yet."))
-    else:
-        for row in projects:
-            job_date_text = format_date(row["job_date"]) if row["job_date"] else t("worksheet.records.no_date", "no date")
-            pc1, pc2, pc3 = st.columns([4, 1, 1])
-            with pc1:
-                stiffener = row["jacket_stiffener"] or t("page.pate_mold.records.no_stiffener", "no stiffener")
-                st.markdown(f"**{row['title']}**  -  {job_date_text}  -  {stiffener}")
-                st.caption(
-                    t(
-                        "worksheet.records.saved_at",
-                        "Saved {value}",
-                        value=format_datetime(row["created_at"]),
-                    )
-                )
-            with pc2:
-                if st.button(t("worksheet.actions.load", "Load"), key=f"pate_load_{row['id']}"):
-                    st.session_state["pate_pending_load_id"] = row["id"]
-                    st.rerun()
-            with pc3:
-                if st.button(t("worksheet.actions.delete_help", "Delete"), key=f"pate_delete_{row['id']}"):
-                    delete_pate_project(row["id"])
-                    if st.session_state.get("pate_loaded_id") == row["id"]:
-                        st.session_state["pate_pending_reset"] = True
-                    st.rerun()
-
-    st.divider()
-    new_col, reset_col = st.columns(2)
-    with new_col:
+with st.expander(t("page.pate_mold.sections.import", "Import Vessel Model Generator settings"), expanded=True):
+    uploaded = st.file_uploader(
+        t("page.pate_mold.fields.settings_file", "Upload vessel_settings.txt, vessel_settings.json, or a build ZIP"),
+        type=["txt", "json", "zip"],
+        key=f"pate_mold_settings_upload_{st.session_state.get('pate_mold_upload_nonce', 0)}",
+    )
+    st.caption(
+        t(
+            "page.pate_mold.files.public_storage_note",
+            "Projects are stored in your downloaded files, not in a shared server database.",
+        )
+    )
+    action_cols = st.columns(2)
+    with action_cols[0]:
         if st.button(t("worksheet.actions.new", "+ New"), key="pate_new_project", width="stretch"):
             st.session_state["pate_pending_reset"] = True
             st.rerun()
-    with reset_col:
+    with action_cols[1]:
         if st.button(t("worksheet.actions.reset", "Reset"), key="pate_reset_project", width="stretch"):
             st.session_state["pate_pending_reset"] = True
             st.rerun()
 
-with st.expander(t("page.pate_mold.sections.import", "Import vessel settings.txt"), expanded=True):
-    uploaded = st.file_uploader(
-        t("page.pate_mold.fields.settings_file", "Upload vessel_settings.txt"),
-        type=["txt"],
-        key=f"pate_mold_settings_upload_{st.session_state.get('pate_mold_upload_nonce', 0)}",
-    )
-
 if uploaded is not None:
-    settings_text = uploaded.getvalue().decode("utf-8", errors="replace")
-    if st.session_state.get("pate_settings_text") != settings_text:
+    upload_bytes = uploaded.getvalue()
+    upload_signature = hashlib.sha256(upload_bytes).hexdigest()
+    settings_text, uploaded_parsed = extract_vessel_generator_upload(uploaded)
+    if st.session_state.get("pate_last_vessel_upload_signature") != upload_signature:
+        st.session_state["pate_last_vessel_upload_signature"] = upload_signature
         st.session_state["pate_settings_text"] = settings_text
-        uploaded_parsed = parse_vessel_settings(settings_text)
         if uploaded_parsed["bore_volume"] is not None:
             st.session_state["pate_bore_volume_cm3"] = float(uploaded_parsed["bore_volume"])
             st.session_state["pate_bore_source_text"] = settings_text
+        if settings_text:
+            st.session_state["pate_imported_vessel_json"] = {"points": []}
+        else:
+            st.session_state["pate_bore_source_text"] = ""
+            st.session_state["pate_imported_vessel_json"] = uploaded_parsed
         st.rerun()
 
-parsed: dict = parse_vessel_settings(st.session_state.get("pate_settings_text", "")) if st.session_state.get("pate_settings_text") else {"points": []}
+parsed: dict = (
+    parse_vessel_settings(st.session_state.get("pate_settings_text", ""))
+    if st.session_state.get("pate_settings_text")
+    else st.session_state.get("pate_imported_vessel_json", {"points": []})
+)
 settings_source = st.session_state.get("pate_settings_text", "")
 if parsed.get("bore_volume") is not None and st.session_state.get("pate_bore_source_text") != settings_source:
     st.session_state["pate_bore_volume_cm3"] = float(parsed["bore_volume"])
@@ -874,29 +804,26 @@ st.text_area(
 
 st.divider()
 action_col, status_col = st.columns([1, 2])
-loaded_id = st.session_state.get("pate_loaded_id")
-save_label = (
-    t("page.pate_mold.actions.update", "Update Project")
-    if loaded_id
-    else t("page.pate_mold.actions.save", "Save Project")
-)
 with action_col:
-    save_clicked = st.button(save_label, type="primary", width="stretch")
-
-if save_clicked:
-    rec = current_pate_record()
-    if not rec["title"]:
-        st.error(t("errors.worksheet.title_required", "Please enter a title before saving."))
-    elif loaded_id:
-        update_pate_project(loaded_id, rec)
-        st.success(t("page.pate_mold.messages.updated", "Project updated: {title}", title=rec["title"]))
-        st.rerun()
-    else:
-        new_id = save_pate_project(rec)
-        st.session_state["pate_loaded_id"] = new_id
-        st.success(t("page.pate_mold.messages.saved", "Project saved: {title}", title=rec["title"]))
-        st.rerun()
+    setup_filename = re.sub(
+        r"[^A-Za-z0-9_-]+",
+        "_",
+        st.session_state["pate_mold_project_title"].strip() or "vessel_mold",
+    ).strip("_")
+    st.download_button(
+        t("page.pate_mold.actions.download_setup_json", "Download Vessel Mold JSON"),
+        data=current_pate_json_bytes(),
+        file_name=f"{setup_filename}_vessel_mold_settings.json",
+        mime="application/json",
+        type="primary",
+        width="stretch",
+        key="pate_download_project_json",
+    )
 
 with status_col:
-    if loaded_id:
-        st.caption(t("page.pate_mold.messages.loaded", "Editing saved project #{id}", id=loaded_id))
+    st.caption(
+        t(
+            "page.pate_mold.messages.local_file_storage",
+            "Vessel mold projects are saved as local JSON files for public use.",
+        )
+    )

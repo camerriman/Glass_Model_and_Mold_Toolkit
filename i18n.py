@@ -4470,7 +4470,7 @@ NAVIGATION_SECTIONS = (
             ("pages/4_Vessel_Model_Generator.py", "home.nav.vessel", "Vessel Model Generator"),
             ("pages/2_Model_Tiles_Panels.py", "home.nav.tiles_panels", "Model Tiles & Panels"),
             ("pages/3_Mold_Worksheet.py", "home.nav.mold_worksheet", "Cameo Mold Worksheet"),
-            ("pages/19_Pate_de_verre_Mold_Worksheet.py", "home.nav.pate_mold_worksheet", "Vessel Mold Worksheet"),
+            ("pages/19_Vessel_Mold_Worksheet.py", "home.nav.pate_mold_worksheet", "Vessel Mold Worksheet"),
             ("pages/22_Print_Optional_Frame.py", "home.nav.print_optional_frame", "Print Frame Fabrication"),
             ("pages/5_Mesh_Crop.py", "home.nav.mesh_crop", "Mesh Crop"),
         ),

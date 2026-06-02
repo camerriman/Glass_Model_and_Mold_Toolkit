@@ -6,7 +6,7 @@ The project has grown into four connected work areas:
 
 - a searchable glass library with reflected/transmitted sample data, color tools, comparison views, and printable datasheets
 - glass prediction tools for layered sheet reads, frit mixes, depth views, opacity, and optical response
-- model and mold utilities for cameo, vessel, pate de verre, frame, tile, panel, and crop workflows
+- model and mold utilities for cameo, vessel, frame, tile, panel, and crop workflows
 - SVG tiling/cropping tools for preparing artwork and fabrication layouts
 
 The app also includes a lightweight localization layer for Streamlit UI text, sidebar navigation, forms, dashboards, reference pages, and locale-aware date/time display.
@@ -47,7 +47,7 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 - `pages/2_Model_Tiles_Panels.py`: slices larger STL/model work into tiles or panels
 - `pages/5_Mesh_Crop.py`: STL proxy crop workflow
 - `pages/3_Mold_Worksheet.py`: cameo mold worksheet and material calculations
-- `pages/19_Pate_de_verre_Mold_Worksheet.py`: vessel/pate de verre mold worksheet, volume estimates, and material planning
+- `pages/19_Vessel_Mold_Worksheet.py`: vessel mold worksheet, volume estimates, and material planning
 - `pages/22_Print_Optional_Frame.py`: print frame fabrication planning, pre-visualization, weights, and checklist output
 
 ### SVG Tools
@@ -79,9 +79,7 @@ glass_model_and_mold_toolkit/
 ├── private_pages/
 ├── utilities/
 ├── data/
-│   ├── glass_library.sqlite
-│   ├── mold_records.db
-│   └── fabrication_records.db
+│   └── glass_library.sqlite
 ├── images/
 │   ├── icons/
 │   ├── full/
@@ -97,7 +95,7 @@ Install the Python packages listed in `requirements.txt`.
 Notable dependencies:
 
 - `streamlit` for the multipage app shell
-- `pandas` and `sqlite3` for catalog, measurement, worksheet, and fabrication data
+- `pandas` and `sqlite3` for the bundled read-only glass catalog data
 - `numpy`, `scipy`, `trimesh`, `manifold3d`, and `networkx` for geometry/model workflows
 - `plotly` and `matplotlib` for charts and visual analysis
 - `Pillow` and `opencv-python-headless` for image handling and mesh crop support
@@ -136,10 +134,7 @@ The glass library depends on local SQLite data and image assets:
 - `images/full/`
 - `images/_placeholders/`
 
-Mold and fabrication worksheets use:
-
-- `data/mold_records.db`
-- `data/fabrication_records.db`
+Mold and fabrication pages use browser upload/download workflows instead of server-side saved records.
 
 The app can still open if some assets are missing, but related library images, worksheets, or reference features will be incomplete.
 
@@ -226,7 +221,7 @@ Typical use:
 2. Generate an STL or fabrication plan in the app.
 3. Print the model by FDM or resin, depending on scale and detail.
 4. Use the print to create an intermediate mold, negative, support, frame, or master.
-5. Build the refractory mold or pate de verre setup from the intermediate form.
+5. Build the refractory mold or vessel mold setup from the intermediate form.
 6. Cast, pack, fuse, fire, and anneal the final glass piece according to the studio process.
 
 FDM is generally useful for larger structural tooling, support plugs, frames, and draft models. Resin is generally useful for smaller pieces where surface detail and crisp relief matter more than build volume.

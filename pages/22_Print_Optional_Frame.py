@@ -6,11 +6,12 @@ Fabrication setup for framed relief prints, backing glass, and fiber paper.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from io import BytesIO
+import json
 from pathlib import Path
 import re
-import sqlite3
+import zipfile
 from xml.sax.saxutils import escape
 
 import pandas as pd
@@ -117,27 +118,7 @@ DEFAULT_GLASS_DENSITY_G_PER_CM3 = GLASS_MANUFACTURERS[DEFAULT_GLASS_MANUFACTURER
 MM_LAYER_TO_CM = 0.1
 DEFAULT_FRAME_BORDER_MM = 10.0
 SIDE_WALL_FIBER_ALLOWANCE_MM = 16.0
-APP_ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = APP_ROOT / "data" / "fabrication_records.db"
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-RECORD_FIELDS = (
-    "title",
-    "job_date",
-    "max_mold_height_mm",
-    "fiber_paper_thickness_mm",
-    "fiber_paper_layers",
-    "fiber_paper_height_mm",
-    "mold_x_mm",
-    "mold_y_mm",
-    "frame_border_x_mm",
-    "frame_border_y_mm",
-    "relief_background_layer_mm",
-    "backing_layer_mm",
-    "relief_fill_g",
-    "relief_fill_volume_cm3",
-    "glass_manufacturer",
-    "glass_density_g_per_cm3",
-)
+FRAME_SETUP_SCHEMA = "glass-toolkit.print-optional-frame"
 
 
 def parse_number(value: str) -> float:
@@ -813,141 +794,6 @@ def checklist_pdf(inputs: FrameInputs, glass_df: pd.DataFrame, fiber_df: pd.Data
     return buffer.getvalue()
 
 
-def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db() -> None:
-    with get_conn() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS fabrication_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                job_date TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                max_mold_height_mm REAL,
-                fiber_paper_thickness_mm REAL,
-                fiber_paper_layers REAL,
-                fiber_paper_height_mm REAL,
-                mold_x_mm REAL,
-                mold_y_mm REAL,
-                frame_border_x_mm REAL,
-                frame_border_y_mm REAL,
-                relief_background_layer_mm REAL,
-                backing_layer_mm REAL,
-                relief_fill_g REAL,
-                relief_fill_volume_cm3 REAL,
-                glass_manufacturer TEXT,
-                glass_density_g_per_cm3 REAL
-            )
-            """
-        )
-        existing_columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(fabrication_records)").fetchall()
-        }
-        migrations = {
-            "fiber_paper_thickness_mm": "ALTER TABLE fabrication_records ADD COLUMN fiber_paper_thickness_mm REAL",
-            "fiber_paper_layers": "ALTER TABLE fabrication_records ADD COLUMN fiber_paper_layers REAL",
-            "relief_fill_volume_cm3": "ALTER TABLE fabrication_records ADD COLUMN relief_fill_volume_cm3 REAL",
-            "glass_manufacturer": "ALTER TABLE fabrication_records ADD COLUMN glass_manufacturer TEXT",
-            "glass_density_g_per_cm3": "ALTER TABLE fabrication_records ADD COLUMN glass_density_g_per_cm3 REAL",
-        }
-        for column, statement in migrations.items():
-            if column not in existing_columns:
-                conn.execute(statement)
-
-
-def save_record(rec: dict[str, float | str]) -> int:
-    with get_conn() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO fabrication_records
-                (title, job_date, created_at, updated_at,
-                 max_mold_height_mm, fiber_paper_thickness_mm, fiber_paper_layers, fiber_paper_height_mm,
-                 mold_x_mm, mold_y_mm, frame_border_x_mm, frame_border_y_mm,
-                 relief_background_layer_mm, backing_layer_mm, relief_fill_g,
-                 relief_fill_volume_cm3, glass_manufacturer, glass_density_g_per_cm3)
-            VALUES
-                (:title, :job_date, :created_at, :updated_at,
-                 :max_mold_height_mm, :fiber_paper_thickness_mm, :fiber_paper_layers, :fiber_paper_height_mm,
-                 :mold_x_mm, :mold_y_mm, :frame_border_x_mm, :frame_border_y_mm,
-                 :relief_background_layer_mm, :backing_layer_mm, :relief_fill_g,
-                 :relief_fill_volume_cm3, :glass_manufacturer, :glass_density_g_per_cm3)
-            """,
-            rec,
-        )
-        return int(cur.lastrowid)
-
-
-def update_record(record_id: int, rec: dict[str, float | str]) -> None:
-    rec["id"] = record_id
-    with get_conn() as conn:
-        conn.execute(
-            """
-            UPDATE fabrication_records SET
-                title=:title,
-                job_date=:job_date,
-                updated_at=:updated_at,
-                max_mold_height_mm=:max_mold_height_mm,
-                fiber_paper_thickness_mm=:fiber_paper_thickness_mm,
-                fiber_paper_layers=:fiber_paper_layers,
-                fiber_paper_height_mm=:fiber_paper_height_mm,
-                mold_x_mm=:mold_x_mm,
-                mold_y_mm=:mold_y_mm,
-                frame_border_x_mm=:frame_border_x_mm,
-                frame_border_y_mm=:frame_border_y_mm,
-                relief_background_layer_mm=:relief_background_layer_mm,
-                backing_layer_mm=:backing_layer_mm,
-                relief_fill_g=:relief_fill_g,
-                relief_fill_volume_cm3=:relief_fill_volume_cm3,
-                glass_manufacturer=:glass_manufacturer,
-                glass_density_g_per_cm3=:glass_density_g_per_cm3
-            WHERE id=:id
-            """,
-            rec,
-        )
-
-
-def delete_record(record_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM fabrication_records WHERE id=?", (record_id,))
-
-
-def list_records() -> list[sqlite3.Row]:
-    with get_conn() as conn:
-        return conn.execute(
-            "SELECT id, title, job_date, created_at, updated_at FROM fabrication_records ORDER BY updated_at DESC"
-        ).fetchall()
-
-
-def load_record(record_id: int) -> sqlite3.Row | None:
-    with get_conn() as conn:
-        return conn.execute("SELECT * FROM fabrication_records WHERE id=?", (record_id,)).fetchone()
-
-
-def format_record_date(value: str | None) -> str:
-    if not value:
-        return pf("labels.no_date", "no date")
-    try:
-        return date.fromisoformat(value).strftime("%-m/%-d/%y")
-    except ValueError:
-        return value
-
-
-def format_record_timestamp(value: str | None) -> str:
-    if not value:
-        return ""
-    try:
-        return datetime.fromisoformat(value).strftime("%-m/%-d/%y %-I:%M %p")
-    except ValueError:
-        return value
-
-
 st.title(t("page.print_frame.title", "Print Frame Fabrication"))
 st.caption(
     t(
@@ -976,133 +822,129 @@ FIELD_DEFAULTS = {
 }
 for field_key, default_value in FIELD_DEFAULTS.items():
     st.session_state.setdefault(field_key, default_value)
-st.session_state.setdefault("pf_loaded_id", None)
-
-init_db()
 
 
-def record_payload() -> dict[str, float | str]:
-    now = datetime.now().isoformat(timespec="seconds")
-    title = str(st.session_state.get("pf_title", "")).strip() or pf("labels.untitled_fabrication", "Untitled fabrication")
-    job_date_value = st.session_state.get("pf_job_date", date.today())
-    if isinstance(job_date_value, date):
-        job_date_text = job_date_value.isoformat()
-    else:
-        job_date_text = str(job_date_value)
+def setup_payload() -> dict[str, object]:
+    values: dict[str, object] = {}
+    for field_key, default_value in FIELD_DEFAULTS.items():
+        value = st.session_state.get(field_key, default_value)
+        if isinstance(value, date):
+            values[field_key] = value.isoformat()
+        else:
+            values[field_key] = value
     return {
-        "title": title,
-        "job_date": job_date_text,
-        "created_at": now,
-        "updated_at": now,
-        "max_mold_height_mm": float(st.session_state.get("pf_max_mold_height_mm", 0.0) or 0.0),
-        "fiber_paper_thickness_mm": float(st.session_state.get("pf_fiber_paper_thickness_mm", 0.0) or 0.0),
-        "fiber_paper_layers": float(st.session_state.get("pf_fiber_paper_layers", 1) or 1),
-        "fiber_paper_height_mm": float(st.session_state.get("pf_fiber_paper_thickness_mm", 0.0) or 0.0)
-        * float(st.session_state.get("pf_fiber_paper_layers", 1) or 1),
-        "mold_x_mm": float(st.session_state.get("pf_mold_x_mm", 0.0) or 0.0),
-        "mold_y_mm": float(st.session_state.get("pf_mold_y_mm", 0.0) or 0.0),
-        "frame_border_x_mm": float(st.session_state.get("pf_frame_border_x_mm", 0.0) or 0.0),
-        "frame_border_y_mm": float(st.session_state.get("pf_frame_border_y_mm", 0.0) or 0.0),
-        "relief_background_layer_mm": float(st.session_state.get("pf_relief_background_layer_mm", 0.0) or 0.0),
-        "backing_layer_mm": float(st.session_state.get("pf_backing_layer_mm", 0.0) or 0.0),
-        "relief_fill_g": float(st.session_state.get("pf_relief_fill_g", 0.0) or 0.0),
-        "relief_fill_volume_cm3": float(st.session_state.get("pf_relief_fill_volume_cm3", 0.0) or 0.0),
-        "glass_manufacturer": str(st.session_state.get("pf_glass_manufacturer", DEFAULT_GLASS_MANUFACTURER)),
-        "glass_density_g_per_cm3": float(st.session_state.get("pf_glass_density_g_per_cm3", DEFAULT_GLASS_DENSITY_G_PER_CM3) or DEFAULT_GLASS_DENSITY_G_PER_CM3),
+        "schema": FRAME_SETUP_SCHEMA,
+        "version": 1,
+        "values": values,
     }
 
 
-def load_record_into_state(row: sqlite3.Row | None) -> None:
-    if row is None:
-        return
-    for field in RECORD_FIELDS:
-        value = row[field]
-        if value is None:
+def setup_json_bytes() -> bytes:
+    return json.dumps(setup_payload(), indent=2).encode("utf-8")
+
+
+def load_setup_payload(payload: dict[str, object]) -> list[str]:
+    if payload.get("schema") != FRAME_SETUP_SCHEMA:
+        return []
+    values = payload.get("values")
+    if not isinstance(values, dict):
+        return []
+
+    loaded: list[str] = []
+    for field_key, default_value in FIELD_DEFAULTS.items():
+        if field_key not in values:
             continue
-        if field == "job_date":
+        value = values[field_key]
+        fallback_value = default_value if value in (None, "") else value
+        if field_key == "pf_job_date":
             try:
                 value = date.fromisoformat(str(value))
             except ValueError:
-                value = FIELD_DEFAULTS["pf_job_date"]
-        elif field == "fiber_paper_layers":
-            value = int(float(value))
-        elif field not in {"title", "glass_manufacturer"}:
-            value = float(value)
-        st.session_state[f"pf_{field}"] = value
-    if not row["fiber_paper_thickness_mm"]:
-        st.session_state["pf_fiber_paper_thickness_mm"] = float(
-            row["fiber_paper_height_mm"] or FIELD_DEFAULTS["pf_fiber_paper_thickness_mm"]
-        )
-        st.session_state["pf_fiber_paper_layers"] = 1
-    st.session_state["pf_loaded_id"] = int(row["id"])
+                value = default_value
+        elif field_key == "pf_fiber_paper_layers":
+            value = int(float(fallback_value))
+        elif isinstance(default_value, float):
+            value = float(fallback_value)
+        elif isinstance(default_value, int):
+            value = int(float(fallback_value))
+        else:
+            value = str(fallback_value)
+        st.session_state[field_key] = value
+        loaded.append(field_key)
+    return loaded
+
+
+def read_text_file(uploaded_file) -> str:
+    return uploaded_file.getvalue().decode("utf-8", errors="replace")
+
+
+def read_cameo_settings_from_zip(uploaded_file) -> str:
+    with zipfile.ZipFile(BytesIO(uploaded_file.getvalue())) as archive:
+        names = [name for name in archive.namelist() if not name.endswith("/")]
+        settings_names = [
+            name
+            for name in names
+            if Path(name).name.lower().endswith("_settings.txt")
+            or Path(name).name.lower() == "settings.txt"
+        ]
+        if not settings_names:
+            return ""
+        with archive.open(settings_names[0]) as settings_file:
+            return settings_file.read().decode("utf-8", errors="replace")
+
+
+def safe_file_stem(value: str, fallback: str) -> str:
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip()).strip("._")
+    return stem or fallback
 
 
 def reset_record_state() -> None:
     for field_key, default_value in FIELD_DEFAULTS.items():
         st.session_state[field_key] = default_value
-    st.session_state["pf_loaded_id"] = None
 
-with st.expander(pf("sections.import_settings", "Import from settings.txt"), expanded=False):
+with st.expander(pf("sections.import_settings", "Import setup files"), expanded=False):
     import_left, import_right = st.columns([1, 1.4])
     with import_left:
-        uploaded_settings = st.file_uploader(pf("fields.drop_txt_export", "Drop a .txt export"), type=["txt"], key="pf_settings_upload")
+        uploaded_settings = st.file_uploader(
+            pf("fields.drop_txt_export", "Drop a Cameo .zip/.txt export or frame .json setup"),
+            type=["zip", "txt", "json"],
+            key="pf_settings_upload",
+        )
     with import_right:
         pasted_settings = st.text_area(pf("fields.paste_export_text", "...or paste export text"), height=120, key="pf_settings_paste")
     if st.button(pf("actions.parse_prefill", "Parse & pre-fill"), width="stretch"):
         raw_settings = ""
+        loaded_setup = False
         if uploaded_settings is not None:
-            raw_settings = uploaded_settings.read().decode("utf-8", errors="replace")
+            suffix = Path(uploaded_settings.name).suffix.lower()
+            if suffix == ".zip":
+                raw_settings = read_cameo_settings_from_zip(uploaded_settings)
+            elif suffix == ".json":
+                try:
+                    payload = json.loads(read_text_file(uploaded_settings))
+                except json.JSONDecodeError:
+                    payload = {}
+                loaded_setup = bool(load_setup_payload(payload))
+                if loaded_setup:
+                    st.success(pf("messages.loaded_setup_json", "Loaded frame setup JSON."))
+                    st.rerun()
+            else:
+                raw_settings = read_text_file(uploaded_settings)
         elif pasted_settings.strip():
             raw_settings = pasted_settings.strip()
-        if raw_settings:
+        if raw_settings and not loaded_setup:
             imported = parse_settings_txt(raw_settings, selected_density())
             filled = apply_imported_settings(imported)
             if filled:
                 st.success(pf("messages.prefilled", "Pre-filled: {fields}", fields=", ".join(filled)))
             else:
                 st.warning(pf("messages.no_recognized_fields", "No recognized fields found in that export."))
-        else:
+        elif not loaded_setup:
             st.warning(pf("messages.nothing_to_parse", "Nothing to parse."))
 
-with st.expander(pf("sections.fabrication_records", "Fabrication records"), expanded=False):
-    loaded_id = st.session_state.get("pf_loaded_id")
-    save_label = pf("actions.update_current_record", "Update current record") if loaded_id else pf("actions.save_current_setup", "Save current setup")
-    action_cols = st.columns([1.2, 1])
-    with action_cols[0]:
-        if st.button(save_label, type="primary", width="stretch"):
-            rec = record_payload()
-            if loaded_id:
-                update_record(int(loaded_id), rec)
-                st.success(pf("messages.updated_record", "Updated record: {title}", title=rec["title"]))
-            else:
-                st.session_state["pf_loaded_id"] = save_record(rec)
-                st.success(pf("messages.saved_record", "Saved record: {title}", title=rec["title"]))
-    with action_cols[1]:
-        if st.button(pf("actions.new_setup", "+ New setup"), width="stretch"):
-            reset_record_state()
-            st.rerun()
-
-    records = list_records()
-    if not records:
-        st.info(pf("messages.no_saved_records", "No saved fabrication records yet."))
-    else:
-        st.divider()
-        for row in records:
-            record_cols = st.columns([4, 1, 1])
-            with record_cols[0]:
-                active_marker = f" {pf('labels.loaded_marker', '(loaded)')}" if st.session_state.get("pf_loaded_id") == row["id"] else ""
-                st.markdown(f"**{row['title']}**{active_marker} - {format_record_date(row['job_date'])}")
-                st.caption(pf("labels.updated_timestamp", "Updated {timestamp}", timestamp=format_record_timestamp(row["updated_at"])))
-            with record_cols[1]:
-                if st.button(pf("actions.load", "Load"), key=f"pf_load_{row['id']}", width="stretch"):
-                    load_record_into_state(load_record(row["id"]))
-                    st.rerun()
-            with record_cols[2]:
-                if st.button(pf("actions.delete", "Delete"), key=f"pf_delete_{row['id']}", width="stretch"):
-                    delete_record(int(row["id"]))
-                    if st.session_state.get("pf_loaded_id") == row["id"]:
-                        reset_record_state()
-                    st.rerun()
+if st.button(pf("actions.new_setup", "+ New setup"), width="stretch"):
+    reset_record_state()
+    st.rerun()
 
 st.markdown(f"### {pf('sections.fabrication_setup', 'Fabrication Setup')}")
 meta_col, print_col, frame_col, consumables_col = st.columns([1.05, 1.15, 1, 1])
@@ -1307,11 +1149,19 @@ with tab_diagram:
 with tab_export:
     glass_to_weigh_df, fiber_paper_df, setup_df = checklist_frames(calc)
     checklist_pdf_file = checklist_pdf(inputs, glass_to_weigh_df, fiber_paper_df, setup_df)
+    file_stem = safe_file_stem(inputs.title, "print_optional_frame")
     st.subheader(pf("sections.fabrication_checklist", "Fabrication checklist"))
+    st.download_button(
+        pf("actions.download_setup_json", "Download frame setup JSON"),
+        data=setup_json_bytes(),
+        file_name=f"{file_stem}_frame_setup.json",
+        mime="application/json",
+        width="stretch",
+    )
     st.download_button(
         pf("actions.download_checklist_pdf", "Download printable checklist PDF"),
         data=checklist_pdf_file,
-        file_name=f"{inputs.title.replace(' ', '_')}_fabrication_checklist.pdf",
+        file_name=f"{file_stem}_fabrication_checklist.pdf",
         mime="application/pdf",
         width="stretch",
     )
