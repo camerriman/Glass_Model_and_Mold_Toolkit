@@ -425,7 +425,7 @@ def safe_int(x, default=0):
 @st.cache_data
 def load_data() -> pd.DataFrame:
     if not DB_PATH.exists():
-        st.error(f"Database not found: {DB_PATH}")
+        st.error(tr("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
     with sqlite3.connect(DB_PATH) as con:
         return pd.read_sql_query("""
@@ -732,7 +732,7 @@ else:
     )
     with print_slot:
         st.download_button(
-            "Download PDF",
+            tr("detail.actions.download_pdf", "Download PDF"),
             data=pdf_bytes,
             file_name=f"{FAMILY_NAME.lower()}_glass_reference.pdf",
             mime="application/pdf",

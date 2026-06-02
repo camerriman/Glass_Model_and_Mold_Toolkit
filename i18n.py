@@ -2388,6 +2388,132 @@ TRANSLATIONS["en"].update({"language_name.de": "German", "language_name.fr": "Fr
 TRANSLATIONS["es"].update({"language_name.de": "Aleman", "language_name.fr": "Frances", "frit.fields.slot_family": "Familia de {slot}"})
 TRANSLATIONS["it"].update({"language_name.de": "Tedesco", "language_name.fr": "Francese"})
 TRANSLATIONS["de"].update({"language_name.fr": "Franzoesisch"})
+TRANSLATIONS["en"].update(
+    {
+        "page.cameo.title": "Cameo Mold Model Generator",
+        "page.cameo.caption": "Grayscale values are translated into a sculpted digital relief and inverted to form a mold, allowing the cameo image to emerge correctly in the finished glass. This page exports a slicer-ready solid model so hollowing, supports, drain holes, and final orientation can be handled in your slicer.",
+        "page.cameo.controls": "What do these controls do?",
+        "page.cameo.controls.body": "- **Target width (mm):** Sets final model width; height follows the image aspect ratio.\n- **Relief Maximum (mm):** Sets the relief range from **0.00 mm** up to the chosen maximum.\n- **Base backing thickness (mm):** Adds a flat structural base under the relief.\n- **Invert relief:** Swaps the tone mapping so light areas become deeper (and vice versa). Leave checked for cameo.\n- **Resolution:** Max image dimension used for the heightmap; higher = more detail + slower.",
+        "page.cameo.settings": "Settings",
+        "page.cameo.actions.reset": "Reset settings",
+        "page.cameo.fields.upload_image": "Upload image",
+        "page.cameo.fields.target_width": "Target Mold Width (mm)",
+        "page.cameo.fields.relief_max": "Artwork relief maximum (mm)",
+        "page.cameo.fields.base_backing": "Base Backing Thickness (mm)",
+        "page.cameo.fields.invert_relief": "Invert Relief",
+        "page.cameo.fields.resolution": "Resolution",
+        "page.cameo.caption.resolution": "Higher = more detail + slower. 600-900 is a good sweet spot.",
+        "page.cameo.messages.upload_first": "Upload an image to preview the mirrored heightmap. Mesh is generated only when you export.",
+        "page.cameo.sections.input": "Input",
+        "page.cameo.sections.preview": "Heightmap preview (mirrored)",
+        "page.cameo.sections.export": "Export",
+        "page.cameo.caption.slicer_ready": "Exports a slicer-ready solid model. Hollowing, supports, drain holes, and print orientation are best handled in your slicer.",
+        "page.cameo.messages.rebuild": "Settings changed - rebuild the mesh to update the export.",
+        "page.cameo.actions.build": "Build mesh and enable download",
+        "page.cameo.messages.building": "Building mesh...",
+        "page.cameo.labels.structure": "Structure",
+        "page.cameo.labels.solid_slicer_ready": "Slicer-ready solid model",
+        "page.cameo.labels.output_size": "Output size",
+        "page.cameo.labels.watertight": "Watertight",
+        "page.cameo.labels.total_volume": "Total volume",
+        "page.cameo.actions.download_zip": "Download ZIP (STL + settings)",
+    }
+)
+TRANSLATIONS["es"].update(
+    {
+        "page.cameo.caption": "Los valores de escala de grises se convierten en un relieve digital esculpido y se invierten para formar un molde, de modo que la imagen cameo aparezca correctamente en el vidrio terminado. Esta pagina exporta un modelo solido listo para laminador, para que el ahuecado, los soportes, los orificios de drenaje y la orientacion final se manejen en el laminador.",
+        "page.cameo.caption.slicer_ready": "Exporta un modelo solido listo para laminador. El ahuecado, los soportes, los orificios de drenaje y la orientacion de impresion se manejan mejor en el laminador.",
+        "page.cameo.labels.structure": "Estructura",
+        "page.cameo.labels.solid_slicer_ready": "Modelo solido listo para laminador",
+    }
+)
+TRANSLATIONS["it"].update(
+    {
+        "page.cameo.controls": "Che cosa fanno questi controlli?",
+        "page.cameo.controls.body": "- **Larghezza target (mm):** imposta la larghezza finale del modello; l'altezza segue le proporzioni dell'immagine.\n- **Massimo rilievo (mm):** imposta l'intervallo del rilievo da **0,00 mm** al massimo scelto.\n- **Spessore base di supporto (mm):** aggiunge una base piatta strutturale sotto il rilievo.\n- **Inverti rilievo:** scambia la mappatura tonale, cosi le aree chiare diventano piu profonde (e viceversa). Lascialo attivo per cameo.\n- **Risoluzione:** dimensione massima dell'immagine usata per la mappa di altezze; piu alta = piu dettaglio + piu lenta.",
+        "page.cameo.settings": "Impostazioni",
+        "page.cameo.actions.reset": "Ripristina impostazioni",
+        "page.cameo.fields.upload_image": "Carica immagine",
+        "page.cameo.fields.target_width": "Larghezza target stampo (mm)",
+        "page.cameo.fields.relief_max": "Massimo rilievo immagine (mm)",
+        "page.cameo.fields.base_backing": "Spessore base di supporto (mm)",
+        "page.cameo.fields.invert_relief": "Inverti rilievo",
+        "page.cameo.fields.resolution": "Risoluzione",
+        "page.cameo.caption.resolution": "Piu alto = piu dettaglio + piu lento. 600-900 e un buon equilibrio.",
+        "page.cameo.messages.upload_first": "Carica un'immagine per vedere l'anteprima della mappa di altezze specchiata. La mesh viene generata solo quando esporti.",
+        "page.cameo.sections.input": "Input",
+        "page.cameo.sections.preview": "Anteprima mappa di altezze (specchiata)",
+        "page.cameo.sections.export": "Esporta",
+        "page.cameo.caption.slicer_ready": "Esporta un modello solido pronto per lo slicer. Svuotamento, supporti, fori di drenaggio e orientamento di stampa sono gestiti meglio nello slicer.",
+        "page.cameo.messages.rebuild": "Le impostazioni sono cambiate: ricostruisci la mesh per aggiornare l'esportazione.",
+        "page.cameo.actions.build": "Costruisci mesh e abilita download",
+        "page.cameo.messages.building": "Costruzione mesh...",
+        "page.cameo.labels.structure": "Struttura",
+        "page.cameo.labels.solid_slicer_ready": "Modello solido pronto per lo slicer",
+        "page.cameo.labels.output_size": "Dimensione output",
+        "page.cameo.labels.watertight": "A tenuta",
+        "page.cameo.labels.total_volume": "Volume totale",
+        "page.cameo.actions.download_zip": "Scarica ZIP (STL + impostazioni)",
+    }
+)
+TRANSLATIONS["de"].update(
+    {
+        "page.cameo.controls": "Was bewirken diese Einstellungen?",
+        "page.cameo.controls.body": "- **Zielbreite (mm):** legt die endgueltige Modellbreite fest; die Hoehe folgt dem Bildseitenverhaeltnis.\n- **Reliefmaximum (mm):** legt den Reliefbereich von **0,00 mm** bis zum gewaehlten Maximum fest.\n- **Rueckenstaerke der Basis (mm):** fuegt unter dem Relief eine flache, tragende Basis hinzu.\n- **Relief invertieren:** tauscht die Tonwertzuordnung, sodass helle Bereiche tiefer werden (und umgekehrt). Fuer Cameo aktiviert lassen.\n- **Aufloesung:** maximale Bildabmessung fuer die Hoehenkarte; hoeher = mehr Detail + langsamer.",
+        "page.cameo.settings": "Einstellungen",
+        "page.cameo.actions.reset": "Einstellungen zuruecksetzen",
+        "page.cameo.fields.upload_image": "Bild hochladen",
+        "page.cameo.fields.target_width": "Zielbreite der Form (mm)",
+        "page.cameo.fields.relief_max": "Maximales Bildrelief (mm)",
+        "page.cameo.fields.base_backing": "Rueckenstaerke der Basis (mm)",
+        "page.cameo.fields.invert_relief": "Relief invertieren",
+        "page.cameo.fields.resolution": "Aufloesung",
+        "page.cameo.caption.resolution": "Hoeher = mehr Detail + langsamer. 600-900 ist ein guter Mittelwert.",
+        "page.cameo.messages.upload_first": "Lade ein Bild hoch, um die gespiegelte Hoehenkarte anzuzeigen. Die Mesh wird erst beim Export erzeugt.",
+        "page.cameo.sections.input": "Eingabe",
+        "page.cameo.sections.preview": "Hoehenkarten-Vorschau (gespiegelt)",
+        "page.cameo.sections.export": "Export",
+        "page.cameo.caption.slicer_ready": "Exportiert ein slicer-bereites Volumenmodell. Aushoehlen, Stuetzelemente, Drainageloecher und Druckausrichtung werden am besten im Slicer behandelt.",
+        "page.cameo.messages.rebuild": "Einstellungen geaendert - erstelle die Mesh neu, um den Export zu aktualisieren.",
+        "page.cameo.actions.build": "Mesh erstellen und Download aktivieren",
+        "page.cameo.messages.building": "Mesh wird erstellt...",
+        "page.cameo.labels.structure": "Struktur",
+        "page.cameo.labels.solid_slicer_ready": "Slicer-bereites Volumenmodell",
+        "page.cameo.labels.output_size": "Ausgabegroesse",
+        "page.cameo.labels.watertight": "Wasserdicht",
+        "page.cameo.labels.total_volume": "Gesamtvolumen",
+        "page.cameo.actions.download_zip": "ZIP herunterladen (STL + Einstellungen)",
+    }
+)
+TRANSLATIONS["fr"].update(
+    {
+        "page.cameo.controls": "Que font ces controles ?",
+        "page.cameo.controls.body": "- **Largeur cible (mm) :** definit la largeur finale du modele ; la hauteur suit les proportions de l'image.\n- **Relief maximum (mm) :** definit la plage du relief de **0,00 mm** jusqu'au maximum choisi.\n- **Epaisseur du support de base (mm) :** ajoute une base plate structurelle sous le relief.\n- **Inverser le relief :** inverse la correspondance tonale afin que les zones claires deviennent plus profondes (et inversement). Laissez active pour cameo.\n- **Resolution :** dimension maximale de l'image utilisee pour la carte de hauteurs ; plus elevee = plus de detail + plus lent.",
+        "page.cameo.settings": "Parametres",
+        "page.cameo.actions.reset": "Reinitialiser les parametres",
+        "page.cameo.fields.upload_image": "Charger une image",
+        "page.cameo.fields.target_width": "Largeur cible du moule (mm)",
+        "page.cameo.fields.relief_max": "Relief maximum de l'image (mm)",
+        "page.cameo.fields.base_backing": "Epaisseur du support de base (mm)",
+        "page.cameo.fields.invert_relief": "Inverser le relief",
+        "page.cameo.fields.resolution": "Resolution",
+        "page.cameo.caption.resolution": "Plus elevee = plus de detail + plus lent. 600-900 est un bon compromis.",
+        "page.cameo.messages.upload_first": "Chargez une image pour previsualiser la carte de hauteurs en miroir. La mesh est generee seulement lors de l'export.",
+        "page.cameo.sections.input": "Entree",
+        "page.cameo.sections.preview": "Apercu de la carte de hauteurs (miroir)",
+        "page.cameo.sections.export": "Exporter",
+        "page.cameo.caption.slicer_ready": "Exporte un modele solide pret pour le slicer. L'evidement, les supports, les trous de drainage et l'orientation d'impression sont mieux geres dans le slicer.",
+        "page.cameo.messages.rebuild": "Les parametres ont change - reconstruisez la mesh pour mettre a jour l'export.",
+        "page.cameo.actions.build": "Construire la mesh et activer le telechargement",
+        "page.cameo.messages.building": "Construction de la mesh...",
+        "page.cameo.labels.structure": "Structure",
+        "page.cameo.labels.solid_slicer_ready": "Modele solide pret pour le slicer",
+        "page.cameo.labels.output_size": "Taille de sortie",
+        "page.cameo.labels.watertight": "Etanche",
+        "page.cameo.labels.total_volume": "Volume total",
+        "page.cameo.actions.download_zip": "Telecharger ZIP (STL + parametres)",
+    }
+)
 TRANSLATIONS["en"].update({"home.nav.glass_depth_side_view": "Glass Depth Side View"})
 TRANSLATIONS["es"].update({"home.nav.glass_depth_side_view": "Vista lateral de profundidad del vidrio"})
 TRANSLATIONS["it"].update({"home.nav.glass_depth_side_view": "Vista laterale profondita vetro"})
