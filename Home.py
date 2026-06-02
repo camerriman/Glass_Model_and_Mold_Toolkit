@@ -1,4 +1,3 @@
-from pathlib import Path
 import streamlit as st
 
 from i18n import render_app_sidebar, t
@@ -65,17 +64,3 @@ with col3:
         st.switch_page("pages/10_Transparent_Reference.py")
     if st.button(t("home.nav.tint_reference", "Tint Reference"), width='stretch'):
         st.switch_page("pages/11_Tint_Reference.py")
-
-st.divider()
-
-col1, col2, col3 = st.columns(3)
-
-with col2:
-    st.markdown(f"#### {t('home.sections.svg_tools', 'SVG Tools')}")
-    if st.button(t("home.nav.svg_tiles", "SVG Tiles"), width='stretch'):
-        st.switch_page("pages/20_SVG_Tiles.py")
-    if st.button(t("home.nav.svg_crop", "SVG Crop"), width='stretch'):
-        st.switch_page("pages/21_SVG_Crop.py")
-
-   
-st.divider()

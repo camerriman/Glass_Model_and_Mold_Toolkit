@@ -1,13 +1,12 @@
 # Glass Library & Model and Mold Toolkit
 
-A Streamlit multipage studio toolkit for kiln-glass design, Bullseye glass reference work, mold planning, 3D model generation, SVG preparation, and printable fabrication documentation.
+A Streamlit multipage studio toolkit for kiln-glass design, Bullseye glass reference work, mold planning, 3D model generation, and printable fabrication documentation.
 
-The project has grown into four connected work areas:
+The project has grown into three connected work areas:
 
 - a searchable glass library with reflected/transmitted sample data, color tools, comparison views, and printable datasheets
 - glass prediction tools for layered sheet reads, frit mixes, depth views, opacity, and optical response
 - model and mold utilities for cameo, vessel, frame, tile, panel, and crop workflows
-- SVG tiling/cropping tools for preparing artwork and fabrication layouts
 
 The app also includes a lightweight localization layer for Streamlit UI text, sidebar navigation, forms, dashboards, reference pages, and locale-aware date/time display.
 
@@ -50,11 +49,6 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 - `pages/19_Vessel_Mold_Worksheet.py`: vessel mold worksheet, volume estimates, and material planning
 - `pages/22_Print_Optional_Frame.py`: print frame fabrication planning, pre-visualization, weights, and checklist output
 
-### SVG Tools
-
-- `pages/20_SVG_Tiles.py`: SVG tiling workflow with optional `vpype` processing
-- `pages/21_SVG_Crop.py`: SVG crop workflow
-
 ## Project Structure
 
 ```text
@@ -89,7 +83,6 @@ Notable dependencies:
 - `plotly` and `matplotlib` for charts and visual analysis
 - `Pillow` and `opencv-python-headless` for image handling and mesh crop support
 - `reportlab` for printable fabrication checklist PDFs
-- `lxml` and `vpype` for SVG processing
 
 ## Local Setup
 
@@ -187,7 +180,6 @@ Deployment notes:
 - `requirements.txt` is prepared for Streamlit deployment.
 - `data/glass_library.sqlite` must be committed if hosted glass library data should be available.
 - The repository includes many image assets, so repository size can affect deployment and update time.
-- SVG pages depend on `vpype`.
 - Mesh/model workflows use Python geometry libraries and default to the `manifold` path where applicable.
 - External tools such as Blender or OpenSCAD are not bundled and should be treated as optional local-only engines.
 - UI localization is session-based and does not modify stored database content.
