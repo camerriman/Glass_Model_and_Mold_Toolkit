@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import html
-import math
 import sqlite3
 import sys
 from pathlib import Path
@@ -19,6 +18,7 @@ from utilities.glass_detail_pdf import calculate_black_point_mm, rgb_at_depth
 
 DB_PATH = APP_ROOT / "data" / "glass_library.sqlite"
 BLACK_POINT_THRESHOLD = 1.0
+PROFILE_DISPLAY_DEPTH_MM = 12.0
 
 
 st.set_page_config(page_title=t("depth_view.title", "Glass Depth Side View"), layout="wide")
@@ -139,13 +139,17 @@ def depth_ticks(max_depth: float) -> list[float]:
     return ticks
 
 
+def black_point_label(value: float | None) -> str:
+    if value is None:
+        return t("depth_view.black_point_missing_short", "not reached")
+    return f"{value:.1f} mm"
+
+
 def bar_markup(
     row: pd.Series,
     max_depth: float,
     black_point: float | None,
-    show_black_points: bool,
     show_depth_scale: bool,
-    truncate_to_black_point: bool,
 ) -> str:
     raw_glass_id = str(row["cat_id"])
     glass_id = html.escape(display_glass_id(raw_glass_id))
@@ -154,10 +158,8 @@ def bar_markup(
     meas = measurement_dict(row)
     black_point = optional_float(black_point)
     bar_depth = max_depth
-    if truncate_to_black_point and black_point is not None:
-        bar_depth = max(black_point, thickness_mm, 0.5)
     gradient = gradient_css(meas, thickness_mm, bar_depth)
-    black_label = t("depth_view.black_point_missing", "not reached") if black_point is None else f"{black_point:.1f} mm"
+    black_label = black_point_label(black_point)
     title = html.escape(f"{display_glass_id(raw_glass_id)} {color_name} | black point {black_label} | scale 0-{bar_depth:.1f} mm | ref {thickness_mm:.1f} mm")
 
     marker = ""
@@ -179,13 +181,7 @@ def bar_markup(
         </div>
         """
 
-    bp_text = ""
-    if show_black_points:
-        bp_text = f'<div class="bp-label">{html.escape(black_label)}</div>'
-
     scale_class = "is-scaled" if show_depth_scale else "is-compact"
-    if truncate_to_black_point and black_point is not None:
-        scale_class += " is-truncated"
     detail_href = (
         f"/Glass_Detail?cat_id={quote(raw_glass_id)}"
         f"&return_page={quote('pages/18_Glass_Depth_Side_View.py')}"
@@ -199,10 +195,10 @@ def bar_markup(
             {ref_marker}
             {marker}
             <div class="glass-id">{glass_id}</div>
+            <div class="black-point-value">{html.escape(black_label)}</div>
           </div>
           {axis}
         </div>
-        {bp_text}
       </div>
     </a>
     """
@@ -246,16 +242,7 @@ with st.sidebar:
     )
     query = st.text_input(t("depth_view.fields.search", "Search"), "")
     columns = st.slider(t("depth_view.fields.columns", "Columns"), 6, 12, 8)
-    truncate_to_black_point = st.checkbox(
-        t("depth_view.fields.truncate_to_black", "Scale each bar to black point"),
-        value=True,
-        help=t(
-            "depth_view.help.truncate_to_black",
-            "Uses each glass black point as the bottom of its bar so the usable color transition is easier to see.",
-        ),
-    )
     show_depth_scale = st.checkbox(t("depth_view.fields.show_depth_scale", "Show depth scales"), value=True)
-    show_black_points = st.checkbox(t("depth_view.fields.show_black_points", "Show black points"), value=True)
 
 
 mode_rows = measurements[measurements["mode"].astype(str).str.upper() == mode].copy()
@@ -283,13 +270,8 @@ else:
     raise ValueError(f"Unknown sort mode: {sort_mode}")
 
 visible = merged
-black_points = [safe_float(value) for value in visible["_black_point"].dropna().tolist()]
-max_depth = max(8.0, math.ceil(max(black_points)) + 1 if black_points else 8.0)
-summary_depth = (
-    t("depth_view.scale.black_point", "each black point")
-    if truncate_to_black_point
-    else f"0-{max_depth:g} mm"
-)
+max_depth = PROFILE_DISPLAY_DEPTH_MM
+summary_depth = f"0-{max_depth:g} mm"
 
 st.caption(
     t(
@@ -311,9 +293,7 @@ cards = "\n".join(
         row,
         max_depth,
         row.get("_black_point"),
-        show_black_points,
         show_depth_scale,
-        truncate_to_black_point,
     )
     for _, row in visible.iterrows()
 )
@@ -323,7 +303,7 @@ st.html(
       .depth-grid {{
         --depth-columns: {columns};
         display: grid;
-        grid-template-columns: repeat(var(--depth-columns), minmax(82px, 1fr));
+        grid-template-columns: repeat(var(--depth-columns), minmax(104px, 1fr));
         gap: 42px 26px;
         align-items: end;
         padding: 18px 4px 44px;
@@ -361,10 +341,10 @@ st.html(
       }}
       .depth-bar {{
         position: relative;
-        width: 58px;
+        width: 62px;
         height: 320px;
         box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
-        overflow: hidden;
+        overflow: visible;
       }}
       .glass-id {{
         position: absolute;
@@ -380,6 +360,17 @@ st.html(
         font: 800 18px/1 Arial, sans-serif;
         letter-spacing: 0;
       }}
+      .black-point-value {{
+        position: absolute;
+        left: calc(100% + 8px);
+        bottom: 8px;
+        font: 700 11px/1 Arial, sans-serif;
+        color: #4b5563;
+        white-space: nowrap;
+        background: rgba(255,255,255,0.86);
+        padding: 1px 2px;
+        z-index: 4;
+      }}
       .black-marker {{
         position: absolute;
         left: -8px;
@@ -388,11 +379,6 @@ st.html(
         background: #e11d2e;
         box-shadow: 0 0 0 1px rgba(255,255,255,0.7);
         z-index: 3;
-      }}
-      .depth-card.is-truncated .black-marker {{
-        top: auto !important;
-        bottom: 30px;
-        height: 4px;
       }}
       .ref-marker {{
         position: absolute;
@@ -424,17 +410,13 @@ st.html(
         background: rgba(255,255,255,0.86);
         padding-right: 2px;
       }}
-      .bp-label {{
-        margin-top: 5px;
-        font: 600 11px/1.2 Arial, sans-serif;
-        color: #4b5563;
-      }}
       @media (max-width: 900px) {{
         .depth-grid {{
           --depth-columns: 5;
           gap: 28px 16px;
         }}
         .depth-bar {{
+          width: 56px;
           height: 250px;
         }}
         .depth-axis {{
@@ -443,7 +425,10 @@ st.html(
           font-size: 10px;
         }}
         .glass-id {{
-          font-size: 14px;
+          font-size: 15px;
+        }}
+        .black-point-value {{
+          font-size: 9px;
         }}
       }}
       @media print {{
@@ -453,7 +438,7 @@ st.html(
           break-inside: avoid;
         }}
         .depth-bar {{
-          width: 42px;
+          width: 48px;
           height: 255px;
         }}
         .depth-axis {{
@@ -464,6 +449,9 @@ st.html(
         .glass-id {{
           height: 24px;
           font-size: 13px;
+        }}
+        .black-point-value {{
+          font-size: 8px;
         }}
       }}
     </style>

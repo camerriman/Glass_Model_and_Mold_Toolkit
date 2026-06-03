@@ -26,6 +26,7 @@ st.title(tr("page.vessel.title", "Vessel Model Generator"))
 st.caption(tr("page.vessel.caption", "Define a vessel profile, upload a heightmap image, and generate a wrapped printable STL."))
 
 APP_ROOT = Path(__file__).resolve().parents[1]
+VESSEL_GENERATION_ALGORITHM_VERSION = "vessel-side-image-seam-alignment-v2"
 
 # ─────────────────────────────────────────
 # STL writer
@@ -106,6 +107,7 @@ def format_vessel_settings(settings: dict) -> str:
             f"Tone mapping: {settings['tone_mapping']}",
             f"Image orientation: {settings['image_orientation']}",
             f"Fit mode: {settings['fit_mode']}",
+            f"One image per side: {'Yes' if settings.get('use_side_images') else 'No'}",
             f"Tile same image around vessel: {'Yes' if settings['tile_enabled'] else 'No'}",
             f"Tiles around vessel: {settings['tile_count']}",
             f"Mirror alternate tiles: {'Yes' if settings['mirror_tiles'] else 'No'}",
@@ -162,15 +164,23 @@ def build_vessel_bundle(
     settings_json: bytes,
     source_name: str,
     source_bytes: bytes,
+    source_images: list[dict] | None = None,
 ) -> bytes:
     bundle = io.BytesIO()
     stl_member_name = Path(stl_name).name if stl_name else "vessel_model.stl"
     source_member_name = Path(source_name).name if source_name else "source_heightmap.bin"
+    source_images = source_images or []
     with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(stl_member_name, stl_bytes)
         zf.writestr("vessel_settings.txt", settings_text)
         zf.writestr("vessel_settings.json", settings_json)
-        if source_bytes:
+        if source_images:
+            for idx, image in enumerate(source_images, start=1):
+                image_name = Path(str(image.get("name") or f"side_{idx}.bin")).name
+                image_bytes = image.get("bytes") or b""
+                if image_bytes:
+                    zf.writestr(f"source_images/side_{idx}_{image_name}", image_bytes)
+        elif source_bytes:
             zf.writestr(source_member_name, source_bytes)
     return bundle.getvalue()
 
@@ -468,6 +478,55 @@ def load_heightmap(
     return np.clip(img, 0.0, 1.0)
 
 
+def load_heightmap_tile(
+    file_bytes: bytes,
+    n_z: int,
+    n_cols: int,
+    orientation: str = "Upright",
+    fit_mode: str = "Stretch to tile",
+) -> np.ndarray:
+    img_file = io.BytesIO(file_bytes)
+    img = Image.open(img_file).convert("L")
+    img = np.asarray(img, dtype=np.float32) / 255.0
+    img = resize_heightmap(img, n_z, n_cols, fit_mode)
+    if orientation == "Upright":
+        img = img[::-1, :]
+    return np.clip(img, 0.0, 1.0)
+
+
+def load_multi_side_heightmap(
+    source_images: list[dict],
+    n_theta: int,
+    n_z: int,
+    orientation: str = "Upright",
+    fit_mode: str = "Stretch to tile",
+) -> np.ndarray:
+    side_count = len(source_images)
+    if side_count <= 0:
+        raise ValueError("At least one side image is required.")
+
+    tiles = []
+    start_col = 0
+    for idx, image in enumerate(source_images):
+        end_col = int(round((idx + 1) * n_theta / side_count))
+        tile_cols = max(1, end_col - start_col)
+        tiles.append(load_heightmap_tile(image["bytes"], n_z, tile_cols, orientation, fit_mode))
+        start_col = end_col
+
+    hmap = np.concatenate(tiles, axis=1)
+    if hmap.shape[1] < n_theta:
+        hmap = np.pad(hmap, ((0, 0), (0, n_theta - hmap.shape[1])), mode="edge")
+    elif hmap.shape[1] > n_theta:
+        hmap = hmap[:, :n_theta]
+
+    # Polygon side centers sit at theta = 0, sector, 2*sector... while creases
+    # sit halfway between them. Shift each side tile by half a side so image
+    # centers land on side centers instead of on polygon creases.
+    center_shift = int(round(n_theta / (2.0 * side_count)))
+    hmap = np.roll(hmap, -center_shift, axis=1)
+    return np.clip(hmap, 0.0, 1.0)
+
+
 @st.cache_data(show_spinner=False)
 def load_heightmap_cached(
     file_bytes: bytes,
@@ -479,6 +538,21 @@ def load_heightmap_cached(
     mirror_tiles: bool = False,
 ) -> np.ndarray:
     return load_heightmap(file_bytes, n_theta, n_z, tile_count, orientation, fit_mode, mirror_tiles)
+
+
+@st.cache_data(show_spinner=False)
+def load_multi_side_heightmap_cached(
+    source_images_signature: tuple[tuple[str, bytes], ...],
+    n_theta: int,
+    n_z: int,
+    orientation: str,
+    fit_mode: str,
+) -> np.ndarray:
+    source_images = [
+        {"name": name, "bytes": image_bytes}
+        for name, image_bytes in source_images_signature
+    ]
+    return load_multi_side_heightmap(source_images, n_theta, n_z, orientation, fit_mode)
 
 
 def load_heightmap_for_output(
@@ -494,6 +568,25 @@ def load_heightmap_for_output(
 ) -> np.ndarray:
     """Load relief for the profiled vessel area and prepend blank rows for a base border."""
     hmap = load_heightmap_cached(file_bytes, n_theta, profile_n_z, tile_count, orientation, fit_mode, mirror_tiles)
+    if invert_relief:
+        hmap = 1.0 - hmap
+    if base_n_z > 0:
+        blank = np.zeros((int(base_n_z), int(n_theta)), dtype=np.float32)
+        hmap = np.vstack([blank, hmap])
+    return np.clip(hmap, 0.0, 1.0)
+
+
+def load_multi_side_heightmap_for_output(
+    source_images: list[dict],
+    n_theta: int,
+    profile_n_z: int,
+    base_n_z: int,
+    orientation: str,
+    fit_mode: str,
+    invert_relief: bool,
+) -> np.ndarray:
+    signature = tuple((str(image.get("name") or ""), image.get("bytes") or b"") for image in source_images)
+    hmap = load_multi_side_heightmap_cached(signature, n_theta, profile_n_z, orientation, fit_mode)
     if invert_relief:
         hmap = 1.0 - hmap
     if base_n_z > 0:
@@ -922,6 +1015,8 @@ st.session_state.setdefault("vessel_reset_pending", False)
 st.session_state.setdefault("vessel_generated_signature", None)
 st.session_state.setdefault("vessel_loaded_heightmap_bytes", None)
 st.session_state.setdefault("vessel_loaded_heightmap_name", "")
+st.session_state.setdefault("vessel_loaded_side_images", [])
+st.session_state.setdefault("vessel_last_cross_section", st.session_state.get("vessel_cross_section", "Circle"))
 
 VESSEL_DEFAULTS = {
     "vessel_title": "",
@@ -949,6 +1044,7 @@ VESSEL_DEFAULTS = {
     "vessel_image_orientation": "Upright",
     "vessel_fit_mode": "Stretch to tile",
     "vessel_tile_enabled": False,
+    "vessel_use_side_images": False,
     "vessel_tile_count": 4,
     "vessel_mirror_tiles": False,
     "vessel_add_lip": False,
@@ -959,6 +1055,7 @@ VESSEL_DEFAULTS = {
     "vessel_ov_theta": 180,
     "vessel_ov_z": 0.5,
     "vessel_source_image_name": "",
+    "vessel_source_image_names": [],
     "vessel_notes": "",
 }
 
@@ -984,6 +1081,8 @@ def reset_vessel_defaults() -> None:
     st.session_state["vessel_generated_signature"] = None
     st.session_state["vessel_loaded_heightmap_bytes"] = None
     st.session_state["vessel_loaded_heightmap_name"] = ""
+    st.session_state["vessel_loaded_side_images"] = []
+    st.session_state["vessel_last_cross_section"] = st.session_state.get("vessel_cross_section", "Circle")
 
 
 def clear_vessel_outputs() -> None:
@@ -1007,12 +1106,14 @@ def build_vessel_setup_payload(
     source_image_name: str,
     midpoints: list[tuple[float, float]],
     bore_volume_mm3: float,
+    source_image_names: list[str] | None = None,
 ) -> dict:
     values = {
         key: serialize_vessel_value(st.session_state.get(key, default))
         for key, default in VESSEL_DEFAULTS.items()
     }
     values["vessel_source_image_name"] = source_image_name or values.get("vessel_source_image_name", "")
+    values["vessel_source_image_names"] = source_image_names or values.get("vessel_source_image_names", [])
     values["vessel_bore_volume_mm3"] = float(bore_volume_mm3)
     values["vessel_bore_volume_cm3"] = float(bore_volume_mm3) / 1000.0
     return {
@@ -1030,12 +1131,18 @@ def build_vessel_setup_json(
     source_image_name: str,
     midpoints: list[tuple[float, float]],
     bore_volume_mm3: float,
+    source_image_names: list[str] | None = None,
 ) -> bytes:
-    payload = build_vessel_setup_payload(source_image_name, midpoints, bore_volume_mm3)
+    payload = build_vessel_setup_payload(source_image_name, midpoints, bore_volume_mm3, source_image_names)
     return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
 
 
-def load_vessel_setup_into_state(payload: dict, source_bytes: bytes | None = None, source_name: str = "") -> None:
+def load_vessel_setup_into_state(
+    payload: dict,
+    source_bytes: bytes | None = None,
+    source_name: str = "",
+    source_images: list[dict] | None = None,
+) -> None:
     if not payload:
         return
     values = payload.get("values", payload)
@@ -1065,6 +1172,9 @@ def load_vessel_setup_into_state(payload: dict, source_bytes: bytes | None = Non
     st.session_state["vessel_invert_relief"] = st.session_state["vessel_tone_mapping"] == "Negative"
     st.session_state["vessel_max_thickness"] = float(st.session_state["vessel_wall_mm"]) + float(st.session_state["vessel_displacement"])
     st.session_state["vessel_tile_count"] = int(st.session_state.get("vessel_tile_count") or VESSEL_DEFAULTS["vessel_tile_count"])
+    if not isinstance(st.session_state.get("vessel_source_image_names"), list):
+        st.session_state["vessel_source_image_names"] = []
+    st.session_state["vessel_last_cross_section"] = st.session_state.get("vessel_cross_section", "Circle")
 
     for idx in range(4):
         st.session_state.pop(f"vessel_zf_{idx}", None)
@@ -1078,18 +1188,27 @@ def load_vessel_setup_into_state(payload: dict, source_bytes: bytes | None = Non
         st.session_state[f"vessel_zf_{idx}"] = max(1.0, min(height_value - 1, z_frac * height_value))
         st.session_state[f"vessel_rm_{idx}"] = radius
 
-    if source_bytes:
+    source_images = source_images or []
+    if source_images:
+        st.session_state["vessel_loaded_side_images"] = source_images
+        st.session_state["vessel_source_image_names"] = [str(item.get("name") or "") for item in source_images]
+        st.session_state["vessel_loaded_heightmap_bytes"] = None
+        st.session_state["vessel_loaded_heightmap_name"] = ""
+        st.session_state["vessel_upload_nonce"] = st.session_state.get("vessel_upload_nonce", 0) + 1
+    elif source_bytes:
         st.session_state["vessel_loaded_heightmap_bytes"] = source_bytes
         st.session_state["vessel_loaded_heightmap_name"] = source_name or st.session_state.get("vessel_source_image_name", "")
         st.session_state["vessel_source_image_name"] = st.session_state["vessel_loaded_heightmap_name"]
+        st.session_state["vessel_loaded_side_images"] = []
         st.session_state["vessel_upload_nonce"] = st.session_state.get("vessel_upload_nonce", 0) + 1
     else:
         st.session_state["vessel_loaded_heightmap_bytes"] = None
         st.session_state["vessel_loaded_heightmap_name"] = ""
+        st.session_state["vessel_loaded_side_images"] = []
     clear_vessel_outputs()
 
 
-def extract_vessel_setup_upload(uploaded_file) -> tuple[dict, bytes | None, str]:
+def extract_vessel_setup_upload(uploaded_file) -> tuple[dict, bytes | None, str, list[dict]]:
     file_bytes = uploaded_file.getvalue()
     file_name = uploaded_file.name or ""
     if file_name.lower().endswith(".zip"):
@@ -1100,14 +1219,22 @@ def extract_vessel_setup_upload(uploaded_file) -> tuple[dict, bytes | None, str]
                 raise ValueError("Build bundle does not contain vessel_settings.json.") from exc
             source_bytes = None
             source_name = ""
+            source_images = []
             for name in zf.namelist():
                 lower = name.lower()
-                if lower.endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff")):
+                if lower.startswith("source_images/") and lower.endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff")):
+                    source_images.append({"name": Path(name).name, "bytes": zf.read(name)})
+            if source_images:
+                source_images.sort(key=lambda item: item["name"])
+                return payload, None, "", source_images
+            for name in zf.namelist():
+                lower = name.lower()
+                if not lower.startswith("source_images/") and lower.endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff")):
                     source_name = Path(name).name
                     source_bytes = zf.read(name)
                     break
-            return payload, source_bytes, source_name
-    return json.loads(file_bytes.decode("utf-8")), None, ""
+            return payload, source_bytes, source_name, []
+    return json.loads(file_bytes.decode("utf-8")), None, "", []
 
 
 def vessel_generation_signature(
@@ -1134,16 +1261,24 @@ def vessel_generation_signature(
     tile_enabled,
     tile_count,
     mirror_tiles,
+    use_side_images,
     add_lip,
     lip_radius,
     n_lip,
     n_theta,
     n_z,
     mm_per_ring,
-    uploaded_bytes,
+    uploaded_sources,
 ) -> str:
-    uploaded_hash = hashlib.sha256(uploaded_bytes).hexdigest() if uploaded_bytes else ""
+    uploaded_hashes = [
+        {
+            "name": str(source.get("name") or ""),
+            "hash": hashlib.sha256(source.get("bytes") or b"").hexdigest(),
+        }
+        for source in (uploaded_sources or [])
+    ]
     payload = {
+        "algorithm_version": VESSEL_GENERATION_ALGORITHM_VERSION,
         "base_r": round(float(base_r), 4),
         "top_r": round(float(top_r), 4),
         "height": round(float(height), 4),
@@ -1166,13 +1301,14 @@ def vessel_generation_signature(
         "tile_enabled": bool(tile_enabled),
         "tile_count": int(tile_count),
         "mirror_tiles": bool(mirror_tiles),
+        "use_side_images": bool(use_side_images),
         "add_lip": bool(add_lip),
         "lip_radius": round(float(lip_radius), 4),
         "n_lip": int(n_lip),
         "n_theta": int(n_theta),
         "n_z": int(n_z),
         "mm_per_ring": round(float(mm_per_ring), 6),
-        "uploaded_hash": uploaded_hash,
+        "uploaded_hashes": uploaded_hashes,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -1195,8 +1331,8 @@ with tool_left:
             disabled=setup_upload is None,
         ):
             try:
-                setup_payload, setup_source_bytes, setup_source_name = extract_vessel_setup_upload(setup_upload)
-                load_vessel_setup_into_state(setup_payload, setup_source_bytes, setup_source_name)
+                setup_payload, setup_source_bytes, setup_source_name, setup_source_images = extract_vessel_setup_upload(setup_upload)
+                load_vessel_setup_into_state(setup_payload, setup_source_bytes, setup_source_name, setup_source_images)
                 st.success(tr("page.vessel.messages.setup_file_loaded", "Setup file loaded."))
                 st.rerun()
             except Exception as exc:
@@ -1275,6 +1411,10 @@ with left:
         format_func=cross_section_label,
         help=tr("page.vessel.help.cross_section", "Choose a round/oval section, or select a regular polygon by number of sides."),
     )
+    previous_cross_section = st.session_state.get("vessel_last_cross_section", cross_section)
+    if cross_section == "Oval" and previous_cross_section != "Oval":
+        st.session_state["vessel_oval_x_scale"] = 1.0
+        st.session_state["vessel_oval_y_scale"] = 1.0
     if cross_section == "Oval":
         oval_cols = st.columns(2)
         with oval_cols[0]:
@@ -1300,6 +1440,7 @@ with left:
         oval_y_scale = 1.0
         st.session_state["vessel_oval_x_scale"] = 1.0
         st.session_state["vessel_oval_y_scale"] = 1.0
+    st.session_state["vessel_last_cross_section"] = cross_section
 
     base_border_mode = st.radio(
         tr("page.vessel.fields.base_border", "Base border"),
@@ -1515,6 +1656,19 @@ with left:
         tile_count = 1
         mirror_tiles = False
         st.session_state["vessel_mirror_tiles"] = False
+    side_count = polygon_sides_for_cross_section(cross_section) or 0
+    if side_count:
+        use_side_images = st.checkbox(
+            tr("page.vessel.fields.use_side_images", "Use one image per side"),
+            key="vessel_use_side_images",
+            help=tr(
+                "page.vessel.help.use_side_images",
+                "For polygon vessels, map a separate heightmap to each side. Generation requires exactly one image per side.",
+            ),
+        )
+    else:
+        use_side_images = False
+        st.session_state["vessel_use_side_images"] = False
 
     st.divider()
     st.subheader(tr("page.vessel.sections.rim", "Rim"))
@@ -1544,22 +1698,72 @@ with left:
 
     st.divider()
     st.subheader(tr("page.vessel.sections.heightmap", "Heightmap Image"))
-    uploaded = st.file_uploader(tr("page.vessel.fields.upload_image", "Upload image (PNG, JPG, TIFF)"),
-                                 type=["png", "jpg", "jpeg", "tif", "tiff"],
-                                 key=f"vessel_upload_{st.session_state['vessel_upload_nonce']}")
-    if uploaded:
-        st.image(uploaded, caption=tr("page.vessel.caption.heightmap_preview", "Heightmap preview"), width="content")
-        uploaded_bytes = uploaded.getvalue()
-        st.session_state["vessel_source_image_name"] = uploaded.name
-        st.session_state["vessel_loaded_heightmap_bytes"] = None
-        st.session_state["vessel_loaded_heightmap_name"] = ""
-    elif st.session_state.get("vessel_loaded_heightmap_bytes"):
-        uploaded_bytes = st.session_state["vessel_loaded_heightmap_bytes"]
-        loaded_name = st.session_state.get("vessel_loaded_heightmap_name", "loaded_heightmap")
-        st.image(io.BytesIO(uploaded_bytes), caption=tr("page.vessel.caption.loaded_heightmap_preview", "Loaded heightmap: {name}", name=loaded_name), width="content")
-        st.session_state["vessel_source_image_name"] = loaded_name
+    uploaded = None
+    uploaded_bytes = None
+    uploaded_sources = []
+    side_image_count_valid = True
+    if use_side_images:
+        st.caption(
+            tr(
+                "page.vessel.caption.side_images_required",
+                "Select exactly {count} images, one for each side.",
+                count=side_count,
+            )
+        )
+        side_uploads = st.file_uploader(
+            tr("page.vessel.fields.upload_side_images", "Upload side images (PNG, JPG, TIFF)"),
+            type=["png", "jpg", "jpeg", "tif", "tiff"],
+            accept_multiple_files=True,
+            key=f"vessel_side_upload_{st.session_state['vessel_upload_nonce']}",
+        )
+        if side_uploads:
+            uploaded_sources = [
+                {"name": file.name, "bytes": file.getvalue()}
+                for file in side_uploads
+            ]
+            st.session_state["vessel_loaded_side_images"] = []
+        elif st.session_state.get("vessel_loaded_side_images"):
+            uploaded_sources = st.session_state["vessel_loaded_side_images"]
+        side_image_count_valid = len(uploaded_sources) == side_count
+        st.session_state["vessel_source_image_names"] = [item["name"] for item in uploaded_sources]
+        st.session_state["vessel_source_image_name"] = ", ".join(st.session_state["vessel_source_image_names"])
+        if uploaded_sources:
+            preview_cols = st.columns(min(side_count, max(1, len(uploaded_sources))))
+            for idx, image in enumerate(uploaded_sources[:side_count]):
+                with preview_cols[idx % len(preview_cols)]:
+                    st.image(
+                        io.BytesIO(image["bytes"]),
+                        caption=tr("page.vessel.caption.side_image_preview", "Side {index}: {name}", index=idx + 1, name=image["name"]),
+                        width="content",
+                    )
+        if not side_image_count_valid:
+            st.warning(
+                tr(
+                    "page.vessel.messages.side_images_required",
+                    "One image per side is enabled. Select exactly {count} side images before generating.",
+                    count=side_count,
+                )
+            )
     else:
-        uploaded_bytes = None
+        uploaded = st.file_uploader(tr("page.vessel.fields.upload_image", "Upload image (PNG, JPG, TIFF)"),
+                                     type=["png", "jpg", "jpeg", "tif", "tiff"],
+                                     key=f"vessel_upload_{st.session_state['vessel_upload_nonce']}")
+        if uploaded:
+            st.image(uploaded, caption=tr("page.vessel.caption.heightmap_preview", "Heightmap preview"), width="content")
+            uploaded_bytes = uploaded.getvalue()
+            uploaded_sources = [{"name": uploaded.name, "bytes": uploaded_bytes}]
+            st.session_state["vessel_source_image_name"] = uploaded.name
+            st.session_state["vessel_source_image_names"] = [uploaded.name]
+            st.session_state["vessel_loaded_heightmap_bytes"] = None
+            st.session_state["vessel_loaded_heightmap_name"] = ""
+            st.session_state["vessel_loaded_side_images"] = []
+        elif st.session_state.get("vessel_loaded_heightmap_bytes"):
+            uploaded_bytes = st.session_state["vessel_loaded_heightmap_bytes"]
+            loaded_name = st.session_state.get("vessel_loaded_heightmap_name", "loaded_heightmap")
+            uploaded_sources = [{"name": loaded_name, "bytes": uploaded_bytes}]
+            st.image(io.BytesIO(uploaded_bytes), caption=tr("page.vessel.caption.loaded_heightmap_preview", "Loaded heightmap: {name}", name=loaded_name), width="content")
+            st.session_state["vessel_source_image_name"] = loaded_name
+            st.session_state["vessel_source_image_names"] = [loaded_name]
 
     st.divider()
     st.subheader(tr("page.vessel.sections.resolution", "Resolution"))
@@ -1634,13 +1838,14 @@ with left:
         tile_enabled=tile_enabled,
         tile_count=tile_count,
         mirror_tiles=mirror_tiles,
+        use_side_images=use_side_images,
         add_lip=add_lip,
         lip_radius=lip_radius,
         n_lip=n_lip,
         n_theta=n_theta,
         n_z=n_z,
         mm_per_ring=mm_per_ring,
-        uploaded_bytes=uploaded_bytes,
+        uploaded_sources=uploaded_sources,
     )
     if st.session_state["stl_bytes"] and st.session_state.get("vessel_generated_signature") != current_signature:
         clear_vessel_outputs()
@@ -1674,7 +1879,7 @@ with left:
             f"⚙️ {tr('page.vessel.actions.generate', 'Generate')}",
             width="stretch",
             type="primary",
-            disabled=is_building,
+            disabled=is_building or (use_side_images and not side_image_count_valid),
             key="vessel_generate_mesh",
         )
     reset = action_col2.button(
@@ -1741,18 +1946,29 @@ with right:
             demold_cut_apply=demold_cut_apply,
             demold_cut_shape=demold_cut_shape,
         )
-    elif uploaded_bytes is not None:
-        hmap_for_volume = load_heightmap_for_output(
-            uploaded_bytes,
-            n_theta,
-            profile_n_z,
-            base_n_z,
-            image_orientation,
-            fit_mode,
-            tile_count,
-            mirror_tiles,
-            invert_relief,
-        )
+    elif uploaded_sources and (not use_side_images or side_image_count_valid):
+        if use_side_images:
+            hmap_for_volume = load_multi_side_heightmap_for_output(
+                uploaded_sources,
+                n_theta,
+                profile_n_z,
+                base_n_z,
+                image_orientation,
+                fit_mode,
+                invert_relief,
+            )
+        else:
+            hmap_for_volume = load_heightmap_for_output(
+                uploaded_sources[0]["bytes"],
+                n_theta,
+                profile_n_z,
+                base_n_z,
+                image_orientation,
+                fit_mode,
+                tile_count,
+                mirror_tiles,
+                invert_relief,
+            )
         bore_volume_mm3 = estimate_internal_bore_volume_mm3(
             output_profile_fn,
             output_height,
@@ -1785,23 +2001,42 @@ with right:
             st.info(bore_note)
 
     if generate:
-        if not uploaded:
+        if not uploaded_sources:
             build_feedback.warning(tr("page.vessel.messages.upload_heightmap_first", "Upload a heightmap image first."))
             st.warning(tr("page.vessel.messages.upload_heightmap_first", "Upload a heightmap image first."))
+        elif use_side_images and not side_image_count_valid:
+            build_feedback.warning(
+                tr(
+                    "page.vessel.messages.side_images_required",
+                    "One image per side is enabled. Select exactly {count} side images before generating.",
+                    count=side_count,
+                )
+            )
         else:
             try:
                 build_feedback.info(tr("page.vessel.messages.loading_heightmap", "Loading heightmap..."))
-                hmap = load_heightmap_for_output(
-                    uploaded_bytes,
-                    n_theta,
-                    profile_n_z,
-                    base_n_z,
-                    image_orientation,
-                    fit_mode,
-                    tile_count,
-                    mirror_tiles,
-                    invert_relief,
-                )
+                if use_side_images:
+                    hmap = load_multi_side_heightmap_for_output(
+                        uploaded_sources,
+                        n_theta,
+                        profile_n_z,
+                        base_n_z,
+                        image_orientation,
+                        fit_mode,
+                        invert_relief,
+                    )
+                else:
+                    hmap = load_heightmap_for_output(
+                        uploaded_sources[0]["bytes"],
+                        n_theta,
+                        profile_n_z,
+                        base_n_z,
+                        image_orientation,
+                        fit_mode,
+                        tile_count,
+                        mirror_tiles,
+                        invert_relief,
+                    )
 
                 build_feedback.info(
                     tr(
@@ -1850,10 +2085,14 @@ with right:
                     demold_cut_shape=demold_cut_shape,
                 )
                 stl_bytes = write_stl(tris)
-                source_image_name = uploaded.name if uploaded is not None else "source_heightmap"
-                if uploaded is None:
-                    source_image_name = st.session_state.get("vessel_source_image_name", source_image_name) or source_image_name
-                settings_json = build_vessel_setup_json(source_image_name, midpoints, generated_bore_volume_mm3)
+                source_image_names = [str(source.get("name") or f"side_{idx}") for idx, source in enumerate(uploaded_sources, start=1)]
+                source_image_name = source_image_names[0] if len(source_image_names) == 1 else f"{len(source_image_names)} side images"
+                settings_json = build_vessel_setup_json(
+                    source_image_name,
+                    midpoints,
+                    generated_bore_volume_mm3,
+                    source_image_names,
+                )
                 settings_text = format_vessel_settings(
                     {
                         "base_r": float(base_r),
@@ -1876,6 +2115,7 @@ with right:
                         "tone_mapping": tone_mapping,
                         "image_orientation": image_orientation,
                         "fit_mode": fit_mode,
+                        "use_side_images": bool(use_side_images),
                         "tile_enabled": bool(tile_enabled),
                         "tile_count": int(tile_count),
                         "mirror_tiles": bool(mirror_tiles),
@@ -1893,6 +2133,8 @@ with right:
                     }
                 )
                 stem = Path(source_image_name).stem or "vessel_model"
+                if use_side_images:
+                    stem = f"{polygon_sides_for_cross_section(cross_section)}_side_vessel"
                 stl_name = f"{stem}_vessel.stl"
                 bundle_name = f"{stem}_vessel_bundle.zip"
 
@@ -1906,7 +2148,8 @@ with right:
                     settings_text,
                     settings_json,
                     source_image_name,
-                    uploaded_bytes,
+                    uploaded_sources[0]["bytes"] if len(uploaded_sources) == 1 else b"",
+                    uploaded_sources if use_side_images else None,
                 )
                 st.session_state["vessel_zip_name"] = bundle_name
                 st.session_state["vessel_generated_signature"] = current_signature
