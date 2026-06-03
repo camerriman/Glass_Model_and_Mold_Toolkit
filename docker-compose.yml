@@ -1,0 +1,21 @@
+services:
+  glass-tools:
+    build:
+      context: .
+    container_name: glass-tools
+    restart: unless-stopped
+    expose:
+      - "8501"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.glass-tools.rule=Host(`tools.glassobscura.com`)"
+      - "traefik.http.routers.glass-tools.entrypoints=websecure"
+      - "traefik.http.routers.glass-tools.tls=true"
+      - "traefik.http.routers.glass-tools.tls.certresolver=letsencrypt"
+      - "traefik.http.services.glass-tools.loadbalancer.server.port=8501"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
