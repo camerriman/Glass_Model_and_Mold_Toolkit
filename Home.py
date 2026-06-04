@@ -14,7 +14,10 @@ st.markdown("""
 render_app_sidebar(nav_expanded=True)
 
 st.title(t("home.title", "Glass Library & Model and Mold Toolkit"))
-st.markdown(t("home.subtitle", "Use the links below to access model generation, mold design tools, and browse glass data."))
+st.markdown(t(
+    "home.subtitle",
+    "A collection of tools developed for kiln-formed glass, mold design, optical modeling, and computational relief imaging. These tools support workflows ranging from photographic glass and cameo work to vessel molds and layered glass prediction.",
+))
 
 st.divider()
 
