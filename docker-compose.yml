@@ -8,4 +8,4 @@ services:
     volumes:
       - ./:/app
     working_dir: /app
-    command: bash -lc "pip install --no-cache-dir -r requirements.txt && streamlit run Home.py --server.address=0.0.0.0 --server.port=8501"
+    command: sh -lc "python -m pip install --no-cache-dir -r /app/requirements.txt && python -m streamlit run /app/Home.py --server.address=0.0.0.0 --server.port=8501"
