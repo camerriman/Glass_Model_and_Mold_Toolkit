@@ -1,23 +1,14 @@
-version: "3.8"
-
 services:
-  glass-tools:
+  app:
     build:
       context: .
-    container_name: glass-tools
+      dockerfile: Dockerfile
+    container_name: glass-model-and-mold-toolkit
     restart: unless-stopped
-    expose:
-      - "8501"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.glass-tools.rule=Host(`glasscameo.art`)"
-      - "traefik.http.routers.glass-tools.entrypoints=websecure"
-      - "traefik.http.routers.glass-tools.tls=true"
-      - "traefik.http.routers.glass-tools.tls.certresolver=letsencrypt"
-      - "traefik.http.services.glass-tools.loadbalancer.server.port=8501"
-    networks:
-      - traefik
-
-networks:
-  traefik:
-    external: true
+    ports:
+      - "8501:8501"
+    environment:
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
