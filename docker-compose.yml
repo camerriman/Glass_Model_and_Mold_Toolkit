@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   glass-tools:
     build:
@@ -8,7 +10,7 @@ services:
       - "8501"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.glass-tools.rule=Host(`tools.glassobscura.com`)"
+      - "traefik.http.routers.glass-tools.rule=Host(`glasscameo.art`)"
       - "traefik.http.routers.glass-tools.entrypoints=websecure"
       - "traefik.http.routers.glass-tools.tls=true"
       - "traefik.http.routers.glass-tools.tls.certresolver=letsencrypt"
