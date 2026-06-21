@@ -1,0 +1,5 @@
+[theme]
+baseFontSize = 14
+baseFontWeight = 400
+headingFontSizes = ["2rem", "1.65rem", "1.4rem", "1.2rem", "1.1rem", "1rem"]
+headingFontWeights = [600, 600, 500, 500, 500, 500]
