@@ -21,11 +21,11 @@ render_app_sidebar()
 
 
 def fmt_cm2(value: float) -> str:
-    return f"{value:,.1f} cm^2"
+    return f"{value:,.1f} cm²"
 
 
 def fmt_cm3(value: float) -> str:
-    return f"{value:,.1f} cm^3"
+    return f"{value:,.1f} cm³"
 
 
 def fmt_g(value: float) -> str:
@@ -201,7 +201,7 @@ summary_cols[3].metric("Batch total", fmt_cm3(total_batch_cm3))
 st.caption(f"Jacket planning surface area: {fmt_cm2(jacket_area_cm2)}")
 
 st.subheader("Material Planning")
-st.caption("Batch weights use the planning equivalence 1 cm^3 = 1 g before recipe ratios are applied.")
+st.caption("Batch weights use the planning equivalence 1 cm³ = 1 g before recipe ratios are applied.")
 face_col, jacket_col = st.columns(2)
 with face_col:
     with st.container(border=True):
