@@ -643,6 +643,12 @@ st.caption(
         sort=sort_label_display(sort_label).lower(),
     )
 )
+st.caption(
+    t(
+        "library.notes.datum",
+        "Library colors are anchored to the measured 2 mm sample datum under broad daylight-balanced illumination. Thickness changes, lighting changes, and batch variation can shift the visible read away from this reference.",
+    )
+)
 
 compare_ids = normalize_compare_ids(st.session_state.get("compare_glass_ids", []))
 if compare_ids != st.session_state.get("compare_glass_ids", []):

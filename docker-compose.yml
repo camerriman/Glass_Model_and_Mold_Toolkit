@@ -1,11 +1,27 @@
 services:
   app:
     image: python:3.11-slim
-    container_name: app
     restart: unless-stopped
     ports:
       - "8501:8501"
+    environment:
+      GIT_REPO: "https://github.com/camerriman/Glass_Model_and_Mold_Toolkit.git"
+      GIT_BRANCH: "main"
     volumes:
-      - ./:/app
+      - app_data:/app
     working_dir: /app
-    command: sh -lc "python -m pip install --no-cache-dir -r /app/requirements.txt && python -m streamlit run /app/Home.py --server.address=0.0.0.0 --server.port=8501"
+    command: >
+      sh -lc "
+      apt-get update &&
+      apt-get install -y --no-install-recommends git &&
+      if [ ! -d /app/.git ]; then
+        git clone --branch ${GIT_BRANCH} ${GIT_REPO} /app;
+      else
+        cd /app && git fetch origin ${GIT_BRANCH} && git reset --hard origin/${GIT_BRANCH};
+      fi &&
+      python -m pip install --no-cache-dir -r /app/requirements.txt &&
+      python -m streamlit run /app/Home.py --server.address=0.0.0.0 --server.port=8501
+      "
+
+volumes:
+  app_data:

@@ -213,6 +213,12 @@ st.caption(
         "Vertical Beer-Lambert side views showing how each measured glass darkens as thickness increases.",
     )
 )
+st.caption(
+    t(
+        "library.notes.datum",
+        "Library colors are anchored to the measured 2 mm sample datum under broad daylight-balanced illumination. Thickness changes, lighting changes, and batch variation can shift the visible read away from this reference.",
+    )
+)
 
 with st.sidebar:
     st.header(t("depth_view.sidebar.title", "Depth View"))

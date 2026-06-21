@@ -43,11 +43,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "home.nav.glass_compare": "Glass Compare",
         "home.nav.mold_worksheet": "Cameo Mold Worksheet",
         "home.nav.pate_mold_worksheet": "Vessel Mold Worksheet",
+        "home.nav.stl_casting_mold_worksheet": "STL Casting Mold Worksheet",
         "home.nav.print_optional_frame": "Print Frame Fabrication",
         "home.subtitle": "A collection of tools developed for kiln-formed glass, mold design, optical modeling, and computational relief imaging. These tools support workflows ranging from photographic glass and cameo work to vessel molds and layered glass prediction.",
         "worksheet.title": "Cameo Mold Worksheet",
         "page.pate_mold.title": "Vessel Mold Worksheet",
         "page.pate_mold.caption": "Plan vessel mold volume, face coat, and jacket coat material weights.",
+        "page.stl_casting.title": "STL Casting Mold Worksheet",
+        "page.stl_casting.caption": "Estimate face coat and jacket coat material from an uploaded STL used as a wax or model stand-in.",
         "page.print_frame.title": "Print Frame Fabrication",
         "page.print_frame.caption": "Start with a known 3D print, choose the intended frame border, and calculate fabrication glass and fiber paper needs.",
     },
@@ -676,6 +679,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "predictor.summary.reactive_no": "Potencial reactivo: no aparecio una combinacion reactiva evidente.",
         "predictor.notes.filter_model": "El vidrio superior se trata como un filtro transmitido con una atenuacion tipo Beer-Lambert.",
         "predictor.notes.double_pass": "El apilado reflejado usa un doble paso por la capa superior: una vez al bajar y otra al volver.",
+        "predictor.notes.thickness_datum": "La biblioteca de vidrio usa la muestra medida de 2 mm como su dato de referencia. Los cambios de espesor en este predictor son extrapolaciones modeladas desde esa referencia, por lo que alejarse del dato sesgara el resultado en lugar de reemplazar los datos medidos de la muestra.",
+        "predictor.notes.lighting_variation": "Las imagenes de la biblioteca se tratan como una referencia amplia equilibrada para luz diurna. El vidrio real puede verse mas calido, mas frio o desplazado bajo fuentes artificiales, especialmente el vidrio shift-tint bajo fluorescentes o luz de espectro irregular.",
         "predictor.notes.first_pass": "Es un predictor de primera pasada. Aun no modela perdidas de interfaz, dispersion por textura superficial ni microestructura formada en el horno.",
         "frit.cards.mix_title": "Resultado mezclado previsto",
         "frit.cards.mix_subtitle": "Lectura visual ponderada de {total:.2f} g en total",
@@ -1164,6 +1169,8 @@ ITALIAN_TRANSLATIONS.update(
         "predictor.messages.top_missing_transmitted": "{label} non ha dati di misurazione trasmessa.",
         "predictor.notes.double_pass": "La stratificazione riflessa usa un doppio passaggio attraverso lo strato superiore: una volta in discesa e una nel ritorno.",
         "predictor.notes.filter_model": "Il vetro superiore viene trattato come un filtro trasmesso con un'attenuazione tipo Beer-Lambert.",
+        "predictor.notes.thickness_datum": "La biblioteca del vetro usa il campione misurato a 2 mm come dato di riferimento. Le modifiche di spessore in questo predittore sono estrapolazioni modellate da quel riferimento, quindi allontanarsi dal dato altera il risultato invece di sostituire i dati misurati del campione.",
+        "predictor.notes.lighting_variation": "Le immagini della biblioteca sono trattate come riferimento ampio bilanciato per luce diurna. Il vetro reale puo apparire piu caldo, piu freddo o spostato sotto sorgenti artificiali, specialmente il vetro shift-tint con fluorescenza o luce a spettro irregolare.",
         "predictor.notes.first_pass": "Questo e un predittore di prima passata. Non modella ancora perdite di interfaccia, dispersione dovuta alla texture superficiale o microstrutture formate in forno.",
         "predictor.sections.base": "Sorgente riflessa di base",
         "predictor.sections.model_notes": "Note del modello",
@@ -1711,6 +1718,8 @@ GERMAN_TRANSLATIONS.update(
         "predictor.messages.top_missing_transmitted": "{label} hat keine transmittierten Messdaten.",
         "predictor.notes.double_pass": "Reflektiertes Stapeln verwendet einen doppelten Durchgang durch die obere Schicht: einmal auf dem Hinweg und einmal auf dem Rueckweg.",
         "predictor.notes.filter_model": "Das obere Glas wird als transmittierter Filter mit Beer-Lambert-aehnlicher Abschwaechung behandelt.",
+        "predictor.notes.thickness_datum": "Die Glasbibliothek verwendet die gemessene 2-mm-Probe als Bezugspunkt. Dickenveraenderungen in dieser Prognose sind modellierte Extrapolationen von dieser Referenz; ein Abstand vom Bezugspunkt verzerrt daher das Ergebnis, anstatt die gemessenen Probendaten zu ersetzen.",
+        "predictor.notes.lighting_variation": "Die Bibliotheksbilder werden als breitbandige, tageslichtabgeglichene Referenz behandelt. Echtes Glas kann unter kuenstlichen Lichtquellen waermer, kuehler oder farbverschoben wirken, besonders Shift-Tint-Glas unter Fluoreszenzlicht oder ungleichmaessigem Spektrum.",
         "predictor.notes.first_pass": "Dies ist eine Prognose erster Ordnung. Grenzflaechenverluste, Streuung durch Oberflaechentextur oder im Ofen gebildete Mikrostrukturen werden noch nicht modelliert.",
         "predictor.sections.base": "Reflektierte Basisquelle",
         "predictor.sections.model_notes": "Modellnotizen",
@@ -2259,6 +2268,8 @@ FRENCH_TRANSLATIONS.update(
         "predictor.messages.top_missing_transmitted": "{label} n'a pas de donnees de mesure transmise.",
         "predictor.notes.double_pass": "L'empilement reflechi utilise un double passage a travers la couche superieure: une fois a l'aller et une fois au retour.",
         "predictor.notes.filter_model": "Le verre superieur est traite comme un filtre transmis avec une attenuation de type Beer-Lambert.",
+        "predictor.notes.thickness_datum": "La bibliotheque de verre utilise l'echantillon mesure a 2 mm comme donnee de reference. Les changements d'epaisseur dans ce predicteur sont des extrapolations modelisees depuis cette reference; s'eloigner de la reference fausse donc le resultat au lieu de remplacer les donnees mesurees de l'echantillon.",
+        "predictor.notes.lighting_variation": "Les images de la bibliotheque sont traitees comme une reference large equilibree pour la lumiere du jour. Le verre reel peut paraitre plus chaud, plus froid ou decale sous des sources artificielles, surtout le verre shift-tint sous fluorescent ou lumiere a spectre irregulier.",
         "predictor.notes.first_pass": "Il s'agit d'un predicteur de premiere passe. Il ne modelise pas encore les pertes d'interface, la diffusion due a la texture de surface ou les microstructures formees au four.",
         "predictor.sections.base": "Source reflechie de base",
         "predictor.sections.model_notes": "Notes du modele",
@@ -4335,6 +4346,25 @@ TRANSLATIONS["fr"].update(
 
 for _lang, _values in {
     "en": {
+        "library.notes.datum": "Library colors are anchored to the measured 2 mm sample datum under broad daylight-balanced illumination. Thickness changes, lighting changes, and batch variation can shift the visible read away from this reference.",
+    },
+    "es": {
+        "library.notes.datum": "Los colores de la biblioteca estan anclados al dato de muestra medida de 2 mm bajo iluminacion amplia equilibrada para luz diurna. Los cambios de espesor, de iluminacion y de lote pueden desplazar la lectura visible respecto a esta referencia.",
+    },
+    "it": {
+        "library.notes.datum": "I colori della biblioteca sono ancorati al dato del campione misurato a 2 mm sotto illuminazione ampia bilanciata per luce diurna. Cambiamenti di spessore, illuminazione e lotto possono spostare la lettura visibile rispetto a questo riferimento.",
+    },
+    "de": {
+        "library.notes.datum": "Die Bibliotheksfarben sind am gemessenen 2-mm-Probenbezug unter breitbandiger, tageslichtabgeglichener Beleuchtung verankert. Aenderungen von Dicke, Lichtquelle und Charge koennen den sichtbaren Eindruck von dieser Referenz weg verschieben.",
+    },
+    "fr": {
+        "library.notes.datum": "Les couleurs de la bibliotheque sont ancrees sur la donnee d'echantillon mesuree a 2 mm sous une illumination large equilibree pour la lumiere du jour. Les changements d'epaisseur, d'eclairage et de lot peuvent deplacer la lecture visible par rapport a cette reference.",
+    },
+}.items():
+    TRANSLATIONS[_lang].update(_values)
+
+for _lang, _values in {
+    "en": {
         "page.vessel.cross_section.circle": "Circle",
         "page.vessel.cross_section.oval": "Oval",
         "page.vessel.cross_section.triangle": "3 sides - triangle",
@@ -4514,6 +4544,7 @@ NAVIGATION_SECTIONS = (
             ("pages/2_Model_Tiles_Panels.py", "home.nav.tiles_panels", "Model Tiles & Panels"),
             ("pages/3_Mold_Worksheet.py", "home.nav.mold_worksheet", "Cameo Mold Worksheet"),
             ("pages/19_Vessel_Mold_Worksheet.py", "home.nav.pate_mold_worksheet", "Vessel Mold Worksheet"),
+            ("pages/24_STL_Casting_Mold_Worksheet.py", "home.nav.stl_casting_mold_worksheet", "STL Casting Mold Worksheet"),
             ("pages/22_Print_Optional_Frame.py", "home.nav.print_optional_frame", "Print Frame Fabrication"),
             ("pages/23_Kiln_Forming_Notes.py", "home.nav.kiln_forming_notes", "Kiln Forming Notes"),
             ("pages/5_Mesh_Crop.py", "home.nav.mesh_crop", "Mesh Crop"),

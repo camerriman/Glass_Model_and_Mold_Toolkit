@@ -1293,6 +1293,7 @@ st.markdown(
     "\n".join(
         [
             f"- {t('frit.notes.exploratory', 'This page is exploratory rather than prescriptive. It gives a studio-friendly estimate of the visible read.')}",
+            f"- {t('library.notes.datum', 'Library colors are anchored to the measured 2 mm sample datum under broad daylight-balanced illumination. Thickness changes, lighting changes, and batch variation can shift the visible read away from this reference.')}",
             f"- {t('frit.notes.frit_size', 'Frit size does not change the weighted average colour directly here; it changes the expected amount of local colour separation that may still be visible.')}",
             f"- {t('frit.notes.powdered', 'Powdered glass is treated here as the smoothest-integrating option, but in practice trapped air and bubbles still need to be addressed before firing.')}",
             f"- {t('frit.notes.homogenization', 'The page does not assume complete homogenization during firing.')}",
