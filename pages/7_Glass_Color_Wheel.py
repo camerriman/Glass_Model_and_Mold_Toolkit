@@ -1160,56 +1160,63 @@ def render_selected_sample(
         unsafe_allow_html=True,
     )
 
-    if current_row is not None:
-        if view_mode == "3d":
-            position_lines = [
-                t("color_wheel.position.mode", "Mode: {mode}", mode=html.escape(mode_label(current_mode))),
-                t("color_wheel.position.hue", "H: {value} deg", value=safe_int(current_row.get("h"))),
-                t("color_wheel.position.radius_s", "Radius (S): {value}", value=safe_int(current_row.get("s"))),
-                t("color_wheel.position.z_b", "Z (B): {value}", value=safe_int(current_row.get("v"))),
-                t("color_wheel.position.brightness_b", "B: {value}", value=safe_int(current_row.get("v"))),
-            ]
-        else:
-            position_lines = [
-                t("color_wheel.position.mode", "Mode: {mode}", mode=html.escape(mode_label(current_mode))),
-                t("color_wheel.position.hue", "H: {value} deg", value=safe_int(current_row.get("h"))),
-                t("color_wheel.position.radius_b", "Radius (B): {value}", value=safe_int(current_row.get("v"))),
-                t("color_wheel.position.saturation_s", "S: {value}", value=safe_int(current_row.get("s"))),
-                t("color_wheel.position.brightness_b", "B: {value}", value=safe_int(current_row.get("v"))),
-            ]
-        st.markdown(
-            f"""
-            <div style="font-family:sans-serif;font-size:14px;margin:8px 0 12px 0;
-                        padding:10px 12px;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
-              <strong>{t('color_wheel.labels.wheel_position', 'Wheel position')}</strong><br>
-              {'<br>'.join(position_lines)}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    position_col, chemistry_col, reflected_col, transmitted_col = st.columns(
+        [0.23, 0.22, 0.25, 0.25],
+        gap="large",
+    )
 
-    if current_detail_target():
-        if st.button(
-            t("library.detail.open_datasheet", "Open full datasheet"),
-            key=f"open_datasheet_wheel_{selected_glass_id}",
-            width="content",
-        ):
-            st.session_state["detail_glass_id"] = str(selected_glass_id)
-            st.session_state["detail_return_page"] = "pages/7_Glass_Color_Wheel.py"
-            st.session_state["detail_return_label_key"] = "color_wheel.title"
-            if not switch_to_page(DETAIL_PAGE):
-                st.warning(t("color_wheel.messages.open_datasheet_failed", "Could not navigate to the full datasheet page."))
+    with position_col:
+        if current_row is not None:
+            if view_mode == "3d":
+                position_lines = [
+                    t("color_wheel.position.mode", "Mode: {mode}", mode=html.escape(mode_label(current_mode))),
+                    t("color_wheel.position.hue", "H: {value} deg", value=safe_int(current_row.get("h"))),
+                    t("color_wheel.position.radius_s", "Radius (S): {value}", value=safe_int(current_row.get("s"))),
+                    t("color_wheel.position.z_b", "Z (B): {value}", value=safe_int(current_row.get("v"))),
+                    t("color_wheel.position.brightness_b", "B: {value}", value=safe_int(current_row.get("v"))),
+                ]
+            else:
+                position_lines = [
+                    t("color_wheel.position.mode", "Mode: {mode}", mode=html.escape(mode_label(current_mode))),
+                    t("color_wheel.position.hue", "H: {value} deg", value=safe_int(current_row.get("h"))),
+                    t("color_wheel.position.radius_b", "Radius (B): {value}", value=safe_int(current_row.get("v"))),
+                    t("color_wheel.position.saturation_s", "S: {value}", value=safe_int(current_row.get("s"))),
+                    t("color_wheel.position.brightness_b", "B: {value}", value=safe_int(current_row.get("v"))),
+                ]
+            st.markdown(
+                f"""
+                <div style="font-family:sans-serif;font-size:14px;margin:8px 0 12px 0;
+                            padding:10px 12px;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
+                  <strong>{t('color_wheel.labels.wheel_position', 'Wheel position')}</strong><br>
+                  {'<br>'.join(position_lines)}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    st.markdown(f"### {t('shared.sections.elements_present', 'Elements Present')}")
-    st.markdown(badge_markup(element_labels(base_row)), unsafe_allow_html=True)
+        if current_detail_target():
+            if st.button(
+                t("library.detail.open_datasheet", "Open full datasheet"),
+                key=f"open_datasheet_wheel_{selected_glass_id}",
+                width="content",
+            ):
+                st.session_state["detail_glass_id"] = str(selected_glass_id)
+                st.session_state["detail_return_page"] = "pages/7_Glass_Color_Wheel.py"
+                st.session_state["detail_return_label_key"] = "color_wheel.title"
+                if not switch_to_page(DETAIL_PAGE):
+                    st.warning(t("color_wheel.messages.open_datasheet_failed", "Could not navigate to the full datasheet page."))
 
-    st.markdown(f"### {t('shared.sections.reactive_potential', 'Reactive Potential')}")
-    st.markdown(badge_markup(reactive_labels(base_row), muted=True), unsafe_allow_html=True)
+    with chemistry_col:
+        st.markdown(f"### {t('shared.sections.elements_present', 'Elements Present')}")
+        st.markdown(badge_markup(element_labels(base_row)), unsafe_allow_html=True)
 
-    left, right = st.columns(2, gap="large")
-    with left:
+        st.markdown(f"### {t('shared.sections.reactive_potential', 'Reactive Potential')}")
+        st.markdown(badge_markup(reactive_labels(base_row), muted=True), unsafe_allow_html=True)
+
+    with reflected_col:
         render_measurement_card(data, selected_glass_id, prefix, "R")
-    with right:
+
+    with transmitted_col:
         render_measurement_card(data, selected_glass_id, prefix, "T")
 
 
@@ -1326,48 +1333,45 @@ if selected_glass_id not in valid_ids:
 
 harmony_overlay = harmony_matches(visible, str(selected_glass_id), harmony_scheme)
 
-chart_col, detail_col = st.columns([0.62, 0.38], gap="large")
-
-with chart_col:
-    if view_mode == "3d":
-        st.caption(t("color_wheel.caption.click_3d", "Click a point to inspect a sample. Drag to orbit the 3D view."))
-        figure = build_wheel_3d_figure(
-            visible,
-            str(selected_glass_id),
-            mode,
-            harmony_overlay,
-        )
-    else:
-        st.caption(t("color_wheel.caption.click_2d", "Click a point to inspect a sample."))
-        figure = build_wheel_figure(
-            visible,
-            str(selected_glass_id),
-            mode,
-            harmony_overlay,
-        )
-
-    st.plotly_chart(
-        figure,
-        key="glass_color_wheel_chart",
-        on_select="rerun",
-        selection_mode="points",
-        width="content",
-        config={
-            "displaylogo": False,
-            "modeBarButtonsToRemove": ["lasso2d", "select2d"],
-        },
-    )
-    render_harmony_overlay_block(
-        wheel_data,
+if view_mode == "3d":
+    st.caption(t("color_wheel.caption.click_3d", "Click a point to inspect a sample. Drag to orbit the 3D view."))
+    figure = build_wheel_3d_figure(
+        visible,
+        str(selected_glass_id),
         mode,
-        harmony_scheme,
+        harmony_overlay,
+    )
+else:
+    st.caption(t("color_wheel.caption.click_2d", "Click a point to inspect a sample."))
+    figure = build_wheel_figure(
+        visible,
+        str(selected_glass_id),
+        mode,
         harmony_overlay,
     )
 
-with detail_col:
-    render_selected_sample(
-        wheel_data,
-        str(selected_glass_id),
-        mode,
-        view_mode,
-    )
+st.plotly_chart(
+    figure,
+    key="glass_color_wheel_chart",
+    on_select="rerun",
+    selection_mode="points",
+    width="content",
+    config={
+        "displaylogo": False,
+        "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+    },
+)
+render_harmony_overlay_block(
+    wheel_data,
+    mode,
+    harmony_scheme,
+    harmony_overlay,
+)
+
+st.divider()
+render_selected_sample(
+    wheel_data,
+    str(selected_glass_id),
+    mode,
+    view_mode,
+)

@@ -728,7 +728,7 @@ st.divider()
 # Layout: top section — tables + images
 # ---------------------------------------------------------------------------
 def measurement_table(meas: dict):
-    """Render HSV / RGB / η table for one mode."""
+    """Render clearly labeled RGB, HSB, and η values for one mode."""
     r  = safe_int(meas.get("R"))
     g  = safe_int(meas.get("G"))
     b  = safe_int(meas.get("B"))
@@ -740,16 +740,28 @@ def measurement_table(meas: dict):
     <table style="border-collapse:collapse; width:100%; font-size:13px;">
       <tbody>
         <tr style="background:#f5f5f5;">
-          <td style="padding:5px 10px; font-weight:bold; width:80px;">HSB</td>
-          <td style="padding:5px 10px; text-align:center;">{h}</td>
-          <td style="padding:5px 10px; text-align:center;">{s}</td>
-          <td style="padding:5px 10px; text-align:center;">{v}</td>
+          <td style="padding:5px 10px; width:80px;"></td>
+          <td style="padding:5px 10px; text-align:center; font-weight:bold;">R</td>
+          <td style="padding:5px 10px; text-align:center; font-weight:bold;">G</td>
+          <td style="padding:5px 10px; text-align:center; font-weight:bold;">B</td>
         </tr>
         <tr>
           <td style="padding:5px 10px; font-weight:bold;">RGB</td>
           <td style="padding:5px 10px; text-align:center;">{r}</td>
           <td style="padding:5px 10px; text-align:center;">{g}</td>
           <td style="padding:5px 10px; text-align:center;">{b}</td>
+        </tr>
+        <tr style="background:#f5f5f5;">
+          <td style="padding:5px 10px;"></td>
+          <td style="padding:5px 10px; text-align:center; font-weight:bold;">H</td>
+          <td style="padding:5px 10px; text-align:center; font-weight:bold;">S</td>
+          <td style="padding:5px 10px; text-align:center; font-weight:bold;">B</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 10px; font-weight:bold;">HSB</td>
+          <td style="padding:5px 10px; text-align:center;">{h}</td>
+          <td style="padding:5px 10px; text-align:center;">{s}</td>
+          <td style="padding:5px 10px; text-align:center;">{v}</td>
         </tr>
         <tr style="background:#f5f5f5;">
           <td style="padding:5px 10px; font-weight:bold;">η</td>
