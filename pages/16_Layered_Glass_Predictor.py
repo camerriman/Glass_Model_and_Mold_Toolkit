@@ -659,7 +659,7 @@ top_catalog_row = top_candidates[top_candidates["glass_id"] == top_id].iloc[0]
 base_prefix = row_prefix(base_catalog_row)
 top_prefix = row_prefix(top_catalog_row)
 model_kind = "opal_reflected_overlay" if base_prefix == "opal" and top_prefix == "opal" else "transparent_filter"
-top_mode = "R" if model_kind == "opal_reflected_overlay" else "T"
+top_mode = "R"
 base_row_r = measurement_row(measurements, base_id, "R")
 top_measurement_row = measurement_row(measurements, top_id, top_mode)
 
@@ -678,7 +678,7 @@ if top_measurement_row is None:
             "predictor.messages.top_missing_measurement",
             "{label} is missing {mode} measurement data.",
             label=top_labels.get(top_id, top_id),
-            mode=t("shared.mode.reflected", "reflected").lower() if top_mode == "R" else t("shared.mode.transmitted", "transmitted").lower(),
+            mode=t("shared.mode.reflected", "reflected").lower(),
         )
     )
     st.stop()
@@ -698,11 +698,7 @@ st.sidebar.caption(
 
 base_rgb = tuple(safe_int(base_row_r.get(field)) for field in ("r", "g", "b"))
 base_hsb = rgb_to_hsb(base_rgb)
-top_single_rgb = (
-    tuple(safe_int(top_measurement_row.get(field)) for field in ("r", "g", "b"))
-    if model_kind == "opal_reflected_overlay"
-    else modeled_filter_rgb(top_measurement_row, top_thickness, path_multiplier=1.0)
-)
+top_single_rgb = tuple(safe_int(top_measurement_row.get(field)) for field in ("r", "g", "b"))
 top_single_hsb = rgb_to_hsb(top_single_rgb)
 result_rgb = layered_result_rgb(base_row_r, top_measurement_row, top_thickness, model_kind)
 result_hsb = rgb_to_hsb(result_rgb)
@@ -713,10 +709,10 @@ top_icon = first_existing_icon(top_id, top_prefix, top_mode)
 st.title(t("predictor.title", "Layered Glass Predictor"))
 st.caption(
     t(
-        "predictor.caption.intro_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.caption.intro",
+        "predictor.caption.intro_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.caption.intro_reflected_filter",
         "Opalescent-over-opalescent model: base reflected RGB blended toward the top glass reflected scan as thickness increases."
         if model_kind == "opal_reflected_overlay"
-        else "First-pass reflected stacking model: base reflected RGB multiplied by the top glass transmission over a double pass through the selected thickness.",
+        else "First-pass reflected stacking model: base reflected RGB filtered through the top glass reflected measurement over a double pass through the selected thickness.",
     )
 )
 
@@ -770,10 +766,10 @@ with card_cols[1]:
     st.markdown(f"### {top_labels.get(top_id, top_id)}")
     st.caption(
         t(
-            "predictor.cards.top_caption_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_caption",
+            "predictor.cards.top_caption_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_caption_reflected_filter",
             "Top opalescent glass contributing reflected surface/scatter colour."
             if model_kind == "opal_reflected_overlay"
-            else "Top glass acting as the colour filter.",
+            else "Top glass acting as the reflected colour filter.",
         )
     )
     if top_icon is not None:
@@ -783,21 +779,21 @@ with card_cols[1]:
     st.markdown(
         swatch_markup(
             t(
-                "predictor.sections.top_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.sections.top",
-                "Top reflected source" if model_kind == "opal_reflected_overlay" else "Top filter",
+                "predictor.sections.top_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.sections.top_reflected_filter",
+                "Top reflected source" if model_kind == "opal_reflected_overlay" else "Top reflected filter",
             ),
             t(
-                "predictor.cards.top_subtitle_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_subtitle",
-                "Measured reflected scan" if model_kind == "opal_reflected_overlay" else "Modeled transmission at {thickness:.2f} mm",
+                "predictor.cards.top_subtitle_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_subtitle_reflected_filter",
+                "Measured reflected scan",
                 thickness=top_thickness,
             ),
             top_single_rgb,
             top_single_hsb,
             t(
-                "predictor.cards.top_note_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_note",
+                "predictor.cards.top_note_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_note_reflected_filter",
                 "Reference reflected scan thickness: {thickness:.2f} mm."
                 if model_kind == "opal_reflected_overlay"
-                else "Reference transmitted scan thickness: {thickness:.2f} mm.",
+                else "Reference reflected scan thickness: {thickness:.2f} mm.",
                 thickness=reference_top_thickness,
             ),
         ),
@@ -842,7 +838,7 @@ st.markdown(
         [
             f"- {t('predictor.notes.opal_overlay_model', 'When both glasses are opalescent, the top glass uses reflected data and is modeled as a scattering reflected overlay.')}"
             if model_kind == "opal_reflected_overlay"
-            else f"- {t('predictor.notes.filter_model', 'The top glass is treated as a transmitted filter using a Beer-Lambert-style attenuation model.')}",
+            else f"- {t('predictor.notes.reflected_filter_model', 'The top glass is treated as a reflected-value filter using a Beer-Lambert-style attenuation model.')}",
             f"- {t('predictor.notes.opal_overlay_thickness', 'For opalescent overlays, increasing top thickness moves the predicted result toward the top glass reflected color.')}"
             if model_kind == "opal_reflected_overlay"
             else f"- {t('predictor.notes.double_pass', 'Reflected stacking uses a double pass through the top layer: once going down and once coming back.')}",
