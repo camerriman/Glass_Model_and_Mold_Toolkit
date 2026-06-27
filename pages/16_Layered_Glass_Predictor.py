@@ -298,8 +298,28 @@ def modeled_filter_rgb(top_row_t: pd.Series, thickness_mm: float, path_multiplie
     return tuple(rgb)
 
 
-def layered_result_rgb(base_row_r: pd.Series, top_row_t: pd.Series, thickness_mm: float) -> tuple[int, int, int]:
-    double_pass_rgb = modeled_filter_rgb(top_row_t, thickness_mm, path_multiplier=2.0)
+def opal_scatter_alpha(top_row_r: pd.Series, thickness_mm: float) -> float:
+    ref_thickness = max(safe_float(top_row_r.get("thickness_mm"), 2.0), 0.01)
+    return float(np.clip(1.0 - math.exp(-1.6 * max(thickness_mm, 0.0) / ref_thickness), 0.0, 1.0))
+
+
+def layered_result_rgb(
+    base_row_r: pd.Series,
+    top_measurement_row: pd.Series,
+    thickness_mm: float,
+    model_kind: str = "transparent_filter",
+) -> tuple[int, int, int]:
+    if model_kind == "opal_reflected_overlay":
+        alpha = opal_scatter_alpha(top_measurement_row, thickness_mm)
+        rgb = []
+        for base_value, top_value in zip(
+            [safe_int(base_row_r.get(field)) for field in ("r", "g", "b")],
+            [safe_int(top_measurement_row.get(field)) for field in ("r", "g", "b")],
+        ):
+            rgb.append(int(round(np.clip((base_value * (1.0 - alpha)) + (top_value * alpha), 0.0, 255.0))))
+        return tuple(rgb)
+
+    double_pass_rgb = modeled_filter_rgb(top_measurement_row, thickness_mm, path_multiplier=2.0)
     rgb = []
     for base_value, filter_value in zip(
         [safe_int(base_row_r.get(field)) for field in ("r", "g", "b")],
@@ -377,15 +397,25 @@ def layered_summary_lines(
     result_rgb: tuple[int, int, int],
     result_hsb: tuple[int, int, int],
     top_thickness: float,
+    model_kind: str,
 ) -> list[str]:
-    lines = [
-        t(
-            "predictor.summary.path_length",
-            "At {top_thickness:.2f} mm of top glass, the light makes a {path_length:.2f} mm round trip through that layer before it returns from the base.",
-            top_thickness=top_thickness,
-            path_length=top_thickness * 2.0,
-        )
-    ]
+    if model_kind == "opal_reflected_overlay":
+        lines = [
+            t(
+                "predictor.summary.opal_overlay",
+                "At {top_thickness:.2f} mm of opalescent top glass, the result is modeled as reflected surface/scatter color over the reflected base.",
+                top_thickness=top_thickness,
+            )
+        ]
+    else:
+        lines = [
+            t(
+                "predictor.summary.path_length",
+                "At {top_thickness:.2f} mm of top glass, the light makes a {path_length:.2f} mm round trip through that layer before it returns from the base.",
+                top_thickness=top_thickness,
+                path_length=top_thickness * 2.0,
+            )
+        ]
 
     base_quality = []
     brightness_phrase = describe_change(result_hsb[2] - base_hsb[2], t("predictor.summary.brighter", "brighter"), t("predictor.summary.darker", "darker"))
@@ -417,7 +447,7 @@ def layered_summary_lines(
             )
         )
 
-    if result_hsb[2] <= top_single_hsb[2] - 5:
+    if model_kind != "opal_reflected_overlay" and result_hsb[2] <= top_single_hsb[2] - 5:
         lines.append(
             t(
                 "predictor.summary.darker_than_top",
@@ -452,10 +482,11 @@ def layered_summary_lines(
 
 def predicted_rgb_curve_figure(
     base_row_r: pd.Series,
-    top_row_t: pd.Series,
+    top_measurement_row: pd.Series,
     selected_thickness: float,
+    model_kind: str = "transparent_filter",
 ) -> go.Figure:
-    reference_thickness = max(safe_float(top_row_t.get("thickness_mm"), 2.0), 0.01)
+    reference_thickness = max(safe_float(top_measurement_row.get("thickness_mm"), 2.0), 0.01)
     max_thickness = max(8.0, selected_thickness * 4.0, reference_thickness * 4.0)
     thickness_values = np.linspace(0.0, max_thickness, 180)
     figure = go.Figure()
@@ -467,12 +498,19 @@ def predicted_rgb_curve_figure(
     for field in ("r", "g", "b"):
         values = []
         for thickness in thickness_values:
-            double_pass = channel_after_path(
-                safe_int(top_row_t.get(field)),
-                reference_thickness,
-                thickness * 2.0,
-            )
-            values.append(base_channels[field] * (double_pass / 255.0))
+            if model_kind == "opal_reflected_overlay":
+                alpha = opal_scatter_alpha(top_measurement_row, float(thickness))
+                values.append(
+                    (base_channels[field] * (1.0 - alpha))
+                    + (safe_int(top_measurement_row.get(field)) * alpha)
+                )
+            else:
+                double_pass = channel_after_path(
+                    safe_int(top_measurement_row.get(field)),
+                    reference_thickness,
+                    thickness * 2.0,
+                )
+                values.append(base_channels[field] * (double_pass / 255.0))
         figure.add_trace(
             go.Scatter(
                 x=thickness_values,
@@ -499,17 +537,18 @@ def predicted_rgb_curve_figure(
 
 def predicted_hsb_curve_figure(
     base_row_r: pd.Series,
-    top_row_t: pd.Series,
+    top_measurement_row: pd.Series,
     selected_thickness: float,
+    model_kind: str = "transparent_filter",
 ) -> go.Figure:
-    reference_thickness = max(safe_float(top_row_t.get("thickness_mm"), 2.0), 0.01)
+    reference_thickness = max(safe_float(top_measurement_row.get("thickness_mm"), 2.0), 0.01)
     max_thickness = max(8.0, selected_thickness * 4.0, reference_thickness * 4.0)
     thickness_values = np.linspace(0.0, max_thickness, 180)
     brightness_values = []
     saturation_values = []
 
     for thickness in thickness_values:
-        rgb = layered_result_rgb(base_row_r, top_row_t, float(thickness))
+        rgb = layered_result_rgb(base_row_r, top_measurement_row, float(thickness), model_kind)
         _, saturation, brightness = rgb_to_hsb(rgb)
         brightness_values.append(brightness)
         saturation_values.append(saturation)
@@ -567,12 +606,6 @@ base_family_default = family_options.index("Opalescent") if "Opalescent" in fami
 top_family_default = family_options.index("Transparent") if "Transparent" in family_options else 0
 
 st.sidebar.header(t("predictor.sidebar.title", "Layer Setup"))
-base_family = st.sidebar.selectbox(
-    t("predictor.fields.base_family", "Base family"),
-    family_options,
-    index=base_family_default,
-    format_func=lambda value: translate_family_name(None, value),
-)
 top_family = st.sidebar.selectbox(
     t("predictor.fields.top_family", "Top family"),
     family_options,
@@ -580,28 +613,16 @@ top_family = st.sidebar.selectbox(
     format_func=lambda value: translate_family_name(None, value),
 )
 
-base_candidates = filter_catalog_by_family(catalog, base_family)
 top_candidates = filter_catalog_by_family(catalog, top_family)
 
-if base_candidates.empty or top_candidates.empty:
+if top_candidates.empty:
     st.error(t("predictor.messages.no_family_matches", "No glass samples match the current family filters."))
     st.stop()
 
-base_default_id = default_sample_id(base_candidates, ["French Vanilla"])
 top_default_id = default_sample_id(top_candidates, ["Tan Transparent", "Tan"])
-
-base_labels = sample_labels(base_candidates)
 top_labels = sample_labels(top_candidates)
-
-base_index = base_candidates["glass_id"].tolist().index(base_default_id)
 top_index = top_candidates["glass_id"].tolist().index(top_default_id)
 
-base_id = st.sidebar.selectbox(
-    t("predictor.fields.base_glass", "Base glass"),
-    base_candidates["glass_id"].tolist(),
-    index=base_index,
-    format_func=lambda glass_id: base_labels.get(glass_id, glass_id),
-)
 top_id = st.sidebar.selectbox(
     t("predictor.fields.top_glass", "Top glass"),
     top_candidates["glass_id"].tolist(),
@@ -609,10 +630,38 @@ top_id = st.sidebar.selectbox(
     format_func=lambda glass_id: top_labels.get(glass_id, glass_id),
 )
 
+base_family = st.sidebar.selectbox(
+    t("predictor.fields.base_family", "Base family"),
+    family_options,
+    index=base_family_default,
+    format_func=lambda value: translate_family_name(None, value),
+)
+
+base_candidates = filter_catalog_by_family(catalog, base_family)
+
+if base_candidates.empty:
+    st.error(t("predictor.messages.no_family_matches", "No glass samples match the current family filters."))
+    st.stop()
+
+base_default_id = default_sample_id(base_candidates, ["French Vanilla"])
+base_labels = sample_labels(base_candidates)
+base_index = base_candidates["glass_id"].tolist().index(base_default_id)
+
+base_id = st.sidebar.selectbox(
+    t("predictor.fields.base_glass", "Base glass"),
+    base_candidates["glass_id"].tolist(),
+    index=base_index,
+    format_func=lambda glass_id: base_labels.get(glass_id, glass_id),
+)
+
 base_catalog_row = base_candidates[base_candidates["glass_id"] == base_id].iloc[0]
 top_catalog_row = top_candidates[top_candidates["glass_id"] == top_id].iloc[0]
+base_prefix = row_prefix(base_catalog_row)
+top_prefix = row_prefix(top_catalog_row)
+model_kind = "opal_reflected_overlay" if base_prefix == "opal" and top_prefix == "opal" else "transparent_filter"
+top_mode = "R" if model_kind == "opal_reflected_overlay" else "T"
 base_row_r = measurement_row(measurements, base_id, "R")
-top_row_t = measurement_row(measurements, top_id, "T")
+top_measurement_row = measurement_row(measurements, top_id, top_mode)
 
 if base_row_r is None:
     st.error(
@@ -623,17 +672,18 @@ if base_row_r is None:
         )
     )
     st.stop()
-if top_row_t is None:
+if top_measurement_row is None:
     st.error(
         t(
-            "predictor.messages.top_missing_transmitted",
-            "{label} is missing transmitted measurement data.",
+            "predictor.messages.top_missing_measurement",
+            "{label} is missing {mode} measurement data.",
             label=top_labels.get(top_id, top_id),
+            mode=t("shared.mode.reflected", "reflected").lower() if top_mode == "R" else t("shared.mode.transmitted", "transmitted").lower(),
         )
     )
     st.stop()
 
-reference_top_thickness = max(safe_float(top_row_t.get("thickness_mm"), 2.0), 0.01)
+reference_top_thickness = max(safe_float(top_measurement_row.get("thickness_mm"), 2.0), 0.01)
 thickness_max = max(8.0, reference_top_thickness * 4.0)
 top_thickness = st.sidebar.slider(
     t("predictor.fields.top_thickness", "Top thickness (mm)"),
@@ -648,21 +698,25 @@ st.sidebar.caption(
 
 base_rgb = tuple(safe_int(base_row_r.get(field)) for field in ("r", "g", "b"))
 base_hsb = rgb_to_hsb(base_rgb)
-top_single_rgb = modeled_filter_rgb(top_row_t, top_thickness, path_multiplier=1.0)
+top_single_rgb = (
+    tuple(safe_int(top_measurement_row.get(field)) for field in ("r", "g", "b"))
+    if model_kind == "opal_reflected_overlay"
+    else modeled_filter_rgb(top_measurement_row, top_thickness, path_multiplier=1.0)
+)
 top_single_hsb = rgb_to_hsb(top_single_rgb)
-result_rgb = layered_result_rgb(base_row_r, top_row_t, top_thickness)
+result_rgb = layered_result_rgb(base_row_r, top_measurement_row, top_thickness, model_kind)
 result_hsb = rgb_to_hsb(result_rgb)
 
-base_prefix = row_prefix(base_catalog_row)
-top_prefix = row_prefix(top_catalog_row)
 base_icon = first_existing_icon(base_id, base_prefix, "R")
-top_icon = first_existing_icon(top_id, top_prefix, "T")
+top_icon = first_existing_icon(top_id, top_prefix, top_mode)
 
 st.title(t("predictor.title", "Layered Glass Predictor"))
 st.caption(
     t(
-        "predictor.caption.intro",
-        "First-pass reflected stacking model: base reflected RGB multiplied by the top glass transmission over a double pass through the selected thickness.",
+        "predictor.caption.intro_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.caption.intro",
+        "Opalescent-over-opalescent model: base reflected RGB blended toward the top glass reflected scan as thickness increases."
+        if model_kind == "opal_reflected_overlay"
+        else "First-pass reflected stacking model: base reflected RGB multiplied by the top glass transmission over a double pass through the selected thickness.",
     )
 )
 
@@ -676,6 +730,7 @@ summary_lines = layered_summary_lines(
     result_rgb,
     result_hsb,
     top_thickness,
+    model_kind,
 )
 
 st.markdown(
@@ -713,18 +768,38 @@ with card_cols[0]:
 
 with card_cols[1]:
     st.markdown(f"### {top_labels.get(top_id, top_id)}")
-    st.caption(t("predictor.cards.top_caption", "Top glass acting as the colour filter."))
+    st.caption(
+        t(
+            "predictor.cards.top_caption_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_caption",
+            "Top opalescent glass contributing reflected surface/scatter colour."
+            if model_kind == "opal_reflected_overlay"
+            else "Top glass acting as the colour filter.",
+        )
+    )
     if top_icon is not None:
         st.image(str(top_icon), width="content")
     elif MISSING_ICON.exists():
         st.image(str(MISSING_ICON), width="content")
     st.markdown(
         swatch_markup(
-            t("predictor.sections.top", "Top filter"),
-            t("predictor.cards.top_subtitle", "Modeled transmission at {thickness:.2f} mm", thickness=top_thickness),
+            t(
+                "predictor.sections.top_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.sections.top",
+                "Top reflected source" if model_kind == "opal_reflected_overlay" else "Top filter",
+            ),
+            t(
+                "predictor.cards.top_subtitle_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_subtitle",
+                "Measured reflected scan" if model_kind == "opal_reflected_overlay" else "Modeled transmission at {thickness:.2f} mm",
+                thickness=top_thickness,
+            ),
             top_single_rgb,
             top_single_hsb,
-            t("predictor.cards.top_note", "Reference transmitted scan thickness: {thickness:.2f} mm.", thickness=reference_top_thickness),
+            t(
+                "predictor.cards.top_note_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.top_note",
+                "Reference reflected scan thickness: {thickness:.2f} mm."
+                if model_kind == "opal_reflected_overlay"
+                else "Reference transmitted scan thickness: {thickness:.2f} mm.",
+                thickness=reference_top_thickness,
+            ),
         ),
         unsafe_allow_html=True,
     )
@@ -735,7 +810,13 @@ with card_cols[2]:
     st.markdown(
         swatch_markup(
             t("predictor.cards.result_title", "Predicted reflected result"),
-            t("predictor.cards.result_subtitle", "Round trip through {thickness:.2f} mm of top glass", thickness=top_thickness * 2.0),
+            t(
+                "predictor.cards.result_subtitle_opal_overlay" if model_kind == "opal_reflected_overlay" else "predictor.cards.result_subtitle",
+                "Reflected overlay at {thickness:.2f} mm of top glass"
+                if model_kind == "opal_reflected_overlay"
+                else "Round trip through {thickness:.2f} mm of top glass",
+                thickness=top_thickness if model_kind == "opal_reflected_overlay" else top_thickness * 2.0,
+            ),
             result_rgb,
             result_hsb,
             t("predictor.cards.result_note", "This is the first-pass estimate of what returns to the eye from the layered stack."),
@@ -746,12 +827,12 @@ with card_cols[2]:
 chart_left, chart_right = st.columns(2, gap="large")
 with chart_left:
     st.plotly_chart(
-        predicted_rgb_curve_figure(base_row_r, top_row_t, top_thickness),
+        predicted_rgb_curve_figure(base_row_r, top_measurement_row, top_thickness, model_kind),
         config={"displaylogo": False},
     )
 with chart_right:
     st.plotly_chart(
-        predicted_hsb_curve_figure(base_row_r, top_row_t, top_thickness),
+        predicted_hsb_curve_figure(base_row_r, top_measurement_row, top_thickness, model_kind),
         config={"displaylogo": False},
     )
 
@@ -759,8 +840,12 @@ st.markdown(f"### {t('predictor.sections.model_notes', 'Model Notes')}")
 st.markdown(
     "\n".join(
         [
-            f"- {t('predictor.notes.filter_model', 'The top glass is treated as a transmitted filter using a Beer-Lambert-style attenuation model.')}",
-            f"- {t('predictor.notes.double_pass', 'Reflected stacking uses a double pass through the top layer: once going down and once coming back.')}",
+            f"- {t('predictor.notes.opal_overlay_model', 'When both glasses are opalescent, the top glass uses reflected data and is modeled as a scattering reflected overlay.')}"
+            if model_kind == "opal_reflected_overlay"
+            else f"- {t('predictor.notes.filter_model', 'The top glass is treated as a transmitted filter using a Beer-Lambert-style attenuation model.')}",
+            f"- {t('predictor.notes.opal_overlay_thickness', 'For opalescent overlays, increasing top thickness moves the predicted result toward the top glass reflected color.')}"
+            if model_kind == "opal_reflected_overlay"
+            else f"- {t('predictor.notes.double_pass', 'Reflected stacking uses a double pass through the top layer: once going down and once coming back.')}",
             f"- {t('predictor.notes.thickness_datum', 'The glass library uses the measured 2 mm sample as its datum. Thickness changes in this predictor are modeled extrapolations from that reference, so moving away from the datum will skew the result rather than replace the measured sample data.')}",
             f"- {t('predictor.notes.lighting_variation', 'The library imagery is treated as a broad daylight-balanced reference. Real glass can read warmer, cooler, or shifted under artificial light sources, especially shift-tint glass under fluorescent or uneven-spectrum lighting.')}",
             f"- {t('predictor.notes.first_pass', 'This is a first-pass predictor. It does not yet model interface losses, surface texture scattering, or kiln-formed microstructure.')}",

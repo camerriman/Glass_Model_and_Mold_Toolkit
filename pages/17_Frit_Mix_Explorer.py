@@ -809,7 +809,7 @@ st.sidebar.header(t("frit.sidebar.mix_setup", "Mix Setup"))
 mode = st.sidebar.radio(
     t("frit.fields.reference_measurements", "Reference measurements"),
     ["T", "R"],
-    index=0,
+    index=1,
     format_func=translate_mode_name,
 )
 
