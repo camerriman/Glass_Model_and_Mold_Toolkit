@@ -4555,6 +4555,8 @@ NAVIGATION_SECTIONS = (
         "Glass Library",
         (
             ("pages/6_Glass_Library.py", "home.nav.glass_library", "Glass Library"),
+            ("pages/12_Add_Glass_Sample.py", "home.nav.add_glass_sample", "Add Glass Sample"),
+            ("pages/13_Edit_Glass_Sample.py", "home.nav.edit_glass_sample", "Edit Glass Sample"),
             ("pages/7_Glass_Color_Wheel.py", "home.nav.glass_color_wheel", "Glass Color Wheel"),
             ("pages/18_Glass_Depth_Side_View.py", "home.nav.glass_depth_side_view", "Glass Depth Side View"),
             ("pages/15_Glass_Compare.py", "home.nav.glass_compare", "Glass Compare"),

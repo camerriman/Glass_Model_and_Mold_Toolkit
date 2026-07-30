@@ -1,4 +1,4 @@
-# pages/7_Edit_Glass_Sample.py
+# pages/13_Edit_Glass_Sample.py
 import sqlite3
 from pathlib import Path
 from PIL import Image

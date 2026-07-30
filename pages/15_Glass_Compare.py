@@ -446,8 +446,15 @@ def switch_to_page(target: str) -> bool:
     return False
 
 
+def db_cache_token() -> tuple[int, int]:
+    if not DB_PATH.exists():
+        return (0, 0)
+    stat = DB_PATH.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 @st.cache_data
-def load_catalog() -> pd.DataFrame:
+def load_catalog(_db_token: tuple[int, int]) -> pd.DataFrame:
     if not DB_PATH.exists():
         st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
@@ -483,14 +490,14 @@ def load_catalog() -> pd.DataFrame:
 
 
 @st.cache_data
-def load_measurements() -> pd.DataFrame:
+def load_measurements(_db_token: tuple[int, int]) -> pd.DataFrame:
     if not DB_PATH.exists():
         st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
 
     with sqlite3.connect(DB_PATH) as con:
         try:
-            return pd.read_sql_query(
+            measurements = pd.read_sql_query(
                 """
                 SELECT
                     cat_id AS glass_id,
@@ -507,6 +514,9 @@ def load_measurements() -> pd.DataFrame:
                 """,
                 con,
             )
+            for column in ["r", "g", "b", "h", "s", "v", "thickness_mm"]:
+                measurements[column] = pd.to_numeric(measurements[column], errors="coerce")
+            return measurements
         except Exception as exc:
             st.error(t("library.errors.measurement_load", "Failed to load measurement data: {error}", error=exc))
             st.stop()
@@ -1189,8 +1199,9 @@ def render_differences(
                 else:
                     st.caption(t("compare.messages.no_transmitted_overlay", "No transmitted overlay data available."))
 
-catalog = load_catalog().copy()
-measurements = load_measurements().copy()
+db_token = db_cache_token()
+catalog = load_catalog(db_token).copy()
+measurements = load_measurements(db_token).copy()
 catalog["glass_id"] = catalog["glass_id"].astype(str)
 catalog["glass_family"] = catalog["glass_family"].astype(str)
 catalog["family_name"] = catalog["family_name"].astype(str)

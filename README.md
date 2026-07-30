@@ -63,8 +63,7 @@ glass_model_and_mold_toolkit/
 │   ├── 1_Cameo_Model_Generator.py
 │   ├── 2_Model_Tiles_Panels.py
 │   ├── ...
-│   └── 23_Kiln_Forming_Notes.py
-├── private_pages/
+│   └── 24_STL_Casting_Mold_Worksheet.py
 ├── utilities/
 │   └── kiln_notes/
 ├── data/
@@ -122,9 +121,7 @@ The glass library depends on local SQLite data and image assets:
 
 Mold, fabrication, and kiln note pages can import and export setup files locally, without storing user records on the server.
 
-The bundled catalog database and image folders provide the glass library data, thumbnails, full sample images, and placeholder assets used throughout the reference pages.
-
-`private_pages/` contains local/admin-only glass sample editor tools. These files are intentionally kept outside Streamlit's `pages/` directory so they are not exposed in the public multipage app.
+The bundled catalog database and image folders provide the glass library data, thumbnails, full sample images, and placeholder assets used throughout the reference pages. Glass sample editor tools are included in the public Streamlit `pages/` directory.
 
 ## Glass Library Notes
 
@@ -206,3 +203,30 @@ FDM is generally useful for larger structural tooling, support plugs, frames, an
 ## Catalog Maintenance
 
 Test glass catalog and image updates locally before publishing hosted data.
+
+Tint catalog rows already use family code `3` and image prefix `tint`. To import a batch of tint sample readings, fill `data/tint_samples_template.csv` and run:
+
+```bash
+python utilities/import_tint_samples.py data/tint_samples_template.csv --dry-run
+python utilities/import_tint_samples.py data/tint_samples_template.csv
+```
+
+The importer upserts tint catalog rows, writes transmitted/reflected measurements when RGB values are present, derives HSV values when they are left blank, and saves images as `images/full/tint_T_######.tiff`, `images/icons/tint_T_######.jpg`, `images/full/tint_R_######.tiff`, and `images/icons/tint_R_######.jpg`.
+
+For a simple two-column tint thickness CSV, with `product_id, thickness_mm`, run:
+
+```bash
+python utilities/import_tint_thickness.py /path/to/tint-thickness.csv --dry-run
+python utilities/import_tint_thickness.py /path/to/tint-thickness.csv
+```
+
+The thickness importer updates both transmitted and reflected measurement rows, preserving existing color measurements. If a tint product has no measurement row yet, it creates a thickness-only row with blank RGB/HSV values.
+
+To measure tint RGB/HSV values from the centered 10% of each full TIFF scan, run:
+
+```bash
+python utilities/measure_tint_images.py --dry-run
+python utilities/measure_tint_images.py
+```
+
+The measurement script samples `images/full/tint_T_######.tiff` and `images/full/tint_R_######.tiff`, writes averaged RGB plus HSB-style HSV values into `glass_measurements`, and saves a review CSV at `data/tint_image_measurements.csv`.

@@ -102,6 +102,10 @@ def measurement_dict(row: pd.Series) -> dict[str, int]:
     }
 
 
+def has_rgb_measurement(row: pd.Series) -> bool:
+    return all(optional_float(row.get(channel)) is not None for channel in ("R", "G", "B"))
+
+
 def gradient_css(meas: dict[str, int], thickness_mm: float, max_depth: float, stops: int = 32) -> str:
     parts: list[str] = []
     for idx in range(stops):
@@ -252,6 +256,8 @@ with st.sidebar:
 
 
 mode_rows = measurements[measurements["mode"].astype(str).str.upper() == mode].copy()
+if not mode_rows.empty:
+    mode_rows = mode_rows[mode_rows.apply(has_rgb_measurement, axis=1)].copy()
 merged = catalog.merge(mode_rows, on="cat_id", how="inner")
 if selected_family != "all":
     merged = merged[merged["glass_family"].astype(str) == selected_family]

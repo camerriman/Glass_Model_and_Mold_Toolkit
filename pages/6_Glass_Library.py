@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import html
 import json
+import mimetypes
 import re
 import sqlite3
 from pathlib import Path
@@ -139,6 +141,23 @@ def first_existing_icon(cat_id: str, prefix: str, preferred_mode: str) -> Path |
         if candidate.exists():
             return candidate
     return None
+
+
+def image_data_uri(path: Path) -> str:
+    mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def preview_image_markup(path: Path | None, alt: str) -> str:
+    if path is None:
+        return '<div class="library-preview-slot"></div>'
+    src = image_data_uri(path)
+    return (
+        '<div class="library-preview-slot">'
+        f'<img src="{src}" alt="{html.escape(alt, quote=True)}" loading="lazy">'
+        '</div>'
+    )
 
 
 def current_detail_target() -> str | None:
@@ -629,6 +648,28 @@ st.markdown(
         border-color: rgba(49, 51, 63, 0.45);
         color: #31333f !important;
       }
+      .library-preview-slot {
+        align-items: center;
+        background: #eeeeee;
+        border-radius: 0.5rem;
+        display: flex;
+        flex: 0 0 128px;
+        height: 128px !important;
+        justify-content: center;
+        margin-bottom: 0.75rem;
+        overflow: hidden;
+        width: 128px !important;
+      }
+      .library-preview-slot img {
+        display: block !important;
+        height: 128px !important;
+        max-height: none !important;
+        max-width: none !important;
+        min-height: 128px !important;
+        min-width: 128px !important;
+        object-fit: cover !important;
+        width: 128px !important;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -736,10 +777,12 @@ for start in range(0, len(filtered), cols_per_row):
             with st.container(border=True):
                 item_prefix = row_prefix(pd.Series(row._asdict()))
                 icon = first_existing_icon(glass_id, item_prefix, preview_mode)
-                if icon is not None:
-                    st.image(str(icon), width="content")
-                elif MISSING_ICON.exists():
-                    st.image(str(MISSING_ICON), width="content")
+                if icon is None and MISSING_ICON.exists():
+                    icon = MISSING_ICON
+                st.markdown(
+                    preview_image_markup(icon, f"{glass_id} {(row.color_name or '').strip()}"),
+                    unsafe_allow_html=True,
+                )
 
                 st.caption((row.color_name or "").strip() or t("library.messages.unnamed_sample", "Unnamed sample"))
                 st.markdown(
