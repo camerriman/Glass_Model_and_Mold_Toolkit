@@ -670,7 +670,40 @@ st.markdown(
         object-fit: cover !important;
         width: 128px !important;
       }
+      .library-intro-text {
+        color: #6b7280;
+        font-size: 1rem;
+        line-height: 1.55;
+        margin: 0.2rem 0 1.05rem 0;
+        max-width: 1180px;
+      }
+      .st-key-library_compare_bar {
+        background: rgba(255, 255, 255, 0.96);
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 6px rgba(49, 51, 63, 0.08);
+        margin: 0.65rem 0 1rem 0;
+        padding: 0.25rem 0.45rem 0.1rem 0.45rem;
+      }
+      [data-testid="stLayoutWrapper"]:has(.st-key-library_compare_bar) {
+        position: sticky;
+        top: 4.25rem;
+        z-index: 999;
+      }
+      .st-key-library_compare_bar [data-testid="stCaptionContainer"] {
+        padding-top: 0;
+      }
     </style>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f"""
+    <div class="library-intro-text">
+      {html.escape(t(
+        "library.text.imaging_basis",
+        "The Glass Library uses carefully controlled digital imaging rather than laboratory spectrophotometry to characterize each glass sample. This approach was chosen to keep the project accessible while acknowledging the practical realities of working with handmade glass, where thickness, surface texture, bubbles, and even color can vary slightly from sheet to sheet and production run to production run. The resulting images and color measurements provide a consistent basis for comparing samples within the library, but they should be understood as approximations of visual appearance rather than precise spectral measurements. The library is intended as a practical design and exploration tool that helps artists navigate color relationships and predict trends with changing thickness, while recognizing that the appearance of any finished piece will ultimately depend on the unique characteristics of the individual glass and the conditions under which it is viewed.",
+      ))}
+    </div>
     """,
     unsafe_allow_html=True,
 )
@@ -696,44 +729,45 @@ if compare_ids != st.session_state.get("compare_glass_ids", []):
     st.session_state["compare_glass_ids"] = compare_ids
 
 compare_target = current_compare_target()
-compare_col, clear_col, note_col = st.columns([0.18, 0.16, 0.66], gap="small")
-with compare_col:
-    if st.button(
-        t("library.actions.compare_selected", "Compare selected"),
-        key="library_compare_selected",
-        width="content",
-        disabled=len(compare_ids) < 2 or compare_target is None,
-    ):
-        if compare_target and switch_to_page(compare_target):
-            st.stop()
-        st.warning(t("library.messages.compare_navigation_failed", "Could not navigate to the compare page."))
-with clear_col:
-    if st.button(
-        t("library.actions.clear_compare", "Clear compare"),
-        key="library_clear_compare",
-        width="content",
-        disabled=not compare_ids,
-    ):
-        st.session_state["compare_glass_ids"] = []
-        st.rerun()
-with note_col:
-    if compare_ids:
-        st.caption(
-            t(
-                "library.messages.compare_set",
-                "Compare set: {items}",
-                items=" · ".join(html.escape(glass_id) for glass_id in compare_ids),
+with st.container(border=True, key="library_compare_bar"):
+    compare_col, clear_col, note_col = st.columns([0.18, 0.16, 0.66], gap="small")
+    with compare_col:
+        if st.button(
+            t("library.actions.compare_selected", "Compare selected"),
+            key="library_compare_selected",
+            width="content",
+            disabled=len(compare_ids) < 2 or compare_target is None,
+        ):
+            if compare_target and switch_to_page(compare_target):
+                st.stop()
+            st.warning(t("library.messages.compare_navigation_failed", "Could not navigate to the compare page."))
+    with clear_col:
+        if st.button(
+            t("library.actions.clear_compare", "Clear compare"),
+            key="library_clear_compare",
+            width="content",
+            disabled=not compare_ids,
+        ):
+            st.session_state["compare_glass_ids"] = []
+            st.rerun()
+    with note_col:
+        if compare_ids:
+            st.caption(
+                t(
+                    "library.messages.compare_set",
+                    "Compare set: {items}",
+                    items=" · ".join(html.escape(glass_id) for glass_id in compare_ids),
+                )
             )
-        )
-    else:
-        st.caption(t("library.messages.compare_hint", "Select 2-4 samples to compare on a dedicated page."))
+        else:
+            st.caption(t("library.messages.compare_hint", "Select 2-4 samples to compare on a dedicated page."))
 
-st.caption(
-    t(
-        "library.messages.detail_page_hint",
-        "Click a catalog ID to open its full datasheet on a dedicated detail page.",
+    st.caption(
+        t(
+            "library.messages.detail_page_hint",
+            "Click a catalog ID to open its full datasheet on a dedicated detail page.",
+        )
     )
-)
 
 if filtered.empty:
     st.info(t("library.messages.empty", "No glass samples match the current filters."))
