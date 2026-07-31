@@ -154,6 +154,7 @@ def bar_markup(
     max_depth: float,
     black_point: float | None,
     show_depth_scale: bool,
+    return_family: str,
 ) -> str:
     raw_glass_id = str(row["cat_id"])
     glass_id = html.escape(display_glass_id(raw_glass_id))
@@ -190,6 +191,7 @@ def bar_markup(
         f"/Glass_Detail?cat_id={quote(raw_glass_id)}"
         f"&return_page={quote('pages/18_Glass_Depth_Side_View.py')}"
         f"&return_label={quote(t('depth_view.title', 'Glass Depth Side View'))}"
+        f"&return_family={quote(str(return_family), safe='')}"
     )
     return f"""
     <a class="depth-card-link" href="{html.escape(detail_href)}" title="{title}">
@@ -227,10 +229,17 @@ st.caption(
 with st.sidebar:
     st.header(t("depth_view.sidebar.title", "Depth View"))
     family_codes = ["all"] + [str(value) for value in families["code"].tolist()]
+    query_return_family = st.query_params.get("return_family")
+    if query_return_family in family_codes:
+        st.session_state["depth_view_family"] = str(query_return_family)
+        st.query_params.clear()
+        st.rerun()
+    if st.session_state.get("depth_view_family") not in family_codes:
+        st.session_state["depth_view_family"] = "all"
     selected_family = st.selectbox(
         t("depth_view.fields.family", "Family"),
         family_codes,
-        index=0,
+        key="depth_view_family",
         format_func=family_display,
     )
     mode = st.radio(
@@ -306,6 +315,7 @@ cards = "\n".join(
         max_depth,
         row.get("_black_point"),
         show_depth_scale,
+        selected_family,
     )
     for _, row in visible.iterrows()
 )

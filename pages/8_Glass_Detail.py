@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import colorsys
 import html
 import io
 import math
@@ -208,6 +209,9 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     border-collapse: collapse;
     width: 100%;
     font-size: 0.86rem;
+}
+.glass-depth-table + .glass-depth-table {
+    margin-top: 0.85rem;
 }
 .glass-depth-table th {
     background: #4f4f4f;
@@ -560,12 +564,15 @@ if query_return_family:
 
 
 def detail_back_url() -> str | None:
-    if not query_return_family:
+    return_family = st.session_state.get("detail_return_family") or query_return_family
+    if not return_family:
         return None
     target = detail_return_page or query_return_page
-    if target not in {"pages/6_Glass_Library.py", "6_Glass_Library.py", "Glass_Library"}:
-        return None
-    return f"Glass_Library?return_family={quote(str(query_return_family), safe='')}"
+    if target in {"pages/6_Glass_Library.py", "6_Glass_Library.py", "Glass_Library"}:
+        return f"Glass_Library?return_family={quote(str(return_family), safe='')}"
+    if target in {"pages/18_Glass_Depth_Side_View.py", "18_Glass_Depth_Side_View.py", "Glass_Depth_Side_View"}:
+        return f"Glass_Depth_Side_View?return_family={quote(str(return_family), safe='')}"
+    return None
 
 
 def detail_back_link_markup(label: str, url: str) -> str:
@@ -1008,6 +1015,11 @@ def depth_gradient_css(measurement: dict, ref_thickness: float, max_depth: float
     return "linear-gradient(to bottom, " + ", ".join(stops) + ")"
 
 
+def rgb_to_hsvb(r: int, g: int, b: int) -> tuple[int, int, int]:
+    h_float, s_float, v_float = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+    return round(h_float * 360), round(s_float * 100), round(v_float * 100)
+
+
 def depth_samples(measurement: dict, ref_thickness: float, display_depth: float, black_point: float | None) -> list[float]:
     values = [0.0, ref_thickness, black_point]
     deduped: list[float] = []
@@ -1037,17 +1049,31 @@ def depth_panel_html(title: str, measurement: dict | None) -> str:
         for tick in depth_ticks(display_depth)
     )
 
-    rows = []
+    rgb_rows = []
+    hsv_rows = []
     for depth in depth_samples(measurement, thickness, display_depth, black_point):
         r, g, b = rgb_at_depth(measurement, thickness, depth)
-        rows.append(
+        h, s, vb = rgb_to_hsvb(r, g, b)
+        swatch = f"rgb({r},{g},{b})"
+        rgb_rows.append(
             f"""
             <tr>
               <td>{depth:.1f} mm</td>
               <td>{r}</td>
               <td>{g}</td>
               <td>{b}</td>
-              <td><div class="glass-depth-swatch" style="background:rgb({r},{g},{b});"></div></td>
+              <td><div class="glass-depth-swatch" style="background:{swatch};"></div></td>
+            </tr>
+            """
+        )
+        hsv_rows.append(
+            f"""
+            <tr>
+              <td>{depth:.1f} mm</td>
+              <td>{h}</td>
+              <td>{s}</td>
+              <td>{vb}</td>
+              <td><div class="glass-depth-swatch" style="background:{swatch};"></div></td>
             </tr>
             """
         )
@@ -1067,12 +1093,20 @@ def depth_panel_html(title: str, measurement: dict | None) -> str:
             <span class="glass-depth-label" style="top:{ref_top:.2f}%;">ref {thickness:.1f} mm</span>
           </div>
         </div>
-        <table class="glass-depth-table">
-          <thead>
-            <tr><th>Depth</th><th>R</th><th>G</th><th>B</th><th>Color</th></tr>
-          </thead>
-          <tbody>{''.join(rows)}</tbody>
-        </table>
+        <div>
+          <table class="glass-depth-table">
+            <thead>
+              <tr><th>Depth</th><th>R</th><th>G</th><th>B</th><th>Color</th></tr>
+            </thead>
+            <tbody>{''.join(rgb_rows)}</tbody>
+          </table>
+          <table class="glass-depth-table">
+            <thead>
+              <tr><th>Depth</th><th>H</th><th>S</th><th>V/B</th><th>Color</th></tr>
+            </thead>
+            <tbody>{''.join(hsv_rows)}</tbody>
+          </table>
+        </div>
       </div>
     </div>
     """
