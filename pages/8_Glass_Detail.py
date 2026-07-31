@@ -532,6 +532,7 @@ def transmittance(rgb_value: float) -> str:
 
 
 BLACK_POINT_THRESHOLD = 1.0
+DETAIL_DEPTH_DISPLAY_MM = 12.0
 
 
 def black_point_label(measurement: dict | None) -> str:
@@ -1007,8 +1008,8 @@ def depth_gradient_css(measurement: dict, ref_thickness: float, max_depth: float
     return "linear-gradient(to bottom, " + ", ".join(stops) + ")"
 
 
-def depth_samples(measurement: dict, ref_thickness: float, max_depth: float, black_point: float | None) -> list[float]:
-    values = [0.0, ref_thickness, black_point if black_point is not None else max_depth]
+def depth_samples(measurement: dict, ref_thickness: float, display_depth: float, black_point: float | None) -> list[float]:
+    values = [0.0, ref_thickness, black_point]
     deduped: list[float] = []
     for value in sorted(v for v in values if v is not None):
         if not deduped or abs(value - deduped[-1]) > 0.05:
@@ -1020,24 +1021,24 @@ def depth_panel_html(title: str, measurement: dict | None) -> str:
     if not measurement:
         return ""
     black_point = calculate_black_point_mm(measurement, thickness, threshold=BLACK_POINT_THRESHOLD)
-    max_depth = max(thickness * 4.0, (black_point or 0.0) * 1.15, thickness + 1.0)
+    display_depth = DETAIL_DEPTH_DISPLAY_MM
     black_label = t("detail.black_point.not_reached", "Not reached") if black_point is None else f"{black_point:.1f} mm"
-    gradient = depth_gradient_css(measurement, thickness, max_depth)
-    ref_top = depth_pct(thickness, max_depth)
+    gradient = depth_gradient_css(measurement, thickness, display_depth)
+    ref_top = depth_pct(thickness, display_depth)
     black_marker = ""
-    if black_point is not None and black_point <= max_depth:
-        black_top = depth_pct(black_point, max_depth)
+    if black_point is not None and black_point <= display_depth:
+        black_top = depth_pct(black_point, display_depth)
         black_marker = f"""
           <span class="glass-depth-black" style="top:{black_top:.2f}%;"></span>
           <span class="glass-depth-label is-black" style="top:{black_top:.2f}%;">black {html.escape(black_label)}</span>
         """
     ticks = "".join(
-        f'<span class="glass-depth-tick" style="top:{depth_pct(tick, max_depth):.2f}%;"><span>{tick:g} mm</span></span>'
-        for tick in depth_ticks(max_depth)
+        f'<span class="glass-depth-tick" style="top:{depth_pct(tick, display_depth):.2f}%;"><span>{tick:g} mm</span></span>'
+        for tick in depth_ticks(display_depth)
     )
 
     rows = []
-    for depth in depth_samples(measurement, thickness, max_depth, black_point):
+    for depth in depth_samples(measurement, thickness, display_depth, black_point):
         r, g, b = rgb_at_depth(measurement, thickness, depth)
         rows.append(
             f"""

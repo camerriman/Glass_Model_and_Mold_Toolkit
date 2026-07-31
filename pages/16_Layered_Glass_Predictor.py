@@ -842,7 +842,7 @@ st.markdown(
             f"- {t('predictor.notes.opal_overlay_thickness', 'For opalescent overlays, increasing top thickness moves the predicted result toward the top glass reflected color.')}"
             if model_kind == "opal_reflected_overlay"
             else f"- {t('predictor.notes.double_pass', 'Reflected stacking uses a double pass through the top layer: once going down and once coming back.')}",
-            f"- {t('predictor.notes.thickness_datum', 'The glass library uses the measured 2 mm sample as its datum. Thickness changes in this predictor are modeled extrapolations from that reference, so moving away from the datum will skew the result rather than replace the measured sample data.')}",
+            f"- {t('predictor.notes.thickness_datum', 'The glass library uses each sample at its recorded thickness as its measured reference. Thickness changes in this predictor are modeled extrapolations from that reference, so moving away from the recorded thickness will skew the result rather than replace the measured sample data.')}",
             f"- {t('predictor.notes.lighting_variation', 'The library imagery is treated as a broad daylight-balanced reference. Real glass can read warmer, cooler, or shifted under artificial light sources, especially shift-tint glass under fluorescent or uneven-spectrum lighting.')}",
             f"- {t('predictor.notes.first_pass', 'This is a first-pass predictor. It does not yet model interface losses, surface texture scattering, or kiln-formed microstructure.')}",
         ]

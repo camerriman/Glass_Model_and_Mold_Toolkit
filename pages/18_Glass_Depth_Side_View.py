@@ -220,7 +220,7 @@ st.caption(
 st.caption(
     t(
         "library.notes.datum",
-        "Library colors are anchored to the measured 2 mm sample datum under broad daylight-balanced illumination. Thickness changes, lighting changes, and batch variation can shift the visible read away from this reference.",
+        "Library colors are based on measurements taken from each physical sample at its recorded thickness under broad daylight-balanced illumination. Changes in thickness, lighting, and batch variation can shift the visible read away from this reference.",
     )
 )
 
