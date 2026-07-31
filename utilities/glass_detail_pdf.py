@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import colorsys
 import io
 import math
 import re
@@ -20,6 +21,7 @@ PANEL_BG = (250, 250, 250)
 SECTION_BG = (245, 245, 245)
 MUTED = (90, 90, 90)
 SWATCH_BORDER = (170, 170, 170)
+DETAIL_DEPTH_DISPLAY_MM = 12.0
 
 ELEMENT_COLOURS = {
     "Selenium": "#e8a020",
@@ -283,7 +285,7 @@ def _build_glass_depth_pages(
     pages: list[Image.Image] = []
     for title, meas in panels:
         black_point = calculate_black_point_mm(meas, thickness_mm, threshold=threshold)
-        max_depth = max(thickness_mm * 4.0, (black_point or 0.0) * 1.15, thickness_mm + 1.0)
+        max_depth = DETAIL_DEPTH_DISPLAY_MM
         needed = 590
         if y + needed > PAGE_HEIGHT - MARGIN:
             pages.append(page)
@@ -802,8 +804,6 @@ def _draw_depth_panel(
         py0 = bar_y + int(idx * bar_h / steps)
         py1 = bar_y + int((idx + 1) * bar_h / steps) + 1
         draw.rectangle((bar_x, py0, bar_x + bar_w, py1), fill=colour)
-    footer_h = 42
-    draw.rectangle((bar_x, bar_y + bar_h - footer_h, bar_x + bar_w, bar_y + bar_h), fill=(20, 20, 20))
     draw.rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), outline=SWATCH_BORDER, width=2)
 
     axis_x = bar_x + bar_w + 28
@@ -881,8 +881,6 @@ def _draw_depth_samples_table(
     sample_depths = [0.0, ref_thickness]
     if black_point is not None:
         sample_depths.append(black_point)
-    else:
-        sample_depths.append(max_depth)
     deduped: list[float] = []
     for depth in sorted(sample_depths):
         if not deduped or abs(depth - deduped[-1]) > 0.05:
@@ -890,7 +888,57 @@ def _draw_depth_samples_table(
 
     col_widths = [150, 160, 160, 160, width - 630]
     row_h = 38
-    headers = ["Depth", "R", "G", "B", "Color"]
+    _draw_depth_value_table(
+        draw,
+        x,
+        y,
+        col_widths,
+        row_h,
+        ["Depth", "R", "G", "B", "Color"],
+        deduped,
+        meas,
+        ref_thickness,
+        body_font,
+        small_font,
+        mode="rgb",
+    )
+    hsv_y = y + (row_h * (len(deduped) + 1)) + 18
+    _draw_depth_value_table(
+        draw,
+        x,
+        hsv_y,
+        col_widths,
+        row_h,
+        ["Depth", "H", "S", "V/B", "Color"],
+        deduped,
+        meas,
+        ref_thickness,
+        body_font,
+        small_font,
+        mode="hsv",
+    )
+
+
+def _rgb_to_hsvb(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+    h_float, s_float, v_float = colorsys.rgb_to_hsv(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
+    return round(h_float * 360), round(s_float * 100), round(v_float * 100)
+
+
+def _draw_depth_value_table(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    col_widths: list[int],
+    row_h: int,
+    headers: list[str],
+    depths: list[float],
+    meas: dict,
+    ref_thickness: float,
+    body_font: ImageFont.ImageFont,
+    small_font: ImageFont.ImageFont,
+    *,
+    mode: str,
+) -> None:
     cursor_x = x
     for idx, header in enumerate(headers):
         draw.rectangle((cursor_x, y, cursor_x + col_widths[idx], y + row_h), fill=(78, 78, 78), outline=GRID, width=1)
@@ -906,10 +954,14 @@ def _draw_depth_samples_table(
         cursor_x += col_widths[idx]
 
     row_y = y + row_h
-    for row_idx, depth in enumerate(deduped):
+    for row_idx, depth in enumerate(depths):
         fill = WHITE if row_idx % 2 else SECTION_BG
         rgb = rgb_at_depth(meas, ref_thickness, depth)
-        values = [f"{depth:.1f} mm", str(rgb[0]), str(rgb[1]), str(rgb[2]), ""]
+        if mode == "hsv":
+            h, s, vb = _rgb_to_hsvb(rgb)
+            values = [f"{depth:.1f} mm", str(h), str(s), str(vb), ""]
+        else:
+            values = [f"{depth:.1f} mm", str(rgb[0]), str(rgb[1]), str(rgb[2]), ""]
         cursor_x = x
         for idx, value in enumerate(values):
             draw.rectangle((cursor_x, row_y, cursor_x + col_widths[idx], row_y + row_h), fill=fill, outline=GRID, width=1)
