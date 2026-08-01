@@ -256,6 +256,31 @@ def comparison_delta_chips(
     return chips
 
 
+def render_delta_legend() -> None:
+    st.caption(
+        t(
+            "compare.legend.inline_example",
+            "Example: R B +4 means the compared sample is 4 brightness points higher in reflected light; T B -25 means it is 25 brightness points darker in transmitted light.",
+        )
+    )
+    with st.expander(t("compare.legend.title", "How to read quick deltas"), expanded=False):
+        st.markdown(
+            "\n".join(
+                [
+                    f"- {t('compare.legend.r_t', '**R** = reflected light; **T** = transmitted light.')}",
+                    f"- {t('compare.legend.h_s_b', '**H** = hue angle in degrees; **S** = saturation/intensity; **B** = brightness/value.')}",
+                    f"- {t('compare.legend.delta_sign', 'The number is the compared sample minus the reference sample. Positive values are higher than the reference; negative values are lower.')}",
+                    f"- {t('compare.legend.example_rb', '**R B +4** = reflected brightness is 4 points higher than the reference.')}",
+                    f"- {t('compare.legend.example_tb', '**T B -25** = transmitted brightness is 25 points lower, so it reads darker than the reference.')}",
+                    f"- {t('compare.legend.example_hue', '**T H +10°** = transmitted hue is shifted 10 degrees around the color wheel from the reference.')}",
+                    f"- {t('compare.legend.badge_colours', 'Green badges show higher values, red badges show lower values, and tan badges show chemistry or striker differences.')}",
+                    f"- {t('compare.legend.chemistry', '**+Selenium** means the compared sample contains Selenium and the reference does not; **-Lead** means the reference contains Lead and the compared sample does not.')}",
+                    f"- {t('compare.legend.close_match', '**Close match** means no quick delta passed the display threshold.')}",
+                ]
+            )
+        )
+
+
 def describe_change(
     delta: float | None,
     positive_text: str,
@@ -1110,6 +1135,7 @@ def render_differences(
             label=reference_label,
         )
     )
+    render_delta_legend()
 
     for row in selected.iloc[1:].itertuples(index=False):
         glass_id = str(row.glass_id)
