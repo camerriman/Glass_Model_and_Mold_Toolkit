@@ -205,8 +205,15 @@ def datasheet_link_markup(glass_id: str, family_name: str) -> str:
     """
 
 
+def db_cache_token() -> tuple[int, int]:
+    if not DB_PATH.exists():
+        return (0, 0)
+    stat = DB_PATH.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 @st.cache_data
-def load_catalog() -> pd.DataFrame:
+def load_catalog(_db_token: tuple[int, int]) -> pd.DataFrame:
     if not DB_PATH.exists():
         st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
@@ -239,7 +246,7 @@ def load_catalog() -> pd.DataFrame:
 
 
 @st.cache_data
-def load_measurements() -> pd.DataFrame:
+def load_measurements(_db_token: tuple[int, int]) -> pd.DataFrame:
     if not DB_PATH.exists():
         st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
@@ -269,7 +276,7 @@ def load_measurements() -> pd.DataFrame:
 
 
 @st.cache_data
-def load_families() -> pd.DataFrame:
+def load_families(_db_token: tuple[int, int]) -> pd.DataFrame:
     if not DB_PATH.exists():
         st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
@@ -505,9 +512,10 @@ def scroll_to_row(anchor_id: str, offset: int = 90) -> None:
     )
 
 
-families = load_families().copy()
-catalog = load_catalog().copy()
-measurements = load_measurements().copy()
+db_token = db_cache_token()
+families = load_families(db_token).copy()
+catalog = load_catalog(db_token).copy()
+measurements = load_measurements(db_token).copy()
 
 if families.empty:
     st.error(t("library.messages.family_table_empty", "The glass_families table is empty."))

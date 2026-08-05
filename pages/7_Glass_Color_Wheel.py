@@ -188,8 +188,15 @@ def event_mapping(value) -> dict:
         return {}
 
 
+def db_cache_token() -> tuple[int, int]:
+    if not DB_PATH.exists():
+        return (0, 0)
+    stat = DB_PATH.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 @st.cache_data
-def load_wheel_data() -> pd.DataFrame:
+def load_wheel_data(_db_token: tuple[int, int]) -> pd.DataFrame:
     if not DB_PATH.exists():
         st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
@@ -1220,7 +1227,7 @@ def render_selected_sample(
         render_measurement_card(data, selected_glass_id, prefix, "T")
 
 
-wheel_data = load_wheel_data().copy()
+wheel_data = load_wheel_data(db_cache_token()).copy()
 wheel_data["glass_id"] = wheel_data["glass_id"].astype(str)
 wheel_data["glass_family"] = wheel_data["glass_family"].astype(str)
 wheel_data["family_name"] = wheel_data["family_name"].astype(str)

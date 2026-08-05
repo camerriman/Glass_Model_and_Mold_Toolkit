@@ -161,8 +161,15 @@ def first_existing_icon(cat_id: str, prefix: str, preferred_mode: str) -> Path |
     return None
 
 
+def db_cache_token() -> tuple[int, int]:
+    if not DB_PATH.exists():
+        return (0, 0)
+    stat = DB_PATH.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 @st.cache_data
-def load_families() -> pd.DataFrame:
+def load_families(_db_token: tuple[int, int]) -> pd.DataFrame:
     with sqlite3.connect(DB_PATH) as con:
         return pd.read_sql_query(
             """
@@ -175,7 +182,7 @@ def load_families() -> pd.DataFrame:
 
 
 @st.cache_data
-def load_catalog() -> pd.DataFrame:
+def load_catalog(_db_token: tuple[int, int]) -> pd.DataFrame:
     with sqlite3.connect(DB_PATH) as con:
         return pd.read_sql_query(
             """
@@ -201,7 +208,7 @@ def load_catalog() -> pd.DataFrame:
 
 
 @st.cache_data
-def load_measurements() -> pd.DataFrame:
+def load_measurements(_db_token: tuple[int, int]) -> pd.DataFrame:
     with sqlite3.connect(DB_PATH) as con:
         return pd.read_sql_query(
             """
@@ -586,9 +593,10 @@ def predicted_hsb_curve_figure(
     return figure
 
 
-families = load_families().copy()
-catalog = load_catalog().copy()
-measurements = load_measurements().copy()
+db_token = db_cache_token()
+families = load_families(db_token).copy()
+catalog = load_catalog(db_token).copy()
+measurements = load_measurements(db_token).copy()
 
 families["name"] = families["name"].astype(str)
 catalog["glass_id"] = catalog["glass_id"].astype(str)

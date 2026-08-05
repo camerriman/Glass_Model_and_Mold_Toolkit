@@ -422,8 +422,15 @@ def safe_int(x, default=0):
     except Exception:
         return default
 
+def db_cache_token() -> tuple[int, int]:
+    if not DB_PATH.exists():
+        return (0, 0)
+    stat = DB_PATH.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 @st.cache_data
-def load_data() -> pd.DataFrame:
+def load_data(_db_token: tuple[int, int]) -> pd.DataFrame:
     if not DB_PATH.exists():
         st.error(tr("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
@@ -653,7 +660,7 @@ print_slot = print_col.empty()
 
 st.divider()
 
-df = load_data()
+df = load_data(db_cache_token())
 df["glass_family"] = df["glass_family"].astype(str).str.strip()
 subset = df[df["glass_family"] == FAMILY_CODE].copy()
 

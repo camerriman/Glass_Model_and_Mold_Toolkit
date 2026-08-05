@@ -50,8 +50,15 @@ def safe_int(value: object, default: int = 0) -> int:
     return int(round(safe_float(value, float(default))))
 
 
+def db_cache_token() -> tuple[int, int]:
+    if not DB_PATH.exists():
+        return (0, 0)
+    stat = DB_PATH.stat()
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 @st.cache_data
-def load_depth_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_depth_data(_db_token: tuple[int, int]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if not DB_PATH.exists():
         st.error(t("errors.editor.db_missing", "Missing database: {path}", path=DB_PATH))
         st.stop()
@@ -210,7 +217,7 @@ def bar_markup(
     """
 
 
-catalog, measurements, families = load_depth_data()
+catalog, measurements, families = load_depth_data(db_cache_token())
 
 st.title(t("depth_view.title", "Glass Depth Side View"))
 st.caption(
