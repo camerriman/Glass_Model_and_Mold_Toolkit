@@ -205,6 +205,22 @@ def build_mold_solid(
 col1, col2 = st.columns([1, 1])
 
 with col1:
+    # Display a conservative upload guideline without changing Streamlit's
+    # server-side upload limit.
+    st.markdown(
+        """
+        <style>
+        [data-testid="stFileUploaderDropzoneInstructions"] span {
+            font-size: 0;
+        }
+        [data-testid="stFileUploaderDropzoneInstructions"] span::after {
+            content: "Limit 10MB per file • PNG, JPG, JPEG, TIF, TIFF, BMP";
+            font-size: 0.875rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     up = st.file_uploader(
         tr("page.cameo.fields.upload_image", "Upload image"),
         type=["png", "jpg", "jpeg", "tif", "tiff", "bmp"],
