@@ -46,10 +46,6 @@ with col2:
     st.markdown(f"#### {t('home.sections.glass_library', 'Glass Library')}")
     if st.button(t("home.nav.glass_library", "Glass Library"), width='stretch'):
         st.switch_page("pages/6_Glass_Library.py")
-    if st.button(t("home.nav.add_glass_sample", "Add Glass Sample"), width='stretch'):
-        st.switch_page("pages/12_Add_Glass_Sample.py")
-    if st.button(t("home.nav.edit_glass_sample", "Edit Glass Sample"), width='stretch'):
-        st.switch_page("pages/13_Edit_Glass_Sample.py")
     if st.button(t("home.nav.glass_color_wheel", "Glass Color Wheel"), width="stretch"):
         st.switch_page("pages/7_Glass_Color_Wheel.py")
     if st.button(t("home.nav.glass_depth_side_view", "Glass Depth Side View"), width="stretch"):
@@ -58,9 +54,6 @@ with col2:
         st.switch_page("pages/16_Layered_Glass_Predictor.py")
     if st.button(t("home.nav.frit_mix_explorer", "Frit Mix Explorer"), width='stretch'):
         st.switch_page("pages/17_Frit_Mix_Explorer.py")
-
-    if st.button(t("home.nav.documentation", "Documentation"), width='stretch'):
-        st.switch_page("pages/14_Documentation.py")
 
 with col3:
     st.markdown(f"#### {t('home.sections.reference_sheets', 'Reference Sheets')}")
