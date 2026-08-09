@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 from i18n import format_date, render_app_sidebar, t
 
@@ -23,6 +24,7 @@ from i18n import format_date, render_app_sidebar, t
 st.set_page_config(page_title=t("worksheet.title", "Cameo Mold Worksheet"), layout="wide")
 render_app_sidebar()
 st.title(t("worksheet.title", "Cameo Mold Worksheet"))
+render_html_frame = getattr(st, "iframe", components.html)
 st.caption(
     t(
         "worksheet.caption",
@@ -662,7 +664,7 @@ def render_batch_sheet_actions(
         if enabled
         else ""
     )
-    st.iframe(
+    render_html_frame(
         f"""
         <button
             type="button"

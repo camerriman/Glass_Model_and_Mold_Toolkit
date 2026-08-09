@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from i18n import render_app_sidebar, t, translate_element_name, translate_family_name, translate_mode_name
 
@@ -22,6 +23,7 @@ MISSING_ICON = IMG_ROOT / "_placeholders" / "missing_icon.jpg"
 DETAIL_PAGE = "pages/8_Glass_Detail.py"
 COMPARE_PAGE = "pages/15_Glass_Compare.py"
 MAX_COMPARE = 4
+render_html_frame = getattr(st, "iframe", components.html)
 
 FAMILY_PREFIX_BY_CODE = {
     "1": "opal",
@@ -493,7 +495,7 @@ def note_markup(raw_text: str | None) -> str:
 
 
 def scroll_to_row(anchor_id: str, offset: int = 90) -> None:
-    st.iframe(
+    render_html_frame(
         f"""
         <script>
         const anchorId = {json.dumps(anchor_id)};
