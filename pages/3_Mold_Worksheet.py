@@ -472,6 +472,8 @@ def build_batch_sheet_pdf(
     sections: list[tuple[str, list[tuple[str, str]]]],
     header_rows: list[tuple[str, str, str, str]] | None = None,
 ) -> bytes:
+    # The PDF is a 200-DPI raster image, so 34 px prints at 12.24 pt.
+    min_pdf_font_px = 34
     page_w, page_h = 1700, 2200
     margin = 68
     card_gap = 22
@@ -480,24 +482,24 @@ def build_batch_sheet_pdf(
 
     page = Image.new("RGB", (page_w, page_h), white)
     draw = ImageDraw.Draw(page)
-    header_title_font = _batch_sheet_font(24, bold=True)
-    header_label_font = _batch_sheet_font(11, bold=True)
-    header_value_font = _batch_sheet_font(13)
-    title_font = _batch_sheet_font(14, bold=True)
-    body_font = _batch_sheet_font(16)
-    value_font = _batch_sheet_font(16, bold=True)
+    header_title_font = _batch_sheet_font(54, bold=True)
+    header_label_font = _batch_sheet_font(min_pdf_font_px, bold=True)
+    header_value_font = _batch_sheet_font(min_pdf_font_px)
+    title_font = _batch_sheet_font(42, bold=True)
+    body_font = _batch_sheet_font(min_pdf_font_px)
+    value_font = _batch_sheet_font(min_pdf_font_px, bold=True)
     card_w = page_w - (margin * 2)
     table_pad_x = 44
-    header_h = 168 if header_rows else 0
+    header_h = 330 if header_rows else 0
     header_gap = card_gap if header_rows else 0
-    title_h = 36
+    title_h = 58
     card_pad_top = 24
     card_pad_bottom = 24
     total_rows = max(1, sum(len(rows) for _, rows in sections))
     row_space = page_h - (margin * 2) - header_h - header_gap - (card_gap * max(0, len(sections) - 1)) - (
         (title_h + card_pad_top + card_pad_bottom) * len(sections)
     )
-    row_h = max(30, min(46, row_space // total_rows))
+    row_h = max(58, min(76, row_space // total_rows))
 
     def rgb(hex_value: str) -> tuple[int, int, int]:
         hex_value = hex_value.lstrip("#")
@@ -523,6 +525,20 @@ def build_batch_sheet_pdf(
             fit_font = _batch_sheet_font(size, bold=bold)
         draw.text((x, y), text, fill=fill, font=fit_font)
 
+    def wrap_text(text: str, font, max_w: int) -> list[str]:
+        lines: list[str] = []
+        current = ""
+        for word in text.split():
+            candidate = f"{current} {word}".strip()
+            if current and _font_width(draw, candidate, font) > max_w:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            lines.append(current)
+        return lines
+
     y = margin
     if header_rows:
         safe_title = title.strip() or t("worksheet.title", "Cameo Mold Worksheet")
@@ -535,12 +551,12 @@ def build_batch_sheet_pdf(
         draw.rectangle((margin, y, margin + 6, y + header_h), fill=header_border)
         header_x = margin + table_pad_x
         header_w = card_w - (table_pad_x * 2)
-        draw_fitted_text(header_x, y + 22, safe_title, header_text, header_title_font, header_w - 180, min_size=15, bold=True)
+        draw_fitted_text(header_x, y + 18, safe_title, header_text, header_title_font, header_w - 300, min_size=min_pdf_font_px, bold=True)
         date_w = _font_width(draw, date_text, header_value_font)
-        draw.text((margin + card_w - table_pad_x - date_w, y + 28), date_text, fill=header_muted, font=header_value_font)
+        draw.text((margin + card_w - table_pad_x - date_w, y + 30), date_text, fill=header_muted, font=header_value_font)
 
-        meta_y = y + 66
-        meta_row_h = 30
+        meta_y = y + 96
+        meta_row_h = 110
         col_gap = 34
         col_w = (header_w - col_gap) // 2
         for idx, (left_label, left_value, right_label, right_value) in enumerate(header_rows):
@@ -550,9 +566,15 @@ def build_batch_sheet_pdf(
                 (header_x + col_w + col_gap, right_label, right_value),
             ):
                 label_text = f"{label}: "
-                label_w = _font_width(draw, label_text, header_label_font)
-                draw_fitted_text(col_x, row_y, label_text, header_muted, header_label_font, col_w, min_size=8, bold=True)
-                draw_fitted_text(col_x + label_w, row_y, value, header_text, header_value_font, col_w - label_w, min_size=8)
+                draw_fitted_text(col_x, row_y, label_text, header_muted, header_label_font, col_w, min_size=min_pdf_font_px, bold=True)
+                value_y = row_y + 38
+                for line_index, line in enumerate(wrap_text(value, header_value_font, col_w)):
+                    draw.text(
+                        (col_x, value_y + (line_index * 38)),
+                        line,
+                        fill=header_text,
+                        font=header_value_font,
+                    )
         y += header_h + header_gap
 
     for section_title, rows in sections:
@@ -575,7 +597,7 @@ def build_batch_sheet_pdf(
             style["accent"],
             title_font,
             table_w,
-            min_size=10,
+            min_size=min_pdf_font_px,
             bold=True,
         )
 
@@ -589,11 +611,11 @@ def build_batch_sheet_pdf(
             if idx:
                 draw.line((table_x, row_y, table_x + table_w, row_y), fill=grid, width=1)
             text_y = row_y + max(0, (row_h - _font_height(draw, label, body_font)) // 2) - 2
-            draw_fitted_text(table_x + 2, text_y, label, style["label"], body_font, divider_x - table_x - 20, min_size=11)
+            draw_fitted_text(table_x + 2, text_y, label, style["label"], body_font, divider_x - table_x - 20, min_size=min_pdf_font_px)
             value_w = _font_width(draw, value, value_font)
             value_x = table_x + table_w - value_w - 2
             if value_x < divider_x + 16:
-                draw_fitted_text(divider_x + 16, text_y, value, style["value"], value_font, table_x + table_w - divider_x - 18, min_size=11, bold=True)
+                draw_fitted_text(divider_x + 16, text_y, value, style["value"], value_font, table_x + table_w - divider_x - 18, min_size=min_pdf_font_px, bold=True)
             else:
                 draw.text((value_x, text_y), value, fill=style["value"], font=value_font)
 
@@ -736,8 +758,10 @@ with tool_left:
                     if src_k in parsed:
                         st.session_state[state_k] = parsed[src_k]
                         filled.append(src_k)
-                if not st.session_state["ws_title"] and "image_name" in parsed:
-                    st.session_state["ws_title"] = parsed["image_name"].rsplit(".", 1)[0]
+                if "image_name" in parsed:
+                    image_title = Path(parsed["image_name"]).stem.strip()
+                    if image_title:
+                        st.session_state["ws_title"] = image_title
                 if filled:
                     st.success(
                         t(
@@ -990,7 +1014,7 @@ with output_col:
     metric_cols = st.columns(3)
     metric_cols[0].metric(t("worksheet.labels.model_volume", "Model Volume"), f"{g['model_volume']} cm³")
     metric_cols[1].metric(t("worksheet.labels.max_z_height", "Max Z Height"), f"{p['max_z']} mm")
-    metric_cols[2].metric(t("worksheet.labels.alg_si_box_wd", "Alginate / Silicone Box W x D"), f"{g['box_w']:.0f}x{g['box_d']:.0f} mm")
+    metric_cols[2].metric(t("worksheet.labels.alg_si_box_wd", "Alginate / Silicone Box W x D"), f"{g['box_w']:.1f} x {g['box_d']:.1f} mm")
 
     warnings = []
     if not worksheet_ready:
@@ -1066,9 +1090,9 @@ After set, let the mold sit at least 1 hour before pattern removal. For curing a
 
     mold_box_title = t("worksheet.cards.mold_box", "MOLD BOX")
     mold_box_rows = [
-        (t("worksheet.labels.alg_si_box_wd", "Alginate / Silicone Box W x D"), f"{g['box_w']:.0f} x {g['box_d']:.0f} mm"),
+        (t("worksheet.labels.alg_si_box_wd", "Alginate / Silicone Box W x D"), f"{g['box_w']:.1f} x {g['box_d']:.1f} mm"),
         (t("worksheet.labels.alg_si_box_volume", "Alginate / Silicone Box Volume"), f"{g['box_volume']} cm³"),
-        (t("worksheet.labels.investment_box_wd", "Investment Box W x D"), f"{g_inv['box_w']:.0f} x {g_inv['box_d']:.0f} mm"),
+        (t("worksheet.labels.investment_box_wd", "Investment Box W x D"), f"{g_inv['box_w']:.1f} x {g_inv['box_d']:.1f} mm"),
         (t("worksheet.labels.investment_box_volume", "Investment Box Volume"), f"{g_inv['box_volume']} cm³"),
         (t("worksheet.labels.model_volume", "Model Volume"), f"{g['model_volume']} cm³"),
         (t("worksheet.labels.volume_to_max_z", "Volume to Max Z"), f"{p['vol_to_max_z']} cm³"),

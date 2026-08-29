@@ -272,16 +272,18 @@ def build_pate_print_html(title: str, job_date, sections: list[tuple[str, list[t
 
 
 def build_pate_batch_pdf(title: str, job_date, sections: list[tuple[str, list[tuple[str, str]]]]) -> bytes:
+    # The PDF is a 200-DPI raster image, so 34 px prints at 12.24 pt.
+    min_pdf_font_px = 34
     page_w, page_h = 1700, 2200
     margin = 70
     card_gap = 22
     page = Image.new("RGB", (page_w, page_h), "white")
     draw = ImageDraw.Draw(page)
-    title_font = _batch_font(28, bold=True)
-    date_font = _batch_font(14)
-    section_font = _batch_font(16, bold=True)
-    label_font = _batch_font(16)
-    value_font = _batch_font(16, bold=True)
+    title_font = _batch_font(54, bold=True)
+    date_font = _batch_font(min_pdf_font_px)
+    section_font = _batch_font(42, bold=True)
+    label_font = _batch_font(min_pdf_font_px)
+    value_font = _batch_font(min_pdf_font_px, bold=True)
     grid = (205, 213, 223)
     colors = [
         ((248, 250, 252), (100, 116, 139), (71, 85, 105), (15, 23, 42)),
@@ -292,21 +294,21 @@ def build_pate_batch_pdf(title: str, job_date, sections: list[tuple[str, list[tu
     safe_title = title.strip() or t("page.pate_mold.title", "Vessel Mold Worksheet")
     date_text = format_date(job_date.isoformat() if hasattr(job_date, "isoformat") else str(job_date))
     draw.text((margin, margin), safe_title, fill=(15, 23, 42), font=title_font)
-    draw.text((margin, margin + 42), date_text, fill=(75, 85, 99), font=date_font)
-    y = margin + 88
+    draw.text((margin, margin + 66), date_text, fill=(75, 85, 99), font=date_font)
+    y = margin + 120
     card_w = page_w - (margin * 2)
     table_pad = 42
-    row_h = 42
+    row_h = 58
 
     for idx, (section_title, rows) in enumerate(sections):
         bg, accent, label_color, value_color = colors[min(idx, len(colors) - 1)]
-        card_h = 28 + 38 + (len(rows) * row_h) + 26
+        card_h = 24 + 58 + (len(rows) * row_h) + 26
         draw.rounded_rectangle((margin, y, margin + card_w, y + card_h), radius=8, fill=bg)
         draw.rectangle((margin, y, margin + 7, y + card_h), fill=accent)
         table_x = margin + table_pad
         table_w = card_w - (table_pad * 2)
-        draw.text((table_x, y + 24), section_title.upper(), fill=accent, font=section_font)
-        table_y = y + 62
+        draw.text((table_x, y + 20), section_title.upper(), fill=accent, font=section_font)
+        table_y = y + 82
         divider_x = table_x + int(table_w * 0.6)
         draw.rectangle((table_x, table_y, table_x + table_w, table_y + len(rows) * row_h), outline=grid, width=1)
         draw.line((divider_x, table_y, divider_x, table_y + len(rows) * row_h), fill=grid, width=1)
@@ -314,7 +316,7 @@ def build_pate_batch_pdf(title: str, job_date, sections: list[tuple[str, list[tu
             row_y = table_y + row_idx * row_h
             if row_idx:
                 draw.line((table_x, row_y, table_x + table_w, row_y), fill=grid, width=1)
-            text_y = row_y + 11
+            text_y = row_y + 10
             draw.text((table_x + 3, text_y), label, fill=label_color, font=label_font)
             value_w = _font_width(draw, value, value_font)
             draw.text((table_x + table_w - value_w - 3, text_y), value, fill=value_color, font=value_font)
