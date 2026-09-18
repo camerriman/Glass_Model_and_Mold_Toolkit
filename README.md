@@ -11,6 +11,14 @@ The app is organized around four connected work areas:
 
 The app also includes a lightweight localization layer for Streamlit UI text, sidebar navigation, forms, dashboards, reference pages, and locale-aware date/time display.
 
+## Recent Updates
+
+- Cameo and vessel mold batch-sheet PDFs use larger type and roomier tables for studio printing. Cameo sheets also wrap project metadata, retain one decimal place in mold-box dimensions, and use the imported artwork filename as the worksheet title.
+- The Glass Library keeps comparison controls visible while scrolling and supports selecting 2–4 samples. The comparison page explains reflected/transmitted hue, saturation, and brightness differences, along with chemistry and striker badges.
+- Glass detail pages and their PDFs include separate RGB and HSV/brightness tables with color swatches for depth estimates.
+- The bundled catalog includes additional reflected/transmitted opalescent and transparent scans and updated sample measurements.
+- Cameo and vessel upload controls display a 10 MB per-file guideline. This is guidance in the interface; it does not change Streamlit's server upload limit.
+
 ## App Areas
 
 ### Home and Documentation
@@ -49,6 +57,7 @@ The app also includes a lightweight localization layer for Streamlit UI text, si
 - `pages/5_Mesh_Crop.py`: STL proxy crop workflow
 - `pages/3_Mold_Worksheet.py`: cameo mold worksheet and material calculations
 - `pages/19_Vessel_Mold_Worksheet.py`: vessel mold worksheet, volume estimates, and material planning
+- `pages/24_STL_Casting_Mold_Worksheet.py`: estimates face and jacket coat materials from an uploaded STL, with unit scaling, surface-area calculations, and JSON settings export; model volume requires a watertight mesh
 - `pages/22_Print_Optional_Frame.py`: print frame fabrication planning, pre-visualization, weights, and checklist output
 - `utilities/kiln_notes/`: helper modules for kiln forming notes, schedule profiles, annealing estimates, image transfer, and PDF export
 
@@ -127,6 +136,8 @@ The bundled catalog database and image folders provide the glass library data, t
 
 Glass records are organized around catalog data plus reflected and transmitted measurements. Several pages intentionally compare these two lighting modes because opal, transparent, and tint glasses can read differently depending on light direction, thickness, layering, surface finish, and source color temperature.
 
+The library uses controlled digital imaging rather than laboratory spectrophotometry. Color values describe each physical sample at its recorded thickness under broad daylight-balanced illumination. Images, depth estimates, and predictions are practical visual approximations; individual sheets, production batches, and viewing conditions can produce different results.
+
 For opalescent glass, the detail page includes an explanatory note below the reflected/transmitted image panels. This helps clarify why a sample may look pale, blue, white, or milky in reflected light while appearing warmer, darker, amber, gray, or more translucent when backlit.
 
 ## PDFs and Printing
@@ -135,8 +146,13 @@ The app generates printer-ready PDFs for:
 
 - individual glass datasheets
 - opalescent, transparent, and tint reference sheets
+- cameo and vessel mold batch sheets
+- print frame fabrication checklists
+- kiln forming studio sheets and full records
 
-PDF output keeps studio reference sheets and datasheets consistent for archiving, sample books, and shop use.
+PDF output supports sample books, material batching, fabrication, and studio record keeping. Cameo and vessel worksheets also provide JSON settings downloads for saving a project setup.
+
+The Vessel Mold Worksheet accepts `vessel_settings.txt`, `vessel_settings.json`, or a generator build ZIP to carry model dimensions into material planning. The Vessel Model Generator can reload settings from JSON or a prior build ZIP.
 
 ## Localization
 

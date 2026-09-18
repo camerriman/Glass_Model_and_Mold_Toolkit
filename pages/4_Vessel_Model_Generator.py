@@ -344,8 +344,7 @@ def estimate_internal_bore_volume_mm3(
         area_mm2 = np.pi * (inner_r ** 2)
 
     area_mm2 = area_mm2 * cross_section_area_factor(cross_section, oval_x_scale, oval_y_scale)
-    return float(np.trapz(area_mm2, z_arr))
-
+    return float(np.trapezoid(area_mm2, z_arr))
 
 # ─────────────────────────────────────────
 # Heightmap loader

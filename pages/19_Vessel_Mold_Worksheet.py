@@ -560,7 +560,6 @@ with vol_cols[1]:
     face_thickness_mm = st.number_input(
         t("page.pate_mold.fields.face_thickness", "Face coat thickness (mm)"),
         min_value=0.0,
-        value=15.0,
         step=1.0,
         key="pate_face_thickness_mm",
     )
@@ -568,7 +567,6 @@ with vol_cols[2]:
     jacket_thickness_mm = st.number_input(
         t("page.pate_mold.fields.jacket_thickness", "Jacket coat thickness (mm)"),
         min_value=0.0,
-        value=15.0,
         step=1.0,
         key="pate_jacket_thickness_mm",
     )
@@ -576,7 +574,6 @@ with vol_cols[3]:
     overage_pct = st.number_input(
         t("page.pate_mold.fields.overage", "Overage (%)"),
         min_value=0.0,
-        value=15.0,
         step=5.0,
         key="pate_overage_pct",
     )
